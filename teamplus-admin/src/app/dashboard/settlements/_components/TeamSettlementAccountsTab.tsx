@@ -34,6 +34,7 @@ import {
 import { AlertCircle, AlertTriangle, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { api } from '@/services/api-client';
 import { getAccountStatusMeta, type AccountStatus } from './accountStatusMeta';
+import { ActionNotice } from './ActionNotice';
 
 interface TeamAccount {
   teamId: string;
@@ -270,18 +271,7 @@ export function TeamSettlementAccountsTab() {
 
   return (
     <div className="min-w-0 max-w-full space-y-6">
-      {notice && (
-        <div
-          role="status"
-          className={`p-3 rounded-lg text-sm ${
-            notice.type === 'success'
-              ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400'
-              : 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400'
-          }`}
-        >
-          {notice.text}
-        </div>
-      )}
+      <ActionNotice notice={notice} />
 
       <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
         <div
