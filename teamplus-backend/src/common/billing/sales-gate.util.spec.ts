@@ -1,6 +1,7 @@
 import {
   assertClassOnSale,
   filterSellableProducts,
+  isClassEnded,
   SALES_GATE_MESSAGES,
 } from "./sales-gate.util";
 
@@ -120,6 +121,67 @@ describe("sales-gate.util (§4-6)", () => {
         nextMonth.getTime(),
       ]);
       expect(result.primaryMonth.getTime()).toBe(thisMonth.getTime());
+    });
+  });
+
+  describe("isClassEnded", () => {
+    const mk = (klass: unknown) =>
+      ({
+        class: { findUnique: jest.fn().mockResolvedValue(klass) },
+      }) as never;
+    const past = new Date(today.getTime() - 7 * 86_400_000);
+    const future = new Date(today.getTime() + 7 * 86_400_000);
+
+    it("명시 종료(endedAt) → true", async () => {
+      await expect(
+        isClassEnded(
+          mk({
+            endedAt: new Date(),
+            salesOpenMonth: thisMonth,
+            trainingType: "regular",
+            schedules: [{ scheduledDate: future }],
+          }),
+          "c1",
+        ),
+      ).resolves.toBe(true);
+    });
+
+    it("spot 마지막 일정 경과(파생 종료) → true", async () => {
+      await expect(
+        isClassEnded(
+          mk({
+            endedAt: null,
+            salesOpenMonth: null,
+            trainingType: "spot",
+            schedules: [{ scheduledDate: past }],
+          }),
+          "c1",
+        ),
+      ).resolves.toBe(true);
+    });
+
+    it("일정 없는 spot(등록 대기)·판매 창 지난 regular(대기) → false", async () => {
+      await expect(
+        isClassEnded(
+          mk({ endedAt: null, salesOpenMonth: null, trainingType: "spot", schedules: [] }),
+          "c1",
+        ),
+      ).resolves.toBe(false);
+      await expect(
+        isClassEnded(
+          mk({
+            endedAt: null,
+            salesOpenMonth: monthStart(-3),
+            trainingType: "regular",
+            schedules: [{ scheduledDate: past }],
+          }),
+          "c1",
+        ),
+      ).resolves.toBe(false);
+    });
+
+    it("수업 없음 → false", async () => {
+      await expect(isClassEnded(mk(null), "c1")).resolves.toBe(false);
     });
   });
 });

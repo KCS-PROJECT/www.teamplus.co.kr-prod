@@ -21,6 +21,11 @@ export const MESSAGES = {
     noUpcomingSchedule: "예정된 일정 없음",
     // [Lifecycle v4.1] 수명주기 라벨 — 학부모=중립 "일정 준비 중"(§7.3), 감독=대기 배지
     preparingSchedule: "일정 준비 중",
+    // 학부모 목록 상태 칩 — 누르는 버튼이 아니라 상태 표시라 동작형("등록") 대신 상태형,
+    //   상세 화면(신청하기·신청완료)과 같은 "신청" 어휘를 쓴다.
+    listChipAvailable: "신청 가능",
+    listChipEnrolled: "신청완료",
+    listChipUnavailable: "신청 불가",
     pendingScheduleBadge: "일정 등록 대기",
     salesOpenNeededBadge: "판매 시작 필요",
     endClassButton: "수업 종료하기",
@@ -46,7 +51,7 @@ export const MESSAGES = {
     listTabEnded: "종료",
     // 학부모 종료 화면 — 팀의 종료분 전체가 아니라 "자녀가 참여했던 것 중 종료된 훈련·대회"라
     //   이름에 참여와 종료를 모두 둔다. 섹션 제목은 화면 제목이 범위를 말하므로 훈련/대회만.
-    endedLinkLabel: "종료된 참여 활동 보기",
+    endedLinkLabel: (count: number) => `종료된 참여 활동 ${count}건 보기`,
     endedPageTitle: "종료된 참여 활동",
     endedParentTrainingSection: "훈련",
     endedParentTournamentSection: "대회",
@@ -455,6 +460,17 @@ export const MESSAGES = {
     noChildren: "등록된 자녀가 없습니다. 먼저 자녀를 등록해주세요.",
     notEligibleForTeam: "이 수업을 수강할 수 있는 자녀가 없습니다.",
     selectChild: "자녀를 선택해주세요.",
+
+    // 종료된 훈련 상세(학부모) — 수강한 자녀 요약
+    endedChildrenTitle: "수강한 자녀",
+    endedChildrenEmpty: "이 훈련을 수강한 자녀가 없습니다.",
+    endedPrepaidLabel: "선불",
+    endedPostpaidLabel: "후불",
+    endedMonthLabel: (month: number) => `${month}월`,
+    endedYearMonthLabel: (year: number, month: number) => `${year}년 ${month}월`,
+    endedAttendanceCount: (count: number) => `출석 ${count}회`,
+    endedAttendanceLoadFailed: "출석 기록을 불러오지 못했습니다.",
+    endedChildrenLoadFailed: "수강 이력을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.",
 
     // 중복/상태
     duplicateError: "이미 신청 중이거나 수강 중인 수업입니다.",

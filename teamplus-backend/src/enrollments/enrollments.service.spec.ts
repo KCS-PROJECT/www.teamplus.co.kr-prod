@@ -50,6 +50,10 @@ describe("EnrollmentsService — 취소 원자화 · 전이 재확인 · 상품 
     /** 수업 유형 — spot 이면 월 귀속 판정을 건너뛴다. */
     trainingType?: string | null;
     salesOpenMonth?: Date | null;
+    /** 수업이 명시 종료(endedAt)됐는지 — 종료 훈련의 후불 수강 취소 차단 판정용. */
+    classEnded?: boolean;
+    /** 등록 행의 결제 시점 — 종료 훈련 취소 차단은 후불(POSTPAID) 행만 대상. */
+    billingTiming?: string | null;
   }) {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([]),
@@ -89,7 +93,10 @@ describe("EnrollmentsService — 취소 원자화 · 전이 재확인 · 상품 
             Object.keys(args.select).length === 1 &&
             args.select.status
               ? { status: opts.currentStatus ?? opts.status }
-              : detail(opts.status, opts.paymentId ?? null),
+              : {
+                  ...detail(opts.status, opts.paymentId ?? null),
+                  billingTiming: opts.billingTiming ?? null,
+                },
         ),
         update: jest.fn(async () => ({
           ...detail("approved"),
@@ -124,6 +131,14 @@ describe("EnrollmentsService — 취소 원자화 · 전이 재확인 · 상품 
         findFirst: jest
           .fn()
           .mockResolvedValue(opts.hasElapsedSchedule ? { id: "sch-1" } : null),
+      },
+      class: {
+        findUnique: jest.fn().mockResolvedValue({
+          endedAt: opts.classEnded ? new Date("2026-09-01T00:00:00Z") : null,
+          salesOpenMonth: new Date("2099-01-01T00:00:00Z"),
+          trainingType: "regular",
+          schedules: [],
+        }),
       },
       classProduct: {
         findUnique: jest.fn().mockResolvedValue(
@@ -200,6 +215,49 @@ describe("EnrollmentsService — 취소 원자화 · 전이 재확인 · 상품 
         data: { status: "inactive" },
       });
     });
+
+    it("종료된 훈련의 후불 수강(approved)은 400 — 이력을 취소로 덮지 않음", async () => {
+      const { service, prisma } = build({
+        status: "approved",
+        classEnded: true,
+        billingTiming: "POSTPAID",
+      });
+      await expect(
+        service.cancelEnrollment(userId, enrollmentId),
+      ).rejects.toThrow("종료된 훈련은 수강 종료할 수 없습니다.");
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it("종료된 훈련이어도 선불 approved(승인 후 미결제)는 취소 허용 — 종료 판정 조회 없음", async () => {
+      const { service, prisma, tx } = build({
+        status: "approved",
+        classEnded: true,
+        billingTiming: "PREPAID",
+      });
+      await service.cancelEnrollment(userId, enrollmentId);
+      expect(tx.enrollment.updateMany).toHaveBeenCalled();
+      expect(prisma.class.findUnique).not.toHaveBeenCalled();
+    });
+
+    it("판매 중인 훈련의 후불 approved 는 기존대로 수강 종료", async () => {
+      const { service, tx } = build({
+        status: "approved",
+        classEnded: false,
+        billingTiming: "POSTPAID",
+      });
+      await service.cancelEnrollment(userId, enrollmentId);
+      expect(tx.enrollment.updateMany).toHaveBeenCalled();
+    });
+
+    it.each(["pending", "pending_approval"])(
+      "종료된 훈련이어도 %s 신청은 취소 허용 — 종료 판정 조회 없음",
+      async (status) => {
+        const { service, prisma, tx } = build({ status, classEnded: true });
+        await service.cancelEnrollment(userId, enrollmentId);
+        expect(tx.enrollment.updateMany).toHaveBeenCalled();
+        expect(prisma.class.findUnique).not.toHaveBeenCalled();
+      },
+    );
 
     it("좌석이 실제로 비었을 때(명단 해지 1건)만 대기자 승격", async () => {
       const seat = build({ status: "approved", releasedCount: 1 });

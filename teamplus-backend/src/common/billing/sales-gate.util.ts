@@ -42,6 +42,7 @@ export const SALES_GATE_MESSAGES = {
   PENDING:
     "지금은 수강 신청·결제가 가능한 기간이 아닙니다. 다음 일정 준비 중입니다.",
   ENDED: "종료된 수업입니다.",
+  ENDED_CANCEL: "종료된 훈련은 수강 종료할 수 없습니다.",
 } as const;
 
 export interface SalesGateResult {
@@ -56,10 +57,8 @@ export interface SalesGateResult {
  * 수업이 판매 중(ON_SALE)이 아니거나 판매 중인 달이 하나도 없으면 400 을 던진다.
  * 통과하면 판매 창 정보를 반환한다(호출부가 대상월 등 추가 검증에 재사용).
  */
-export async function assertClassOnSale(
-  prisma: PrismaLike,
-  classId: string,
-): Promise<SalesGateResult> {
+/** 판매 게이트·종료 판정이 공유하는 조회 — 두 판정이 같은 입력으로 수명주기를 파생하게 한다. */
+async function loadSalesWindow(prisma: PrismaLike, classId: string) {
   const klass = await prisma.class.findUnique({
     where: { id: classId },
     select: {
@@ -72,10 +71,18 @@ export async function assertClassOnSale(
       },
     },
   });
-  if (!klass) {
+  return klass ? computeSalesWindow(klass) : null;
+}
+
+export async function assertClassOnSale(
+  prisma: PrismaLike,
+  classId: string,
+): Promise<SalesGateResult> {
+  const window = await loadSalesWindow(prisma, classId);
+  if (!window) {
     throw new BadRequestException("수업 정보를 찾을 수 없습니다.");
   }
-  const { lifecycle, sellableMonths } = computeSalesWindow(klass);
+  const { lifecycle, sellableMonths } = window;
   if (lifecycle.state === "ENDED") {
     throw new BadRequestException(SALES_GATE_MESSAGES.ENDED);
   }
@@ -86,6 +93,18 @@ export async function assertClassOnSale(
     throw new BadRequestException(SALES_GATE_MESSAGES.PENDING);
   }
   return { lifecycle, sellableMonths, primaryMonth: sellableMonths[0] };
+}
+
+/**
+ * 수업이 종료(ENDED) 상태인지 — 명시 종료(endedAt)와 spot 파생 종료를 모두 포함한다.
+ * 판정은 assertClassOnSale 와 같은 deriveClassLifecycle 경로를 쓴다.
+ */
+export async function isClassEnded(
+  prisma: PrismaLike,
+  classId: string,
+): Promise<boolean> {
+  const window = await loadSalesWindow(prisma, classId);
+  return window?.lifecycle.state === "ENDED";
 }
 
 /**

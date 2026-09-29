@@ -681,18 +681,18 @@ const ChildClassCard = memo(function ChildClassCard({
 
   // [2026-05-19] 등록상태 분기 (학생 본인 시점 — 연령 분기는 user.birthDate 미보장으로 skip)
   const isAlreadyEnrolled = enrolledClassIds?.has(item.id) ?? false;
-  let registerLabel = "등록";
+  let registerLabel: string = MESSAGES.class.listChipAvailable;
   // [상태 칩 soft 통일] 클릭 불가한 상태 표시(카드 전체가 링크)라 솔리드 버튼 모양은
   //   오독 유발 + ICETIMES 플랫 톤·배지 관례(연한 배경+진한 글자)와 충돌 → soft 칩.
   let registerClass =
     "bg-it-blue-50 text-it-blue-500 dark:bg-it-blue-500/15 dark:text-it-blue-300";
   if (isAlreadyEnrolled) {
-    registerLabel = "등록완료";
+    registerLabel = MESSAGES.class.listChipEnrolled;
     registerClass =
       "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400";
   }
   // [Lifecycle v4.1 §7.3] 일정 준비 중 — 미등록자의 등록 칩 자리를 상태 칩으로 대체.
-  //   "등록완료"(본인 수강 상태)는 우선 유지.
+  //   "신청완료"(본인 수강 상태)는 우선 유지.
   if (
     !isAlreadyEnrolled &&
     (item.lifecycleStatus === 'PENDING_SCHEDULE' || isSalesWindowEmpty(item))
@@ -836,18 +836,18 @@ const TeenClassCard = memo(function TeenClassCard({
   const theme = getTeenTheme(item.trainingType);
   // [2026-05-19] 등록상태 분기 (Teen 본인 시점 — 연령 분기 skip)
   const isAlreadyEnrolled = enrolledClassIds?.has(item.id) ?? false;
-  let registerLabel = "등록";
+  let registerLabel: string = MESSAGES.class.listChipAvailable;
   // [상태 칩 soft 통일] 클릭 불가한 상태 표시(카드 전체가 링크)라 솔리드 버튼 모양은
   //   오독 유발 + ICETIMES 플랫 톤·배지 관례(연한 배경+진한 글자)와 충돌 → soft 칩.
   let registerClass =
     "bg-it-blue-50 text-it-blue-500 dark:bg-it-blue-500/15 dark:text-it-blue-300";
   if (isAlreadyEnrolled) {
-    registerLabel = "등록완료";
+    registerLabel = MESSAGES.class.listChipEnrolled;
     registerClass =
       "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400";
   }
   // [Lifecycle v4.1 §7.3] 일정 준비 중 — 미등록자의 등록 칩 자리를 상태 칩으로 대체.
-  //   "등록완료"(본인 수강 상태)는 우선 유지.
+  //   "신청완료"(본인 수강 상태)는 우선 유지.
   if (
     !isAlreadyEnrolled &&
     (item.lifecycleStatus === 'PENDING_SCHEDULE' || isSalesWindowEmpty(item))
@@ -989,8 +989,8 @@ const DefaultClassCard = memo(function DefaultClassCard({
   pastEnrolledClassIds?: Set<string>;
   /**
    * 학부모 자녀들의 나이 배열. 한 명이라도 ageMin~ageMax 안에 들어가면 등록 가능.
-   * undefined/null = 데이터 아직 로딩 중 → "등록" 기본 표시 (회귀 방지).
-   * 빈 배열 = 자녀 0명 → 등록 가능 여부 판단 불가, 기본 "등록" 표시.
+   * undefined/null = 데이터 아직 로딩 중 → "신청 가능" 기본 표시 (회귀 방지).
+   * 빈 배열 = 자녀 0명 → 등록 가능 여부 판단 불가, 기본 "신청 가능" 표시.
    */
   childAges?: number[];
   /** '등록 훈련' 섹션 등 혼합 분류 영역 — 정규수업/오픈클래스 배지를 강제 노출 */
@@ -1026,7 +1026,7 @@ const DefaultClassCard = memo(function DefaultClassCard({
   // [2026-05-19 추가] 등록 상태 분기
   //   priority: 등록완료 > 등록불가(연령) > 등록
   const isAlreadyEnrolled = enrolledClassIds?.has(item.id) ?? false;
-  // childAges 가 nullish/빈배열 이면 기본 "등록" 으로 표시 (정보 부족 시 절대 disabled 하지 않음)
+  // childAges 가 nullish/빈배열 이면 기본 "신청 가능" 으로 표시 (정보 부족 시 절대 disabled 하지 않음)
   const hasAgeEligibleChild =
     !childAges || childAges.length === 0
       ? true
@@ -1041,7 +1041,7 @@ const DefaultClassCard = memo(function DefaultClassCard({
     !isAlreadyEnrolled &&
     !classEnded &&
     (pastEnrolledClassIds?.has(item.id) ?? false);
-  let registerLabel = "등록";
+  let registerLabel: string = MESSAGES.class.listChipAvailable;
   // [상태 칩 soft 통일] 클릭 불가한 상태 표시(카드 전체가 링크)라 솔리드 버튼 모양은
   //   오독 유발 + ICETIMES 플랫 톤·배지 관례(연한 배경+진한 글자)와 충돌 → soft 칩.
   let registerClass =
@@ -1059,7 +1059,7 @@ const DefaultClassCard = memo(function DefaultClassCard({
     registerClass =
       "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400";
   } else if (isAlreadyEnrolled) {
-    registerLabel = "등록완료";
+    registerLabel = MESSAGES.class.listChipEnrolled;
     registerClass =
       "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400";
   } else if (!!pendingTeamId && item.teamId === pendingTeamId) {
@@ -1074,7 +1074,7 @@ const DefaultClassCard = memo(function DefaultClassCard({
     registerClass =
       "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400";
   } else if (!hasAgeEligibleChild) {
-    registerLabel = "등록불가";
+    registerLabel = MESSAGES.class.listChipUnavailable;
     registerClass = "bg-wline-2 text-wtext-3 dark:bg-rink-700 dark:text-rink-300";
   } else {
     // [수강 자격 월별 판정] 이번 달 일정이 없어(방학 등) 다음 달분만 판매 중인 구간 —
@@ -1153,30 +1153,31 @@ const DefaultClassCard = memo(function DefaultClassCard({
         item.academyName ??
         (item.isViewerTeam === false ? (item.team?.name ?? undefined) : undefined)
       }
-      titleRight={
-        /* 등록 상태 칩 — 클릭은 카드 NavLink 가 처리 (시각 표시 전용).
-           min-w-[72px] 고정. 준비 중 수업은 이 칩 자리가 "일정 준비 중"으로
-           대체된다 (registerLabel 분기 — 별도 하단 배지 없음).
-           다녔던 훈련은 왼쪽에 회색 "이전 참여" 칩을 하나 더 둔다. */
-        <span className="inline-flex items-center gap-1">
-          {wasEnrolled && (
-            <span
-              className="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-[11.5px] leading-[1.55] font-bold tracking-[-0.01em] bg-it-fill text-it-ink-600 dark:bg-it-ink-900/60 dark:text-it-ink-300"
-              aria-hidden="true"
-            >
-              {MESSAGES.class.previouslyEnrolledChip}
-            </span>
-          )}
+      // 다녔던 훈련 표시는 이 훈련의 이력이라 제목 뒤에 붙인다 — 오른쪽 상태 칩 옆에 두면
+      //   상태 칩 폭(등록/일정 준비 중/N월분 신청 가능)에 따라 행마다 위치가 흔들렸다.
+      titleSuffix={
+        wasEnrolled ? (
           <span
-            className={cn(
-              // [2026-08-04 리스트 전환] 상태 pill — 리스트 행 높이에 맞춰 축소 (2px 8px · 11.5px/700)
-              "inline-flex items-center justify-center min-w-[62px] px-2 py-0.5 rounded-full text-[11.5px] leading-[1.55] font-bold tracking-[-0.01em]",
-              registerClass,
-            )}
+            className="inline-flex items-center justify-center px-2 py-0.5 rounded-full text-[11.5px] leading-[1.55] font-bold tracking-[-0.01em] bg-it-fill text-it-ink-600 dark:bg-it-ink-900/60 dark:text-it-ink-300"
             aria-hidden="true"
           >
-            {registerLabel}
+            {MESSAGES.class.previouslyEnrolledChip}
           </span>
+        ) : undefined
+      }
+      titleRight={
+        /* 등록 상태 칩 — 클릭은 카드 NavLink 가 처리 (시각 표시 전용).
+           min-w-[62px] 고정. 준비 중 수업은 이 칩 자리가 "일정 준비 중"으로
+           대체된다 (registerLabel 분기 — 별도 하단 배지 없음). */
+        <span
+          className={cn(
+            // [2026-08-04 리스트 전환] 상태 pill — 리스트 행 높이에 맞춰 축소 (2px 8px · 11.5px/700)
+            "inline-flex items-center justify-center min-w-[62px] px-2 py-0.5 rounded-full text-[11.5px] leading-[1.55] font-bold tracking-[-0.01em]",
+            registerClass,
+          )}
+          aria-hidden="true"
+        >
+          {registerLabel}
         </span>
       }
       bodyAction={bodyAction}
@@ -1428,10 +1429,10 @@ const DefaultTournamentCard = memo(function DefaultTournamentCard({
               ? "취소"
               : "종료"
             : isEnrolled
-              ? "등록완료"
+              ? MESSAGES.class.listChipEnrolled
               : isPendingTeam
                 ? MESSAGES.class.pendingTeamApproval
-                : "등록"}
+                : MESSAGES.class.listChipAvailable}
         </span>
       }
     >
@@ -1792,7 +1793,7 @@ export function ClassesListView({ mode }: { mode: ClassesListMode }) {
     (async () => {
       try {
         // enrollments — 모든 viewMode 공통.
-        //   [수정] 후불(POSTPAID) 수강 중(approved)도 "등록완료"로 표시해야 하므로
+        //   [수정] 후불(POSTPAID) 수강 중(approved)도 "신청완료"로 표시해야 하므로
         //   status=paid 로 좁히지 않고 전체를 받아 isActiveEnrollment 공통 SoT 로 판정.
         const enrollPromise = api.get<
           | { classId?: string; childId?: string; class?: { id?: string; billingMode?: string }; product?: { billingTiming?: string } | null; status?: string; hasValidPass?: boolean | null }[]
@@ -1843,7 +1844,7 @@ export function ClassesListView({ mode }: { mode: ClassesListMode }) {
             if (!id) return;
             // 결제 이력 — paid(만료 포함)·completed 는 언젠가 다닌 기록이다.
             if (e.status === "paid" || e.status === "completed") everPaidIds.add(id);
-            // 선불 paid OR 후불(POSTPAID·BOTH 후불상품) approved 만 "등록완료"로 간주 (공통 SoT).
+            // 선불 paid OR 후불(POSTPAID·BOTH 후불상품) approved 만 "신청완료"로 간주 (공통 SoT).
             if (
               !isActiveEnrollment(
                 e.status,
@@ -1896,7 +1897,7 @@ export function ClassesListView({ mode }: { mode: ClassesListMode }) {
           setPendingTeamId(null);
         }
       } catch {
-        // 실패 시 분기 없이 기본 "등록" 표시 (회귀 방지)
+        // 실패 시 분기 없이 기본 "신청 가능" 표시 (회귀 방지)
       }
     })();
     return () => {
@@ -2235,25 +2236,28 @@ export function ClassesListView({ mode }: { mode: ClassesListMode }) {
                   </div>
                 ))}
               </ClassSection>
-              {/* 종료 이력 진입 — 참여했던 종료 훈련·대회가 있을 때만 목록 끝에 한 줄.
-                  매일 여는 화면이라 종료분은 기본 목록에 두지 않고 별도 화면으로 보낸다. */}
+              {/* 종료 이력 진입 — 참여했던 종료 훈련·대회가 있을 때만 목록 끝에 버튼 하나.
+                  매일 여는 화면이라 종료분은 기본 목록에 두지 않고 별도 화면으로 보낸다.
+                  목록 행·섹션 제목과 같은 모양이면 펼침 섹션으로 읽히므로, 여백을 두고
+                  더보기 버튼(EndedLoadMoreRow)과 같은 테두리 버튼 모양으로 구분한다. */}
               {sections.endedEnrolled.length + sections.endedTournaments.length > 0 && (
-                <NavLink
-                  href="/classes/ended"
-                  className="flex items-center gap-2 w-full px-4 sm:px-5 py-3.5 bg-it-surface dark:bg-it-blue-950 border-t border-it-line dark:border-it-ink-700 transition-colors motion-reduce:transition-none active:brightness-95"
-                >
-                  <span className="flex-1 text-[14px] font-bold text-it-ink-600 dark:text-wtext-4">
-                    {MESSAGES.class.endedLinkLabel}
-                  </span>
-                  <span className="text-[13px] font-extrabold text-wtext-3 dark:text-wtext-4 tabular-nums">
-                    {sections.endedEnrolled.length + sections.endedTournaments.length}
-                  </span>
-                  <Icon
-                    name="chevron_right"
-                    className="text-[20px] text-it-ink-400 dark:text-wtext-4 shrink-0"
-                    aria-hidden="true"
-                  />
-                </NavLink>
+                <div className="px-4 sm:px-5 pt-5 pb-6">
+                  <NavLink
+                    href="/classes/ended"
+                    className="inline-flex w-full items-center justify-center gap-1 rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 bg-it-surface dark:bg-rink-800 py-3.5 text-[13px] font-bold text-it-ink-600 dark:text-wtext-4 hover:bg-it-fill dark:hover:bg-rink-700 transition-colors motion-reduce:transition-none active:brightness-95"
+                  >
+                    <span className="tabular-nums">
+                      {MESSAGES.class.endedLinkLabel(
+                        sections.endedEnrolled.length + sections.endedTournaments.length,
+                      )}
+                    </span>
+                    <Icon
+                      name="chevron_right"
+                      className="text-base shrink-0"
+                      aria-hidden="true"
+                    />
+                  </NavLink>
+                </div>
               )}
             </>
           ) : (

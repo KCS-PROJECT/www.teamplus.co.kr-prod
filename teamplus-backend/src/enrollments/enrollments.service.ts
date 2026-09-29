@@ -15,7 +15,11 @@ import {
   MEMBER_CREDIT_EXTRA_USABLE_DAYS,
 } from "@/credits/credit-domain.service";
 import { endOfMonthKst, monthlyPassWindow } from "@/common/billing/billing-date.util";
-import { assertClassOnSale } from "@/common/billing/sales-gate.util";
+import {
+  assertClassOnSale,
+  isClassEnded,
+  SALES_GATE_MESSAGES,
+} from "@/common/billing/sales-gate.util";
 import { resolveEnrollmentBilling } from "@/common/billing/enrollment-billing.util";
 import { BLOCKING_APPLICATION } from "@/common/enrollment/enrollment-status.constants";
 import { hasActivePaidEnrollment } from "@/common/billing/paid-enrollment-guard.util";
@@ -787,6 +791,23 @@ export class EnrollmentsService {
       userId,
       enrollmentId,
     );
+
+    // 종료된 훈련의 후불 수강(approved)은 이미 끝난 수강 이력이다 — 취소로 전이하면 정산된
+    //   이력이 '취소'로 덮인다. 선불 approved(학부모 승인 후 미결제)와 pending 류는 돈이
+    //   오가지 않은 신청이라 정리 대상으로 남긴다.
+    const isPostpaidRow =
+      (enrollment.billingTiming ??
+        resolveRowBillingTiming(
+          enrollment.class?.billingMode,
+          enrollment.product?.billingTiming,
+        )) === "POSTPAID";
+    if (
+      enrollment.status === EnrollmentStatus.APPROVED &&
+      isPostpaidRow &&
+      (await isClassEnded(this.prisma, enrollment.classId))
+    ) {
+      throw new BadRequestException(SALES_GATE_MESSAGES.ENDED_CANCEL);
+    }
 
     // 결제 완료된 건은 취소 불가 (환불 절차 필요).
     //   단 무료(0원)는 환불할 금액이 없어 승인제 환불로 보낼 수 없다 — 본인이 바로 취소한다.
