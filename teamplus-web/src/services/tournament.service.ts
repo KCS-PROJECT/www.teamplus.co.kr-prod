@@ -113,6 +113,8 @@ export interface TournamentListItem {
   paidChildIds?: string[] | null;
   /** [추가 2026-06-17] 등록완료 표기용 — 후불(POSTPAID)은 신청 자녀(결제 전 포함), 선불은 결제완료만. */
   enrolledChildIds?: string[] | null;
+  /** 후불 대회의 미청구(UNPAID) 참가 건수 — 0 보다 크면 청구가 남은 대회. 선불·구버전 응답은 0/undefined. */
+  unsettledPostpaidCount?: number;
   /** [추가 2026-06-05] 참가 자격 팀 하위그룹(TeamGroup) ID 목록 */
   eligibleGroupIds?: string[] | null;
   /** [추가 2026-05-15 T05-H · T03 협업] 대회 규정 (Text · 라인브레이크 보존). 선택. */

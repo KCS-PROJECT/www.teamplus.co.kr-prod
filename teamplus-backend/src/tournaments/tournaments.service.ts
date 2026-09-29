@@ -642,6 +642,27 @@ export class TournamentsService {
       },
     });
 
+    // 후불 대회의 미청구(UNPAID) 참가 건수 — 감독 목록이 "정산 필요" 표시와
+    //   진행 탭 잔류 판정에 쓴다. 청구 뒤 미결제(PENDING)는 청구가 끝난 상태라 제외.
+    //   목록 select 는 _count 만 들고 있어 후불 대회에 한해 groupBy 1회로 집계한다.
+    const postpaidIds = tournaments
+      .filter((t) => t.billingMode === "POSTPAID")
+      .map((t) => t.id);
+    const unsettledCountMap = new Map<string, number>();
+    if (postpaidIds.length > 0) {
+      const grouped = await this.prisma.tournamentRegistration.groupBy({
+        by: ["tournamentId"],
+        where: {
+          tournamentId: { in: postpaidIds },
+          paymentStatus: "UNPAID",
+        },
+        _count: { _all: true },
+      });
+      for (const g of grouped) {
+        unsettledCountMap.set(g.tournamentId, g._count._all);
+      }
+    }
+
     // [2026-06-16] 각 대회에 내 자녀(또는 본인) 결제완료 참가자 id 목록 부착.
     // [2026-06-17] enrolledChildIds — 수업목록 "등록완료" 표기용.
     //   후불(POSTPAID): 신청 자녀(결제 전 포함) ∪ 결제완료. 선불(PREPAID): 결제완료만.
@@ -656,6 +677,7 @@ export class TournamentsService {
         ...t,
         paidChildIds: paid,
         enrolledChildIds,
+        unsettledPostpaidCount: unsettledCountMap.get(t.id) ?? 0,
       };
     });
   }

@@ -70,6 +70,7 @@ export const PAGE_TITLES: Record<string, string> = {
 
   // ── 팀·수업·쇼핑 공통 ────────────────────────────────
   '/classes': '수업',
+  '/classes/ended': '종료된 참여 활동',
   '/class-calendar': '수업 캘린더',
   '/class-favorites': '즐겨찾기 수업',
   // [수정 2026-04-30] 사용자 요청 — '팀' → '팀 관리', '대회' → '대회 관리'

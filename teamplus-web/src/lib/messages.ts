@@ -41,6 +41,28 @@ export const MESSAGES = {
     pendingTeamApproval: "가입 승인 대기",
     endedTrainingSection: "종료된 훈련",
     endedTournamentSection: "종료된 대회",
+    // 목록 페이지 진행/종료 분리 — 감독·코치는 상단 2탭, 학부모는 하단 링크 + 별도 화면.
+    listTabActive: "진행 중",
+    listTabEnded: "종료",
+    // 학부모 종료 화면 — 팀의 종료분 전체가 아니라 "자녀가 참여했던 것 중 종료된 훈련·대회"라
+    //   이름에 참여와 종료를 모두 둔다. 섹션 제목은 화면 제목이 범위를 말하므로 훈련/대회만.
+    endedLinkLabel: "종료된 참여 활동 보기",
+    endedPageTitle: "종료된 참여 활동",
+    endedParentTrainingSection: "훈련",
+    endedParentTournamentSection: "대회",
+    noEndedEnrolledClasses: "참여했던 종료 훈련이 없습니다.",
+    noEndedEnrolledTournaments: "참여했던 종료 대회가 없습니다.",
+    // 진행 중인 훈련인데 자녀의 유효한 등록은 없고 과거 결제 이력만 있는 경우 — 등록 가능
+    //   목록 한 곳에만 두고 카드 칩으로 "다녔던 훈련"임을 알린다(종료 화면으로 보내지 않음).
+    previouslyEnrolledChip: "이전 참여",
+    // 감독 종료 탭 빈 상태
+    noEndedClasses: "종료된 훈련이 없습니다.",
+    noEndedOpenClasses: "종료된 수업이 없습니다.",
+    noEndedTournaments: "종료된 대회가 없습니다.",
+    // 종료 목록 단계 표시 — 처음 일부만 그리고 나머지는 눌러서 이어 붙인다.
+    endedLoadMore: (remaining: number) => `더보기 (${remaining}건 남음)`,
+    // 후불 대회 중 참가비 청구가 아직 남은 건 — 종료됐어도 진행 탭에 남겨 청구를 놓치지 않게 한다.
+    settlementRequired: "정산 필요",
     // [2026-08-04 공개범위 상시 병합] 전체공개(PUBLIC 등) 타 팀 수업이 목록에 함께
     //   노출된다 — 그 섹션 제목 + 소속 팀 수업이 하나도 없을 때의 안내 문구.
     publicFallbackSection: "전체공개 수업",
