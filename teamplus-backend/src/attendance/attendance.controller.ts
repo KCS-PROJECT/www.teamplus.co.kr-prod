@@ -489,16 +489,24 @@ export class AttendanceController {
       ],
     },
   })
+  @ApiQuery({
+    name: "classId",
+    required: false,
+    description:
+      "지정 시 해당 수업의 출석만 전체 반환(limit 무시, 상한 500). 미지정 시 기존 최근 기록 조회.",
+  })
   async getMemberAttendanceHistory(
     @Request() req: AuthenticatedRequest,
     @Param("memberId") memberId: string,
     @Query("limit") limit?: string,
+    @Query("classId") classId?: string,
   ) {
     const parsedLimit = limit ? parseInt(limit, 10) : 10;
     return this.attendanceService.getMemberAttendanceHistory(
       req.user.id,
       memberId,
       parsedLimit,
+      classId || undefined,
     );
   }
 

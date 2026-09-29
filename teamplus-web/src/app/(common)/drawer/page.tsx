@@ -191,7 +191,6 @@ const ROLE_MENUS: Record<UserRole, MainMenuItem[]> = {
       label: "결제 / 정산",
       subItems: [
         { href: "/payments-manage", icon: "receipt_long", label: "결제 내역" },
-        { href: "/settlements", icon: "account_balance", label: "정산 관리" },
       ],
     },
     {

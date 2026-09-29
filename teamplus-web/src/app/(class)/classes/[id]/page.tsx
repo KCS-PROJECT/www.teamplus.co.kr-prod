@@ -25,6 +25,11 @@ import { resolveImageUrl, resolveImageSrc } from "@/lib/image-url";
 // [추가 2026-05-18] 자녀 선택 단일 진입점 — 수업 상세에서 ChildSelector 노출,
 //  결제 옵션 페이지는 readonly SelectedChildDisplay 로 통일.
 import { ChildSelector } from "@/components/payment/ChildSelector";
+import { EndedClassChildrenSection } from "@/components/classes/EndedClassChildrenSection";
+import {
+  buildEndedChildrenSummary,
+  type EndedAttendanceInput,
+} from "@/lib/ended-class-children";
 import { ScheduleCalendarView } from "@/components/classes/ScheduleCalendarView";
 // [수강 자격 월별 판정] 결제 옵션 카드와 동일한 "N월분 · N/말일까지" 표기를
 //   수강권 선택 목록 행에도 재사용 — 같은 feeType 상품이 2개월 노출될 때 구분자.
@@ -384,7 +389,11 @@ export default function ClassDetailPage() {
   const classId = params?.id as string;
 
   const { user } = useSessionAuth();
-  const { children: parentChildren } = useChildren();
+  const {
+    children: parentChildren,
+    isLoading: childrenLoading,
+    error: childrenError,
+  } = useChildren();
   const { toast } = useToast();
   const { modal } = useModal();
 
@@ -426,8 +435,21 @@ export default function ClassDetailPage() {
   // 본인 소속 팀 ID — 매니저 UI 가드 이중 안전망용. /teams/my/list 결과 캐시.
   const [myTeamIds, setMyTeamIds] = useState<string[]>([]);
 
+  // 종료된 훈련(학부모) — 신청 영역 대신 "수강한 자녀" 요약. 요약에 필요한 수강 이력·
+  //   자녀별 출석이 모두 도착해야 화면이 완성되므로 로더 해제 조건에 포함한다.
+  //   endedAttendance: undefined=조회 전, Map 값 null=해당 자녀 조회 실패.
+  const showEndedParentView =
+    user?.userType === "parent" && classData?.lifecycleStatus === "ENDED";
+  const [myEnrollmentsLoaded, setMyEnrollmentsLoaded] = useState(false);
+  const [myEnrollmentsFailed, setMyEnrollmentsFailed] = useState(false);
+  const [endedAttendance, setEndedAttendance] = useState<
+    Map<string, EndedAttendanceInput[] | null> | undefined
+  >(undefined);
+  const endedViewReady =
+    !showEndedParentView || (myEnrollmentsLoaded && endedAttendance !== undefined);
+
   // 풀스크린 로더 fast-path (v11) — fetch 완료 시점에 PageTransitionLoader OFF
-  usePageReady(!isLoading);
+  usePageReady(!isLoading && endedViewReady);
 
   // 🛡️ Native UI 동기화 (2026-05-11):
   //   - Status Bar 복원: LoadingContext 가 fetch 진입 시 `ui.hideStatusBar()` 를 호출하는데,
@@ -439,7 +461,7 @@ export default function ClassDetailPage() {
     showStatusBar: true,
     showAppBar: false,
     showBottomNav: true,
-    isDataLoaded: !isLoading,
+    isDataLoaded: !isLoading && endedViewReady,
   });
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   // 히어로 팀 로고 로드 실패(404/깨짐) URL 기억 → 기본 아이콘 폴백. URL 변경 시 자동 재시도.
@@ -625,6 +647,31 @@ export default function ClassDetailPage() {
     }
     return map;
   }, [myEnrollments, classId, isPostpaid, isBoth]);
+
+  // 종료된 훈련(학부모) "수강한 자녀" 요약 — 행별 선/후불은 상품 billingTiming 우선,
+  //   없으면 수업 결제방식(BOTH 는 approved=후불 · paid=선불)으로 판정.
+  const endedChildrenSummary = useMemo(() => {
+    if (!showEndedParentView || !endedAttendance) return [];
+    const rows = myEnrollments
+      .filter((e) => e.class?.id === classId && !!e.child?.id)
+      .map((e) => ({
+        childId: e.child.id,
+        status: e.status,
+        billingMonth: e.billingMonth ?? null,
+        isPostpaid: e.product?.billingTiming
+          ? e.product.billingTiming === "POSTPAID"
+          : isPostpaid || (isBoth && e.status === "approved"),
+      }));
+    return buildEndedChildrenSummary(parentChildren, rows, endedAttendance);
+  }, [
+    showEndedParentView,
+    endedAttendance,
+    myEnrollments,
+    classId,
+    isPostpaid,
+    isBoth,
+    parentChildren,
+  ]);
 
   // 수업 대상 연령(targetBirthYears 우선, ageMin/ageMax 폴백)에 맞지 않는 자녀 ID 집합.
   //   결제 옵션 페이지와 동일하게 공용 isChildAgeEligibleForClass 사용 (출생연도 비연속 정확 매칭).
@@ -922,15 +969,55 @@ export default function ClassDetailPage() {
     if (user?.userType !== "parent" || !user?.id) return;
     let cancelled = false;
     (async () => {
-      const res = await api.get<MyEnrollment[]>("/enrollments");
-      if (cancelled) return;
-      const list = res.success && Array.isArray(res.data) ? res.data : [];
-      setMyEnrollments(list);
+      // 기본 20건이면 오래 전 수강 이력(종료된 훈련)이 잘린다 — 백엔드 상한까지 받는다.
+      //   종료 화면의 로더 해제가 이 플래그를 기다리므로 실패(예외 포함)에도 반드시 세운다.
+      try {
+        const res = await api.get<MyEnrollment[]>("/enrollments?limit=500");
+        if (cancelled) return;
+        const ok = res.success && Array.isArray(res.data);
+        setMyEnrollments(ok ? (res.data as MyEnrollment[]) : []);
+        setMyEnrollmentsFailed(!ok);
+      } catch {
+        if (!cancelled) setMyEnrollmentsFailed(true);
+      } finally {
+        if (!cancelled) setMyEnrollmentsLoaded(true);
+      }
     })();
     return () => {
       cancelled = true;
     };
   }, [user?.userType, user?.id]);
+
+  // 종료된 훈련(학부모) — 자녀별 이 수업 출석 전체. 과거 후불 expired 건처럼 수강 이력에
+  //   흔적이 없는 자녀도 잡아야 하므로 자녀 전원을 조회한다(보통 1~3명, 병렬).
+  useEffect(() => {
+    // 수업 간 이동 시 이전 수업의 출석이 새 수업 요약·로더 해제에 섞이지 않게 비운다.
+    setEndedAttendance(undefined);
+    if (!showEndedParentView || childrenLoading) return;
+    let cancelled = false;
+    (async () => {
+      const results = await Promise.allSettled(
+        parentChildren.map((c) =>
+          api.get<EndedAttendanceInput[]>(
+            `/attendance/member/${c.id}?classId=${classId}`,
+          ),
+        ),
+      );
+      if (cancelled) return;
+      const map = new Map<string, EndedAttendanceInput[] | null>();
+      results.forEach((r, i) => {
+        const data =
+          r.status === "fulfilled" && r.value.success && Array.isArray(r.value.data)
+            ? r.value.data
+            : null;
+        map.set(parentChildren[i].id, data);
+      });
+      setEndedAttendance(map);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [showEndedParentView, childrenLoading, parentChildren, classId]);
 
   // 무료(0원) 결제 — 환불할 금액이 없어 결제취소가 아니라 신청취소로 되돌린다.
   const isFreePaidEnrollment =
@@ -2472,7 +2559,13 @@ export default function ClassDetailPage() {
               - 선택 자녀가 enrolled/notApproved/ageIncompatible → 우측 사유 라벨 + disabled
               - 그 외 → 좌측 "돌아가기" / 우측 "등록(결제)하기"
         */}
-        {isParent && (
+        {showEndedParentView && (
+          <EndedClassChildrenSection
+            summaries={endedChildrenSummary}
+            loadFailed={!!childrenError || myEnrollmentsFailed}
+          />
+        )}
+        {isParent && !showEndedParentView && (
           <div className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-4 flex flex-col gap-5">
             {/* ChildSelector — 자녀 ≥1명 일 때만 노출. 0명은 handleEnrollClick 의 modal.alert 가 안내.
                 자녀 1명 + 그 자녀가 자동 선택된 상태면 선택지가 없으므로 섹션 숨김.

@@ -39,9 +39,9 @@ function monthGroupLabel(ym: string): string {
 /**
  * 미납 관리 — /director-payments/unpaid
  *
- * 연체 미납 큐(청구 후 유예 경과분만, 월 무관 전 기간). 정산센터 Hero "미납 N건" 칩의
+ * 연체 미납 큐(청구 후 유예 경과분만, 월 무관 전 기간). 결제 관리 Hero "미납 N건" 칩의
  * 착지 화면으로, 칩 건수 = 이 페이지 항목 수(동일 API 정의). 월(귀속 청구월)별 그룹,
- * 오래된 청구 우선. 선택 월 "전량" 미수 확인은 정산센터 정산 집계 탭 배너가 담당(장부 렌즈).
+ * 오래된 청구 우선. 선택 월 "전량" 미수 확인은 결제 관리 수납 현황 탭 배너가 담당(장부 렌즈).
  */
 export default function DirectorUnpaidPage() {
   const { toast } = useToast();

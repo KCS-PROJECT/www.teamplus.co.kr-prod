@@ -207,7 +207,7 @@ export default function DirectorDashboardPage() {
           isTeamsLoading={teams === null}
           iceTheme
         />
-        {/* 1-β. 미수금 — 연체 미납 건수(정산 센터·팀 홈과 동일 정의). 0건이면 숨김. */}
+        {/* 1-β. 미수금 — 연체 미납 건수(결제 관리·팀 홈과 동일 정의). 0건이면 숨김. */}
         <UnpaidOverdueBanner iceTheme />
 
         {/* 2. 공지사항 — full-bleed flat 섹션. 감독은 작성 권한 보유 → 하단 작성 버튼.

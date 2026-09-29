@@ -39,6 +39,9 @@ import {
 /** 출석 상태 변경 시 학부모에게 나가는 인앱/푸시 알림 제목 (최초 마킹·정정·취소 공용) */
 const ATTENDANCE_NOTIFY_TITLE = "자녀 출석 안내";
 
+/** 수업 단위 출석 이력 조회 상한 — 한 회원이 한 수업에서 쌓는 회차 수를 넉넉히 덮는다. */
+const CLASS_SCOPED_HISTORY_MAX = 500;
+
 interface AttendanceFilter {
   teamId?: string;
   classId?: string;
@@ -1057,6 +1060,7 @@ export class AttendanceService {
     requesterId: string,
     memberId: string,
     limit: number = 10,
+    classId?: string,
   ) {
     if (requesterId !== memberId) {
       // 1) 부모-자녀 관계 확인
@@ -1123,8 +1127,13 @@ export class AttendanceService {
     //   실사용 6개 필드만 (id, attendanceStatus, checkedInAt, creditDeducted +
     //   schedule.scheduledDate + class.className) — notes/lateReason/recordedBy/
     //   signaturePath/createdAt/updatedAt 등 미사용 컬럼 SELECT 제외.
+    // classId 지정 = 한 수업의 전체 출석 이력(월별 집계용) — "최근 N건" limit 을 적용하면
+    //   오래 수강한 수업의 앞쪽 기록이 잘린다. 상한만 둔다.
     const attendances = await this.prisma.classAttendance.findMany({
-      where: { memberId },
+      // 취소된 회차는 숨김·보존 대상이라 수업 단위 집계에서 뺀다(수업 출석 통계와 같은 기준).
+      where: classId
+        ? { memberId, schedule: { classId, isCancelled: false } }
+        : { memberId },
       select: {
         id: true,
         attendanceStatus: true,
@@ -1155,7 +1164,7 @@ export class AttendanceService {
         { schedule: { scheduledDate: "desc" } },
         { schedule: { startTime: "desc" } },
       ],
-      take: limit,
+      take: classId ? CLASS_SCOPED_HISTORY_MAX : limit,
     });
 
     return attendances.map((a) => ({

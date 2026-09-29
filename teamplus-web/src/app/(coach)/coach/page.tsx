@@ -210,7 +210,7 @@ export default function CoachDashboardPage() {
           targetPath="/director-approvals"
           iceTheme
         />
-        {/* 1-β. 미수금 — 연체 미납 건수(정산 센터·팀 홈·감독 홈과 동일 정의). 0건이면 숨김. */}
+        {/* 1-β. 미수금 — 연체 미납 건수(결제 관리·팀 홈·감독 홈과 동일 정의). 0건이면 숨김. */}
         <UnpaidOverdueBanner iceTheme />
 
         {/* 2. 공지사항 — 코치는 작성 권한 보유 → 섹션 하단 작성 버튼 노출.

@@ -34,7 +34,11 @@ describe("Tournaments Phase 0 access", () => {
       update: jest.fn(),
       delete: jest.fn(),
     },
-    tournamentRegistration: { findMany: jest.fn(), updateMany: jest.fn() },
+    tournamentRegistration: {
+      findMany: jest.fn(),
+      updateMany: jest.fn(),
+      groupBy: jest.fn().mockResolvedValue([]),
+    },
     hockeyMatch: {
       aggregate: jest.fn(),
       count: jest.fn(),
@@ -231,6 +235,51 @@ describe("Tournaments Phase 0 access", () => {
       const result = await service.getTournaments("team-999", "dir-1");
       expect(result).toEqual([]);
       expect(prisma.tournament.findMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("getTournaments — 후불 미청구 건수(unsettledPostpaidCount)", () => {
+    it("후불 대회만 UNPAID 참가 건수를 집계하고 선불 대회는 0", async () => {
+      const prisma = makePrismaMock();
+      prisma.user.findUnique.mockResolvedValue({
+        id: "adm-1",
+        userType: "ADMIN",
+      });
+      prisma.tournament.findMany.mockResolvedValue([
+        { id: "t-post", billingMode: "POSTPAID" },
+        { id: "t-pre", billingMode: "PREPAID" },
+      ]);
+      prisma.tournamentRegistration.groupBy.mockResolvedValue([
+        { tournamentId: "t-post", _count: { _all: 3 } },
+      ]);
+      const service = makeService(prisma, makeAccessMock(true));
+      const result = await service.getTournaments(undefined, "adm-1");
+      expect(prisma.tournamentRegistration.groupBy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            tournamentId: { in: ["t-post"] },
+            paymentStatus: "UNPAID",
+          },
+        }),
+      );
+      expect(result).toEqual([
+        expect.objectContaining({ id: "t-post", unsettledPostpaidCount: 3 }),
+        expect.objectContaining({ id: "t-pre", unsettledPostpaidCount: 0 }),
+      ]);
+    });
+
+    it("후불 대회가 없으면 groupBy 를 호출하지 않는다", async () => {
+      const prisma = makePrismaMock();
+      prisma.user.findUnique.mockResolvedValue({
+        id: "adm-1",
+        userType: "ADMIN",
+      });
+      prisma.tournament.findMany.mockResolvedValue([
+        { id: "t-pre", billingMode: "PREPAID" },
+      ]);
+      const service = makeService(prisma, makeAccessMock(true));
+      await service.getTournaments(undefined, "adm-1");
+      expect(prisma.tournamentRegistration.groupBy).not.toHaveBeenCalled();
     });
   });
 

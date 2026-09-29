@@ -115,6 +115,18 @@ export class CommonCodesService {
 
   // ==================== CommonCode CRUD ====================
 
+  /** 그룹코드(예: BANK_CODE)의 활성 코드 목록 — 화면 선택지용. 그룹이 없거나 비활성이면 빈 배열. */
+  async findActiveCodesByGroupCode(groupCode: string) {
+    return this.prisma.commonCode.findMany({
+      where: {
+        isActive: true,
+        group: { groupCode, isActive: true },
+      },
+      select: { code: true, name: true, sortOrder: true },
+      orderBy: [{ sortOrder: "asc" }, { code: "asc" }],
+    });
+  }
+
   async findAllCodes(groupId?: string, parentId?: string, search?: string) {
     const where: Prisma.CommonCodeWhereInput = {};
     if (groupId) where.groupId = groupId;

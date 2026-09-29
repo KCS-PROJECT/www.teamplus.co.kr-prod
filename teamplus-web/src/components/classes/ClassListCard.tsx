@@ -81,6 +81,8 @@ export interface ClassListCardProps {
   /** 제목 줄 우측 상단 슬롯 — 등록 상태 칩(학부모) / 진행 상태 배지(운영자) */
   titleRight?: ReactNode;
   title: string;
+  /** 제목 바로 뒤 슬롯 — 제목 속성 칩(학부모 "이전 참여"). 긴 제목은 제목만 줄어들고 이 칸은 유지. */
+  titleSuffix?: ReactNode;
   /** 제목 색 흐림 (운영자 PENDING/REJECTED) */
   titleDimmed?: boolean;
   /** 제목 아래 인라인 메타 (코치·연령 등, 아이콘 없는 dot 구분 라인) */
@@ -105,6 +107,7 @@ export const ClassListCard = memo(function ClassListCard({
   topRight,
   titleRight,
   title,
+  titleSuffix,
   titleDimmed,
   metaInline,
   children,
@@ -224,7 +227,8 @@ export const ClassListCard = memo(function ClassListCard({
               >
                 {title}
               </h3>
-              {titleRight && <div className="ml-auto shrink-0 pl-1.5">{titleRight}</div>}
+              {titleSuffix && <div className="shrink-0">{titleSuffix}</div>}
+              {titleRight &&<div className="ml-auto shrink-0 pl-1.5">{titleRight}</div>}
             </div>
 
             {metaInline && (

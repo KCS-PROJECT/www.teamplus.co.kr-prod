@@ -64,6 +64,7 @@ function buildPaymentsService(prisma: PrismaService) {
     {} as never,
     new CreditDomainService(),
     notifications as never,
+    {} as never, // settlementSummaryService — 정산 개요 전용, 이 spec 경로에서 미사용
   );
   return { service, notifications };
 }

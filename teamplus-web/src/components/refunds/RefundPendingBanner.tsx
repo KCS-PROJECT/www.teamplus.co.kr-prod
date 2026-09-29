@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * RefundPendingBanner — 환불 대기 조건부 배너(정산센터/아카데미 정산 상단)
+ * RefundPendingBanner — 환불 대기 조건부 배너(결제 관리/아카데미 정산 상단)
  *
  * GET /refund-requests/pending-count 로 활성(pending) 건수를 조회해 > 0 일 때만
  * "환불 요청 N건 대기 중" 배너를 노출하고 목록으로 링크한다. 0건/실패 시 미노출.
@@ -46,7 +46,7 @@ export function RefundPendingBanner({
         setState({ scopeKey, count: res.success && res.data ? res.data.count : 0 });
       } catch {
         // 조회 실패(네트워크/거부 등) — 현재 scope 요청이면 0 으로 정리. docstring 계약(0건/실패 시
-        //   미노출). throw/reject 를 삼켜 호스트(정산센터/아카데미) 렌더를 깨지 않는다.
+        //   미노출). throw/reject 를 삼켜 호스트(결제 관리/아카데미) 렌더를 깨지 않는다.
         if (!cancelled) setState({ scopeKey, count: 0 });
       }
     })();

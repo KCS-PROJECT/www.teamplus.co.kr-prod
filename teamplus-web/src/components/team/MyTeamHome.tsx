@@ -10,7 +10,8 @@
  * 부모가 `onLoaded` 로 받은 뒤 결정한다 (LOADING_TIMING_POLICY).
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { AuthContext } from "@/contexts/AuthContext";
 import { useNavigation } from "@/components/ui/NavLink";
 import { Icon } from "@/components/ui/Icon";
 import { cn } from "@/lib/utils";
@@ -18,7 +19,11 @@ import { resolveImageSrc } from "@/lib/image-url";
 import { MESSAGES } from "@/lib/messages";
 import { useRefreshSubscription, REFRESH_KEYS } from "@/lib/refresh-bus";
 import { api } from "@/services/api-client";
-import { getTeam, type TeamListItem } from "@/services/team.service";
+import {
+  getTeam,
+  getTeamSettlementAccount,
+  type TeamListItem,
+} from "@/services/team.service";
 import { getTeamUnpaidTotal } from "@/services/payment";
 
 // ─── 다음 일정 날짜·시간 포맷 (팀 목록 카드와 공유) ──────────────
@@ -100,13 +105,41 @@ export function MyTeamHome({ team, onLoaded }: MyTeamHomeProps) {
   // 연체 미납 청구 건수 — 실패/권한 없음은 0(fail-closed, 줄 미노출)
   const [unpaidCount, setUnpaidCount] = useState(0);
   const [brokenLogo, setBrokenLogo] = useState<string | null>(null);
+  // 정산 계좌 미등록 여부 — 팀 오너 감독만 조회하고, 실패는 미노출(fail-closed)
+  const [settlementAccountMissing, setSettlementAccountMissing] = useState(false);
+  const user = useContext(AuthContext)?.user;
+  const userId = user?.id;
+  const isDirector = user?.userType === "director";
 
   const teamId = team.id;
   const teamName = team.name ?? MESSAGES.team.titleHome;
 
+  // 정산 계좌 조회는 onLoaded 를 지연시키지 않도록 로드 대기 밖에서 돌리고,
+  // 팀 변경·언마운트·재로드 뒤에 늦게 도착한 응답은 seq 로 버린다.
+  const accountSeq = useRef(0);
+  useEffect(() => {
+    return () => {
+      accountSeq.current += 1;
+    };
+  }, [teamId]);
+
   const load = useCallback(async () => {
+    const detailPromise = getTeam(teamId).catch(() => null);
+    const seq = ++accountSeq.current;
+    void detailPromise.then(async (detailRes) => {
+      // 오너 여부는 상세 응답(club.coachId)으로만 알 수 있어 그 응답을 받은 뒤에만 계좌를 조회한다.
+      const isOwner =
+        isDirector && !!userId && detailRes?.data?.club?.coachId === userId;
+      if (!isOwner) {
+        if (seq === accountSeq.current) setSettlementAccountMissing(false);
+        return;
+      }
+      const accountRes = await getTeamSettlementAccount(teamId).catch(() => null);
+      if (seq !== accountSeq.current) return;
+      setSettlementAccountMissing(!!accountRes?.success && !accountRes.data);
+    });
     const [detailRes, memberCounts, unpaidRes] = await Promise.all([
-      getTeam(teamId).catch(() => null),
+      detailPromise,
       fetchMemberCounts(teamId).catch(() => null),
       getTeamUnpaidTotal({ teamId }).catch(() => null),
     ]);
@@ -115,7 +148,7 @@ export function MyTeamHome({ team, onLoaded }: MyTeamHomeProps) {
     }
     if (memberCounts) setCounts(memberCounts);
     setUnpaidCount(unpaidRes?.success && unpaidRes.data ? unpaidRes.data.count : 0);
-  }, [teamId]);
+  }, [teamId, isDirector, userId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -163,6 +196,14 @@ export function MyTeamHome({ team, onLoaded }: MyTeamHomeProps) {
           href: "/director-payments/unpaid",
         }]
       : []),
+    ...(settlementAccountMissing
+      ? [{
+          key: "settlementAccount",
+          text: MESSAGES.settlementAccount.homeTodo,
+          aria: MESSAGES.settlementAccount.homeTodo,
+          href: `/team/${teamId}/settlement-account`,
+        }]
+      : []),
   ];
 
   const next = useMemo(() => {
@@ -190,11 +231,18 @@ export function MyTeamHome({ team, onLoaded }: MyTeamHomeProps) {
       href: "/director-notices",
     },
     {
-      key: "settlement",
+      key: "collections",
       icon: "receipt_long",
-      label: MESSAGES.team.homeMenuSettlement,
-      meta: MESSAGES.team.homeMenuSettlementMeta,
+      label: MESSAGES.team.homeMenuCollections,
+      meta: MESSAGES.team.homeMenuCollectionsMeta,
       href: "/director-payments",
+    },
+    {
+      key: "payout",
+      icon: "account_balance",
+      label: MESSAGES.team.homeMenuPayout,
+      meta: MESSAGES.team.homeMenuPayoutMeta,
+      href: "/settlements",
     },
   ];
   const setupMenu: MenuItem[] = [

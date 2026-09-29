@@ -21,6 +21,11 @@ export const MESSAGES = {
     noUpcomingSchedule: "예정된 일정 없음",
     // [Lifecycle v4.1] 수명주기 라벨 — 학부모=중립 "일정 준비 중"(§7.3), 감독=대기 배지
     preparingSchedule: "일정 준비 중",
+    // 학부모 목록 상태 칩 — 누르는 버튼이 아니라 상태 표시라 동작형("등록") 대신 상태형,
+    //   상세 화면(신청하기·신청완료)과 같은 "신청" 어휘를 쓴다.
+    listChipAvailable: "신청 가능",
+    listChipEnrolled: "신청완료",
+    listChipUnavailable: "신청 불가",
     pendingScheduleBadge: "일정 등록 대기",
     salesOpenNeededBadge: "판매 시작 필요",
     endClassButton: "수업 종료하기",
@@ -41,6 +46,28 @@ export const MESSAGES = {
     pendingTeamApproval: "가입 승인 대기",
     endedTrainingSection: "종료된 훈련",
     endedTournamentSection: "종료된 대회",
+    // 목록 페이지 진행/종료 분리 — 감독·코치는 상단 2탭, 학부모는 하단 링크 + 별도 화면.
+    listTabActive: "진행 중",
+    listTabEnded: "종료",
+    // 학부모 종료 화면 — 팀의 종료분 전체가 아니라 "자녀가 참여했던 것 중 종료된 훈련·대회"라
+    //   이름에 참여와 종료를 모두 둔다. 섹션 제목은 화면 제목이 범위를 말하므로 훈련/대회만.
+    endedLinkLabel: (count: number) => `종료된 참여 활동 ${count}건 보기`,
+    endedPageTitle: "종료된 참여 활동",
+    endedParentTrainingSection: "훈련",
+    endedParentTournamentSection: "대회",
+    noEndedEnrolledClasses: "참여했던 종료 훈련이 없습니다.",
+    noEndedEnrolledTournaments: "참여했던 종료 대회가 없습니다.",
+    // 진행 중인 훈련인데 자녀의 유효한 등록은 없고 과거 결제 이력만 있는 경우 — 등록 가능
+    //   목록 한 곳에만 두고 카드 칩으로 "다녔던 훈련"임을 알린다(종료 화면으로 보내지 않음).
+    previouslyEnrolledChip: "이전 참여",
+    // 감독 종료 탭 빈 상태
+    noEndedClasses: "종료된 훈련이 없습니다.",
+    noEndedOpenClasses: "종료된 수업이 없습니다.",
+    noEndedTournaments: "종료된 대회가 없습니다.",
+    // 종료 목록 단계 표시 — 처음 일부만 그리고 나머지는 눌러서 이어 붙인다.
+    endedLoadMore: (remaining: number) => `더보기 (${remaining}건 남음)`,
+    // 후불 대회 중 참가비 청구가 아직 남은 건 — 종료됐어도 진행 탭에 남겨 청구를 놓치지 않게 한다.
+    settlementRequired: "정산 필요",
     // [2026-08-04 공개범위 상시 병합] 전체공개(PUBLIC 등) 타 팀 수업이 목록에 함께
     //   노출된다 — 그 섹션 제목 + 소속 팀 수업이 하나도 없을 때의 안내 문구.
     publicFallbackSection: "전체공개 수업",
@@ -433,6 +460,17 @@ export const MESSAGES = {
     noChildren: "등록된 자녀가 없습니다. 먼저 자녀를 등록해주세요.",
     notEligibleForTeam: "이 수업을 수강할 수 있는 자녀가 없습니다.",
     selectChild: "자녀를 선택해주세요.",
+
+    // 종료된 훈련 상세(학부모) — 수강한 자녀 요약
+    endedChildrenTitle: "수강한 자녀",
+    endedChildrenEmpty: "이 훈련을 수강한 자녀가 없습니다.",
+    endedPrepaidLabel: "선불",
+    endedPostpaidLabel: "후불",
+    endedMonthLabel: (month: number) => `${month}월`,
+    endedYearMonthLabel: (year: number, month: number) => `${year}년 ${month}월`,
+    endedAttendanceCount: (count: number) => `출석 ${count}회`,
+    endedAttendanceLoadFailed: "출석 기록을 불러오지 못했습니다.",
+    endedChildrenLoadFailed: "수강 이력을 불러오지 못했습니다. 잠시 후 다시 시도해주세요.",
 
     // 중복/상태
     duplicateError: "이미 신청 중이거나 수강 중인 수업입니다.",
@@ -1332,7 +1370,7 @@ export const MESSAGES = {
   settlement: {
     // 탭 — 거래 내역(건별 장부·기본) / 정산 집계(훈련·대회 소계)
     tabTransactions: "거래 내역",
-    tabSettlementAgg: "정산 집계",
+    tabSettlementAgg: "수납 현황",
     tabTraining: "훈련",
     tabTournament: "대회",
     tabUnpaid: "미수금",
@@ -1422,6 +1460,7 @@ export const MESSAGES = {
     // AppBar 타이틀
     pageTitle: "결제 관리",
     appBarTitle: "결제 현황",
+    // 정산 집계 탭 하단 — 월별 지급 정산(/settlements) 바로가기
     // 미수금 탭 — 빈 상태 / 로드 실패
     emptyUnpaid: "미수금이 없습니다.",
     unpaidLoadFailed: "미수금 정보를 불러오지 못했습니다.",
@@ -3325,8 +3364,10 @@ export const MESSAGES = {
     homeMenuGroupsEmpty: "아직 그룹이 없어요",
     homeMenuNotices: "팀 공지",
     homeMenuNoticesMeta: "공지 작성 · 관리",
-    homeMenuSettlement: "결제·정산",
-    homeMenuSettlementMeta: "거래 내역 · 정산 집계 · 미납",
+    homeMenuCollections: "결제 관리",
+    homeMenuCollectionsMeta: "거래 내역 · 수납 현황 · 미납",
+    homeMenuPayout: "지급 정산",
+    homeMenuPayoutMeta: "월별 지급 · 정산 계좌",
   },
   academy: {
     created: "오픈클래스가 등록되었습니다.",
@@ -4163,9 +4204,104 @@ export const MESSAGES = {
     downloadFailed: "다운로드 중 오류가 발생했습니다.",
   },
 
-  // ─── Q. 정산 ──────────────────────────────────────
+  // ─── 팀 정산 계좌 (/team/[id]/settlement-account, 팀 오너 감독 전용) ────
+  settlementAccount: {
+    pageTitle: "정산 계좌",
+    rowLabel: "정산 계좌",
+    rowNoneHint: "정산금을 받을 계좌를 등록해주세요",
+    rowLoading: "확인 중...",
+    rowLoadError: "정보를 불러오지 못했어요",
+    cardManage: "관리",
+    cardRegister: "등록하기",
+    homeTodo: "정산 계좌를 등록해주세요",
+    statusNone: "미등록",
+    statusSubmitted: "등록 확인 중",
+    statusRegistered: "등록 완료",
+    statusNoneHint:
+      "정산금을 받을 계좌를 등록해주세요. 등록한 계좌는 운영자 확인 후 지급에 사용됩니다.",
+    statusSubmittedHint:
+      "운영자가 계좌를 확인하고 있어요. 확인이 끝나면 등록 완료로 바뀝니다.",
+    statusRegisteredHint:
+      "계좌 등록이 완료되었어요. 은행·계좌번호·예금주를 바꾸면 운영자가 다시 확인합니다.",
+    businessNumberLabel: "사업자등록번호",
+    businessNumberPlaceholder: "숫자 10자리",
+    businessNumberLockedHint: "사업자번호 변경은 운영자에게 문의해주세요.",
+    businessNumberInvalid: "사업자등록번호 10자리를 입력해주세요.",
+    bankLabel: "은행",
+    bankPlaceholder: "은행 선택",
+    bankSheetTitle: "은행을 선택해주세요.",
+    accountLabel: "계좌번호",
+    accountPlaceholder: "숫자만 입력",
+    accountCurrent: (masked: string) => `현재 등록된 계좌 ${masked}`,
+    accountReenterHint: "계좌번호를 바꾸려면 전체 번호를 다시 입력해주세요.",
+    accountInvalid: "계좌번호는 숫자 6~30자리로 입력해주세요.",
+    holderLabel: "예금주",
+    holderPlaceholder: "예금주명",
+    notOwner: "팀 오너 감독만 정산 계좌를 관리할 수 있어요.",
+    backToTeam: "팀으로 돌아가기",
+    loadError: "정산 계좌 정보를 불러오지 못했습니다.",
+    saveSuccess: "정산 계좌가 저장되었습니다.",
+  },
+
+  // ─── Q. 정산 (팀 정산 조회 — /settlements, director·coach 전용) ────
   settlements: {
-    downloadComingSoon: "정산 내역 다운로드 기능이 준비 중입니다.",
+    pageTitle: "지급 정산",
+    detailTitle: (period: string) => `${period} 정산 상세`,
+    yearMonthLabel: (year: string, month: string) => `${year}년 ${month}월`,
+    teamFallback: "우리 팀",
+    emptyList: "아직 지급 정산 내역이 없어요.",
+    loadMore: "더보기",
+    paidDateLabel: (date: string) => `지급일 ${date}`,
+    totalRevenueLabel: "총 매출",
+    refundLabel: "환불",
+    feeLabel: "수수료",
+    netAmountLabel: "순 지급액",
+    statusPending: "정산 대기",
+    statusApproved: "지급 예정",
+    statusProcessing: "처리 중",
+    statusPaid: "지급 완료",
+    statusFailed: "지급 실패",
+    statusRejected: "반려",
+    rejectReasonLabel: "반려 사유",
+    bankInfoTitle: "지급 계좌",
+    accountHolderLabel: "예금주",
+    payoutHistoryTitle: "지급 기록",
+    emptyPayout: "지급 기록이 없습니다.",
+    detailsEmpty: "결제 명세가 없습니다.",
+    detailsLoadMore: "결제 명세 더보기",
+    paymentAmountLabel: "결제 금액",
+    feeAmountLabel: "수수료",
+    actualAmountLabel: "실지급액",
+    memoLabel: "메모",
+    // 결제 명세 행 — 결제/환불 구분 + 귀속월(해당 결제가 속한 월)
+    entryTypePayment: "결제",
+    entryTypeRefund: "환불",
+    attributionMonthLabel: (month: number) => `${month}월분`,
+    // 순지급액 마이너스 — 환불이 매출을 초과해 이번 달 지급이 보류되는 경우
+    negativeNetAmountNotice: "이번 달은 환불이 더 많아 지급이 보류됩니다.",
+    // 정산 기준 안내 — 목록/상세 공통 1줄
+    basisNotice: "정산은 결제일 기준입니다. (해당 월에 결제·환불된 금액)",
+    // 실패 사유 3분류(404/403/기타) — 목록·상세 공통. 403 문구만 대상 범위가 달라
+    // 목록(전체)과 상세(단건)를 구분한다. 나머지 둘은 두 화면이 동일 문구를 쓴다.
+    notFound: "정산 내역을 찾을 수 없어요. 다시 마감되었거나 삭제되었을 수 있어요.",
+    deniedDetail: "이 정산을 볼 권한이 없어요.",
+    deniedList: "정산을 볼 권한이 없어요.",
+    loadError: "일시적인 오류로 정산 정보를 불러오지 못했어요.",
+    backToList: "목록으로",
+    retry: "다시 시도",
+    detailsLoadError: "결제 명세를 불러오지 못했어요.",
+    // 수업·대회별 명세 요약
+    groupsTitle: "수업·대회별 명세",
+    groupsEmpty: "수업·대회별 명세가 없습니다.",
+    groupsLoadError: "수업·대회별 명세를 불러오지 못했어요.",
+    groupSourceClass: "수업",
+    groupSourceTournament: "대회",
+    groupSourceOther: "기타",
+    groupPaymentSummary: (count: number, amount: string) => `결제 ${count}건 · ${amount}`,
+    groupRefundSummary: (count: number, amount: string) => `환불 ${count}건 · ${amount}`,
+    groupNetLabel: "지급액",
+    groupsTotalLabel: "합계",
+    groupsTotalPayoutLabel: "총 지급액",
   },
 
   // ─── R. 차단 / 신고 ────────────────────────────────

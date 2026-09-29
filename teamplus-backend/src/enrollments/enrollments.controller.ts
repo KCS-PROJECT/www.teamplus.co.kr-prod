@@ -121,6 +121,12 @@ export class EnrollmentsController {
     description:
       "상태 필터 (pending, pending_approval, approved, paid, cancelled 등)",
   })
+  @ApiQuery({
+    name: "limit",
+    required: false,
+    description:
+      "최대 건수 (기본 20, 상한 500). 학부모 수업 목록은 참여 이력 판정을 위해 전체를 받는다.",
+  })
   @ApiResponse({
     status: 200,
     description: "수강신청 목록 조회 성공",
@@ -129,13 +135,23 @@ export class EnrollmentsController {
   async getMyEnrollments(
     @Request() req: AuthenticatedRequest,
     @Query("status") status?: string,
+    @Query("limit") limit?: string,
   ): Promise<EnrollmentListResponseDto> {
     const userId = req.user.id;
     this.logger.log(`내 수강신청 목록 조회: userId=${userId}`);
 
+    // limit 미지정은 기존 호출부 호환(기본 20). 잘못된 값은 무시하고 상한만 강제한다.
+    const parsedLimit = Number.parseInt(limit ?? "", 10);
+    const pageSize =
+      Number.isFinite(parsedLimit) && parsedLimit > 0
+        ? Math.min(parsedLimit, 500)
+        : undefined;
+
     const enrollments = await this.enrollmentsService.getMyEnrollments(
       userId,
       status,
+      undefined,
+      pageSize,
     );
 
     return {

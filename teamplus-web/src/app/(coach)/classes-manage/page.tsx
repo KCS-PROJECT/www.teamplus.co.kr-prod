@@ -4,11 +4,11 @@ import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { MobileContainer } from '@/components/layout/MobileContainer';
 import { SubmainAppBar } from '@/components/layout/SubmainAppBar';
 import { Icon } from '@/components/ui/Icon';
-import { EndedCollapseToggle } from '@/components/classes/EndedCollapseToggle';
 import { ClassListCard, ClassCardInfoRow } from '@/components/classes/ClassListCard';
+import { EndedLoadMoreRow, ENDED_PAGE_SIZE } from '@/components/classes/EndedLoadMoreRow';
 import { useNavigation } from '@/components/ui/NavLink';
 import { BottomSheet } from '@/components/ui/BottomSheet';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { usePageReady } from '@/hooks/usePageReady';
 import { useNativeUI } from '@/hooks/useNativeUI';
 import { useSessionAuth } from '@/hooks/useSessionAuth';
@@ -229,6 +229,8 @@ function formatTournamentTargetYears(t: {
 //   tournament: 대회 — 외부 라우팅 제거, 동일 페이지 내 필터로만 동작
 // 'open' 미포함 — 오픈클래스는 ACADEMY_DIRECTOR `/academy-classes` 전용 (팀↔오픈 도메인 분리).
 type CategoryKey = 'all' | 'regular' | 'tournament';
+/** 목록 상단 2탭 — 진행 중(기본) / 종료. `?tab=ended` 로 종료 탭 딥링크. */
+type ListTab = 'active' | 'ended';
 
 /**
  * [추가 2026-05-13] 수업의 category 라벨 도출.
@@ -578,6 +580,8 @@ function TournamentManageCard({ item }: { item: TournamentListItem }) {
         : statusLabel === '종료'
           ? 'bg-wline text-wtext-3 dark:bg-rink-700 dark:text-wtext-4'
           : 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400';
+  // 후불 참가비 청구가 남은 대회 — 종료됐어도 청구가 끝나야 종료 탭으로 내려간다.
+  const needsSettlement = (item.unsettledPostpaidCount ?? 0) > 0;
 
   return (
     <ClassListCard
@@ -588,13 +592,20 @@ function TournamentManageCard({ item }: { item: TournamentListItem }) {
       title={item.name}
       titleRight={
         // [2026-06-19] 대회 상태 배지를 제목 줄 우측 상단으로 이동.
-        <span
-          className={cn(
-            'inline-flex items-center px-2.5 py-1 rounded-full text-card-meta font-bold',
-            statusPill,
+        <span className="inline-flex items-center gap-1.5">
+          {needsSettlement && (
+            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-card-meta font-bold bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400">
+              {MESSAGES.class.settlementRequired}
+            </span>
           )}
-        >
-          {statusLabel}
+          <span
+            className={cn(
+              'inline-flex items-center px-2.5 py-1 rounded-full text-card-meta font-bold',
+              statusPill,
+            )}
+          >
+            {statusLabel}
+          </span>
         </span>
       }
     >
@@ -996,7 +1007,7 @@ export default function ClassManagePage() {
   }, [classes, activeCategory]);
 
   // 정렬 기능 제거 (사용자 요청) — 백엔드 응답 순서(최근 등록순) 그대로 표시.
-  // 종료 수업 분리 — 기본은 진행 중만 노출하고, 종료는 섹션 내 하단 접힘으로 내린다.
+  // 종료 수업 분리 — 진행 중은 기본 탭, 종료는 상단 '종료' 탭으로 내린다.
   //   판정은 카드 배지와 동일한 resolveStatus SoT (서버 lifecycleStatus 우선 + 기간 역산 폴백).
   const { activeClasses, endedClasses } = useMemo(() => {
     const active: ClassItem[] = [];
@@ -1007,10 +1018,13 @@ export default function ClassManagePage() {
     return { activeClasses: active, endedClasses: ended };
   }, [filtered]);
   // 대회 종료/취소 분리 — 카드 배지와 동일 판정(기간 역산 우선 + status 폴백).
-  //   취소 대회도 휴면 상태라 접힘에 포함 (기본 목록은 진행·예정만).
+  //   취소 대회도 휴면 상태라 종료 탭에 포함 (진행 탭은 진행·예정만).
+  //   후불 참가비 청구가 남은 대회는 종료됐어도 진행 탭에 남긴다 — 종료 뒤 일괄 청구가
+  //   정상 순서라, 종료 판정만으로 내리면 청구를 놓치기 쉽다.
   const { activeTournaments, endedTournaments } = useMemo(() => {
     const isInactive = (t: TournamentListItem) => {
       if (t.status === 'cancelled') return true;
+      if ((t.unsettledPostpaidCount ?? 0) > 0) return false;
       const period = resolvePeriodStatus(t.startDate, t.endDate);
       if (period != null) return period === 'ENDED';
       return t.status === 'finished';
@@ -1022,8 +1036,28 @@ export default function ClassManagePage() {
     }
     return { activeTournaments: active, endedTournaments: ended };
   }, [tournaments]);
-  const [showEndedClasses, setShowEndedClasses] = useState(false);
-  const [showEndedTournaments, setShowEndedTournaments] = useState(false);
+  // 진행/종료 탭 — 기본은 진행 중. 알림·다른 화면에서 `?tab=ended` 로 종료 탭을 바로 연다.
+  const searchParams = useSearchParams();
+  const [listTab, setListTab] = useState<ListTab>(() =>
+    searchParams?.get('tab') === 'ended' ? 'ended' : 'active',
+  );
+  const isEndedTab = listTab === 'ended';
+  const visibleClasses = isEndedTab ? endedClasses : activeClasses;
+  const visibleTournaments = isEndedTab ? endedTournaments : activeTournaments;
+  // 종료 탭 단계 표시 — 종료분은 시즌마다 쌓이므로 처음 ENDED_PAGE_SIZE 건만 그리고
+  //   '더보기'로 이어 붙인다. 진행 탭으로 돌아가면 다시 처음부터(재진입 시 긴 목록이 한 번에 안 그려지게).
+  const [endedClassLimit, setEndedClassLimit] = useState(ENDED_PAGE_SIZE);
+  const [endedTournamentLimit, setEndedTournamentLimit] = useState(ENDED_PAGE_SIZE);
+  useEffect(() => {
+    if (!isEndedTab) {
+      setEndedClassLimit(ENDED_PAGE_SIZE);
+      setEndedTournamentLimit(ENDED_PAGE_SIZE);
+    }
+  }, [isEndedTab]);
+  const shownClasses = isEndedTab ? visibleClasses.slice(0, endedClassLimit) : visibleClasses;
+  const shownTournaments = isEndedTab
+    ? visibleTournaments.slice(0, endedTournamentLimit)
+    : visibleTournaments;
 
   // 카테고리별 수업 수 — 정규/대회.
   //   tournament 는 외부 라우팅이 아니므로 클라이언트 count 산출 (어댑팅 클래스 기준).
@@ -1128,107 +1162,147 @@ export default function ClassManagePage() {
         ) : (
           // [2026-06-17→06-24] 정규수업 / 대회 섹션을 full-bleed flat 섹션으로 구분.
           <>
-            {/* 정규수업 섹션 — full-bleed 흰 패널 + hairline 행. */}
+            {/* 진행/종료 탭 — ICETIMES 표준 SegmentedTabs(밑줄형). /tournaments·director-payments 와
+                동일 패턴. 탭에 맞는 목록만 그린다(슬라이드 없음 — 섹션이 길어 두 패널 동시 렌더는 손해). */}
+            <div className="bg-it-surface dark:bg-it-blue-950">
+              <div
+                role="tablist"
+                aria-label="훈련 및 대회 목록 필터"
+                className="flex border-b border-it-line dark:border-rink-700"
+              >
+                {(
+                  [
+                    ['active', MESSAGES.class.listTabActive],
+                    ['ended', MESSAGES.class.listTabEnded],
+                  ] as const
+                ).map(([key, label]) => {
+                  const isActive = listTab === key;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      role="tab"
+                      aria-selected={isActive}
+                      onClick={() => setListTab(key)}
+                      className={cn(
+                        'relative flex-1 px-1 pb-[13px] pt-[14px] text-[15px] transition-colors duration-200 motion-reduce:transition-none',
+                        isActive
+                          ? 'font-extrabold text-it-blue-600 dark:text-white'
+                          : 'font-semibold text-it-ink-500 hover:text-it-ink-800 dark:text-wtext-4 dark:hover:text-white',
+                      )}
+                    >
+                      {label}
+                      <span
+                        aria-hidden="true"
+                        className={cn(
+                          'absolute inset-x-0 -bottom-px h-[2.5px] rounded-sm',
+                          isActive ? 'bg-it-blue-500' : 'bg-transparent',
+                        )}
+                      />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 정규수업 섹션 — full-bleed 흰 패널 + hairline 행. 종료 탭은 종료된 훈련(수업)만. */}
             <section
               className="mt-2 bg-it-surface dark:bg-it-blue-950"
-              aria-label={isAcademyMode ? '오픈클래스' : '정규훈련'}
+              aria-label={
+                isEndedTab
+                  ? isAcademyMode
+                    ? MESSAGES.class.salesCycle.endedSectionTitle
+                    : MESSAGES.class.endedTrainingSection
+                  : isAcademyMode
+                    ? '오픈클래스'
+                    : '정규훈련'
+              }
             >
               <ClassSectionHead
-                title={isAcademyMode ? '오픈클래스' : '정규훈련'}
-                count={activeClasses.length}
+                title={
+                  isEndedTab
+                    ? isAcademyMode
+                      ? MESSAGES.class.salesCycle.endedSectionTitle
+                      : MESSAGES.class.endedTrainingSection
+                    : isAcademyMode
+                      ? '오픈클래스'
+                      : '정규훈련'
+                }
+                count={visibleClasses.length}
               />
-              {activeClasses.length > 0 ? (
-                <div role="list">
-                  {activeClasses.map((item, idx) => (
-                    <div
-                      key={`cls-${item.id}`}
-                      role="listitem"
-                      className="motion-reduce:animate-none"
-                      style={{ animationDelay: `${Math.min(idx * 40, 280)}ms` }}
-                    >
-                      <ClassCard item={item} />
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="px-4 sm:px-5 py-6 text-card-body text-wtext-3 dark:text-wtext-4 text-center">
-                  {endedClasses.length > 0
-                    ? MESSAGES.class.noActiveClasses
-                    : '등록된 훈련이 없습니다.'}
-                </p>
-              )}
-              {/* 종료된 훈련 — 섹션 내 하단 접힘(기본 접힘). 이력(출석·정산) 접근용. */}
-              {endedClasses.length > 0 && (
+              {visibleClasses.length > 0 ? (
                 <>
-                  <EndedCollapseToggle
-                    title={
-                      isAcademyMode
-                        ? MESSAGES.class.salesCycle.endedSectionTitle
-                        : MESSAGES.class.endedTrainingSection
-                    }
-                    count={endedClasses.length}
-                    expanded={showEndedClasses}
-                    onToggle={() => setShowEndedClasses((v) => !v)}
-                  />
-                  {showEndedClasses && (
-                    <div role="list">
-                      {endedClasses.map((item) => (
-                        <div key={`ended-${item.id}`} role="listitem">
-                          <ClassCard item={item} />
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </>
-              )}
-            </section>
-
-            {/* 대회 섹션 — 오픈클래스(academy) 모드는 대회 개념이 없어 숨김. */}
-            {!isAcademyMode && (
-              <section
-                className="mt-2 bg-it-surface dark:bg-it-blue-950"
-                aria-label="대회"
-              >
-                <ClassSectionHead title="대회" count={activeTournaments.length} />
-                {activeTournaments.length > 0 ? (
                   <div role="list">
-                    {activeTournaments.map((t, idx) => (
+                    {shownClasses.map((item, idx) => (
                       <div
-                        key={`tnmt-${t.id}`}
+                        key={`cls-${item.id}`}
                         role="listitem"
                         className="motion-reduce:animate-none"
                         style={{ animationDelay: `${Math.min(idx * 40, 280)}ms` }}
                       >
-                        <TournamentManageCard item={t} />
+                        <ClassCard item={item} />
                       </div>
                     ))}
                   </div>
-                ) : (
-                  <p className="px-4 sm:px-5 py-6 text-card-body text-wtext-3 dark:text-wtext-4 text-center">
-                    {endedTournaments.length > 0
-                      ? MESSAGES.class.noActiveTournaments
-                      : '등록된 대회가 없습니다.'}
-                  </p>
-                )}
-                {/* 종료된 대회 — 섹션 내 하단 접힘(기본 접힘). 취소 대회 포함. */}
-                {endedTournaments.length > 0 && (
-                  <>
-                    <EndedCollapseToggle
-                      title={MESSAGES.class.endedTournamentSection}
-                      count={endedTournaments.length}
-                      expanded={showEndedTournaments}
-                      onToggle={() => setShowEndedTournaments((v) => !v)}
+                  {isEndedTab && (
+                    <EndedLoadMoreRow
+                      remaining={visibleClasses.length - shownClasses.length}
+                      onClick={() => setEndedClassLimit((v) => v + ENDED_PAGE_SIZE)}
                     />
-                    {showEndedTournaments && (
-                      <div role="list">
-                        {endedTournaments.map((t) => (
-                          <div key={`ended-tnmt-${t.id}`} role="listitem">
-                            <TournamentManageCard item={t} />
-                          </div>
-                        ))}
-                      </div>
+                  )}
+                </>
+              ) : (
+                <p className="px-4 sm:px-5 py-6 text-card-body text-wtext-3 dark:text-wtext-4 text-center">
+                  {isEndedTab
+                    ? isAcademyMode
+                      ? MESSAGES.class.noEndedOpenClasses
+                      : MESSAGES.class.noEndedClasses
+                    : endedClasses.length > 0
+                      ? MESSAGES.class.noActiveClasses
+                      : '등록된 훈련이 없습니다.'}
+                </p>
+              )}
+            </section>
+
+            {/* 대회 섹션 — 오픈클래스(academy) 모드는 대회 개념이 없어 숨김. 종료 탭은 종료·취소 대회. */}
+            {!isAcademyMode && (
+              <section
+                className="mt-2 bg-it-surface dark:bg-it-blue-950"
+                aria-label={isEndedTab ? MESSAGES.class.endedTournamentSection : '대회'}
+              >
+                <ClassSectionHead
+                  title={isEndedTab ? MESSAGES.class.endedTournamentSection : '대회'}
+                  count={visibleTournaments.length}
+                />
+                {visibleTournaments.length > 0 ? (
+                  <>
+                    <div role="list">
+                      {shownTournaments.map((t, idx) => (
+                        <div
+                          key={`tnmt-${t.id}`}
+                          role="listitem"
+                          className="motion-reduce:animate-none"
+                          style={{ animationDelay: `${Math.min(idx * 40, 280)}ms` }}
+                        >
+                          <TournamentManageCard item={t} />
+                        </div>
+                      ))}
+                    </div>
+                    {isEndedTab && (
+                      <EndedLoadMoreRow
+                        remaining={visibleTournaments.length - shownTournaments.length}
+                        onClick={() => setEndedTournamentLimit((v) => v + ENDED_PAGE_SIZE)}
+                      />
                     )}
                   </>
+                ) : (
+                  <p className="px-4 sm:px-5 py-6 text-card-body text-wtext-3 dark:text-wtext-4 text-center">
+                    {isEndedTab
+                      ? MESSAGES.class.noEndedTournaments
+                      : endedTournaments.length > 0
+                        ? MESSAGES.class.noActiveTournaments
+                        : '등록된 대회가 없습니다.'}
+                  </p>
                 )}
               </section>
             )}

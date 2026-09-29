@@ -3,7 +3,6 @@ import {
   Controller,
   Post,
   Get,
-  Patch,
   Body,
   Param,
   Query,
@@ -20,15 +19,10 @@ import {
   ApiOperation,
   ApiTags,
   ApiResponse,
-  ApiOkResponse,
   ApiBearerAuth,
   ApiParam,
   ApiQuery,
 } from "@nestjs/swagger";
-import {
-  SettlementActionResponseDto,
-  SettlementResponseDto,
-} from "./dto/responses/settlement-response.dto";
 import { ConfirmPostpaidBillingDto } from "./dto/confirm-postpaid-billing.dto";
 import {
   PaymentsService,
@@ -2160,138 +2154,19 @@ export class PaymentsController {
   @ApiOperation({
     summary: "정산 개요 (수업 결제 정산)",
     description:
-      "전체 활성 팀의 수업 결제완료/미납 금액·인원을 팀별 + 전체 합계로 집계합니다. (관리자 전용)",
-  })
-  async getSettlementOverview() {
-    return this.paymentsService.getSettlementOverview();
-  }
-
-  /**
-   * 정산 목록 조회
-   */
-  @Get("settlements")
-  @UseGuards(AuthGuard("jwt"), RolesGuard)
-  @ApiBearerAuth()
-  @Roles("ADMIN")
-  @ApiOperation({
-    summary: "정산 목록 조회",
-    description:
-      "정산 목록을 검색/필터/페이지네이션으로 조회합니다. (관리자 전용)",
+      "전체 활성 팀의 수업/대회 결제완료·미납 금액·인원을 팀별 + 전체 합계로 집계합니다. " +
+      "정산 센터(SettlementSummaryService) 소계를 재사용합니다. (관리자 전용)",
   })
   @ApiQuery({
-    name: "search",
+    name: "yearMonth",
     required: false,
-    description: "클럽명 검색",
+    description: "조회 월 (YYYY-MM, 기본값=이번 달 KST)",
   })
-  @ApiQuery({
-    name: "status",
-    required: false,
-    description: "정산 상태 (pending|approved|processing|completed|failed)",
-  })
-  @ApiQuery({
-    name: "month",
-    required: false,
-    description: "정산 월 (YYYY-MM)",
-  })
-  @ApiQuery({ name: "page", required: false, type: Number })
-  @ApiQuery({ name: "limit", required: false, type: Number })
-  @ApiResponse({
-    status: 200,
-    description: "정산 목록 조회 성공",
-  })
-  async getSettlements(
-    @Query("search") search?: string,
-    @Query("status") status?: string,
-    @Query("month") month?: string,
-    @Query("page") page?: string,
-    @Query("limit") limit?: string,
-  ) {
-    return this.paymentsService.getSettlementList({
-      search,
-      status,
-      month,
-      page: page ? parseInt(page, 10) : 1,
-      limit: limit ? parseInt(limit, 10) : 20,
-    });
-  }
-
-  /**
-   * 정산 상세 조회
-   */
-  @Get("settlements/:id")
-  @UseGuards(AuthGuard("jwt"), RolesGuard)
-  @ApiBearerAuth()
-  @Roles("ADMIN")
-  @ApiOperation({
-    summary: "정산 상세 조회",
-    description:
-      "특정 정산 내역의 상세 정보를 조회합니다. (관리자 전용 · over-fetching 제거 적용)",
-  })
-  @ApiOkResponse({
-    description: "정산 상세 조회 성공",
-    type: SettlementResponseDto,
-  })
-  @ApiResponse({ status: 404, description: "정산 내역을 찾을 수 없습니다." })
-  async getSettlementDetail(@Param("id") id: string) {
-    return this.paymentsService.getSettlementDetail(id);
-  }
-
-  /**
-   * 정산 승인 (pending → approved)
-   */
-  @Patch("settlements/:id/approve")
-  @UseGuards(AuthGuard("jwt"), RolesGuard)
-  @ApiBearerAuth()
-  @Roles("ADMIN")
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: "정산 승인",
-    description:
-      "대기 중인 정산을 승인합니다. (관리자 전용, pending → approved)",
-  })
-  @ApiOkResponse({
-    description: "정산 승인 성공",
-    type: SettlementActionResponseDto,
-  })
-  @ApiResponse({
-    status: 400,
-    description: "대기 중인 정산만 승인 가능합니다.",
-  })
-  @ApiResponse({ status: 404, description: "정산 내역을 찾을 수 없습니다." })
-  async approveSettlement(
-    @Param("id") id: string,
+  async getSettlementOverview(
     @Request() req: AuthenticatedRequest,
+    @Query("yearMonth") yearMonth?: string,
   ) {
-    return this.paymentsService.approveSettlement(id, req.user.id);
-  }
-
-  /**
-   * 정산 지급 완료 (approved → completed)
-   */
-  @Patch("settlements/:id/complete")
-  @UseGuards(AuthGuard("jwt"), RolesGuard)
-  @ApiBearerAuth()
-  @Roles("ADMIN")
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: "정산 지급 완료",
-    description:
-      "승인된 정산의 지급을 완료 처리합니다. (관리자 전용, approved → completed)",
-  })
-  @ApiOkResponse({
-    description: "정산 지급 완료 성공",
-    type: SettlementActionResponseDto,
-  })
-  @ApiResponse({
-    status: 400,
-    description: "승인된 정산만 지급 완료 가능합니다.",
-  })
-  @ApiResponse({ status: 404, description: "정산 내역을 찾을 수 없습니다." })
-  async completeSettlement(
-    @Param("id") id: string,
-    @Request() req: AuthenticatedRequest,
-  ) {
-    return this.paymentsService.completeSettlement(id, req.user.id);
+    return this.paymentsService.getSettlementOverview(req.user, yearMonth);
   }
 
   // ==================== feeType별 금액 계산 ====================

@@ -1949,7 +1949,25 @@ Content Type: ${errorResponse.contentType}
   /// 삼킨 채 아무 동작도 못 해 "멈춤"으로 보였다. 인증(로그인/회원가입) 화면은
   /// await 없이 즉시 분기하고, WebView history 조회(canGoBack)에는 타임아웃을
   /// 걸어 백키가 어떤 상황에서도 hang 되지 않도록 한다.
+  /// 백키 처리 중(주소·히스토리 조회, 이동 명령)에 들어온 백키는 무시한다 — 연타로 되짚기
+  /// 명령이 겹치면 앞 명령이 착지하기 전의 히스토리를 기준으로 다음 칸 수를 계산해 엉뚱한
+  /// 항목(하이드레이션 전 문서·만료된 결제창)에 서게 된다. 한 번의 처리는 1초 안팎이다.
+  bool _hardwareBackInProgress = false;
+
   Future<void> _onHardwareBack() async {
+    if (_hardwareBackInProgress) {
+      debugPrint('[WebViewScreen] hardware back ignored — previous press still handling');
+      return;
+    }
+    _hardwareBackInProgress = true;
+    try {
+      await _handleHardwareBack();
+    } finally {
+      _hardwareBackInProgress = false;
+    }
+  }
+
+  Future<void> _handleHardwareBack() async {
     if (!mounted) return;
 
     // 현재 URL 판정 — 정확도 우선.
@@ -1989,15 +2007,22 @@ Content Type: ${errorResponse.contentType}
     //   보초) → 한 칸만 되돌려 보초를 빼고 웹의 popstate 정책에 맡긴다. 여기서 여러 칸을
     //   건너뛰면 완료 화면 백키가 결제 화면 원본에 착지해 새 주문을 만드는 등 웹 정책과
     //   어긋난다. 표식 조회는 플랫폼 채널 왕복이라 타임아웃 시 false 로 간주.
+    //   되짚기는 `goBack()` 이 아니라 스크립트 `history.back()` 으로 한다 — `goBack()` 은
+    //   브라우저 뒤로 버튼과 같은 규칙(사용자 조작 없이 다음 항목을 쌓은 문서는 건너뜀)을
+    //   따라, 마운트 때 보초를 push 한 복귀 문서를 건너뛰고 결제창 항목까지 내려간다.
+    //   만료된 결제창이 결과를 재전송해 실패 화면에 갇히는 원인이었다. 스크립트 되짚기는
+    //   이 규칙의 대상이 아니다.
     if (await _isWebBackSentinelArmed()) {
       debugPrint(
-        '[WebViewScreen] hardware back ($currentUrl) → web sentinel armed, goBack 1',
+        '[WebViewScreen] hardware back ($currentUrl) → web sentinel armed, history.back()',
       );
       try {
-        await webViewController?.goBack();
+        await webViewController?.evaluateJavascript(
+          source: 'window.history.back()',
+        );
         return;
       } catch (e) {
-        debugPrint('[WebViewScreen] goBack 실패: $e');
+        debugPrint('[WebViewScreen] history.back() 실패: $e');
       }
     }
 
@@ -2248,7 +2273,13 @@ Content Type: ${errorResponse.contentType}
     //   variant 로더를 켜므로 BottomNav 탭 클릭(forward)과 동일한 전환 시각을 얻는다.
     //   state 를 싣지 않는 이유: Next.js App Router 의 onPopState 는 event.state 가
     //   null 이면 즉시 return 하므로 라우터 상태에는 영향 없이 로더 리스너만 반응한다.
-    //   (마지막 raw replaceState 폴백의 state:{} popstate 는 기존 동작 그대로 유지.)
+    //
+    // 라우터 함수가 없으면(= 문서가 아직 하이드레이션 전) 실제 문서 이동으로 홈을 연다.
+    //   예전 폴백은 `history.replaceState` 로 주소만 홈으로 바꿨는데, Next App Router 는
+    //   초기 주소를 `window.location` 에서 읽으므로 결제 화면 문서가 홈 주소로 하이드레이션돼
+    //   쿼리를 잃은 채(금액 0원·위젯 로딩 고정) 남고, 다음 백키는 홈 판정으로 종료 확인을
+    //   띄웠다. `location.replace` 는 현재 항목을 갈아끼우는 점은 같고 문서와 주소가
+    //   어긋나지 않는다.
     webViewController?.evaluateJavascript(source: '''
       (function() {
         var replaceFn = window.__NEXT_ROUTER_REPLACE__ || window.teamplusNavigate;
@@ -2257,8 +2288,7 @@ Content Type: ${errorResponse.contentType}
           replaceFn('$homePath');
           return;
         }
-        window.history.replaceState({}, '', '$homePath');
-        window.dispatchEvent(new PopStateEvent('popstate', { state: {} }));
+        window.location.replace('$homePath');
       })();
     ''');
   }

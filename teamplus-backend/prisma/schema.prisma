@@ -237,7 +237,9 @@ model User {
   memberApprovalActions MemberApprovalLog[] @relation("MemberApprovalActor")
 
   // 정산 승인 (매니저)
-  approvedSettlements Settlement[] @relation("SettlementManager")
+  approvedSettlements              Settlement[]            @relation("SettlementManager")
+  submittedTeamSettlementAccounts  TeamSettlementAccount[] @relation("TeamSettlementAccountSubmitter")
+  registeredTeamSettlementAccounts TeamSettlementAccount[] @relation("TeamSettlementAccountRegistrar")
 
   // 크레딧 조정 (관리자)
   creditAdjustments CreditTransaction[] @relation("CreditAdjuster")
@@ -476,13 +478,14 @@ model Team {
   // Phase 2 (2026-04-29) — Team 모델 폐기, team_groups 직접 참조로 변경
   groups                TeamGroup[]
   // Phase 2 (2026-04-29) — TeamAward / TeamDivision / TournamentMatch 의 team 참조도 Team 으로 통합
-  teamAwards            TeamAward[]       @relation("TeamAwardsTeam")
-  teamDivisions         TeamDivision[]    @relation("TeamDivisionsTeam")
-  tournamentHomeMatches TournamentMatch[] @relation("TournamentHomeTeam")
-  tournamentAwayMatches TournamentMatch[] @relation("TournamentAwayTeam")
-  venues                Venue[]           @relation("VenueOwningTeam")
-  homeVenue             Venue?            @relation("TeamHomeVenue", fields: [venueId], references: [id], onDelete: SetNull)
+  teamAwards            TeamAward[]            @relation("TeamAwardsTeam")
+  teamDivisions         TeamDivision[]         @relation("TeamDivisionsTeam")
+  tournamentHomeMatches TournamentMatch[]      @relation("TournamentHomeTeam")
+  tournamentAwayMatches TournamentMatch[]      @relation("TournamentAwayTeam")
+  venues                Venue[]                @relation("VenueOwningTeam")
+  homeVenue             Venue?                 @relation("TeamHomeVenue", fields: [venueId], references: [id], onDelete: SetNull)
   settlements           Settlement[]
+  settlementAccount     TeamSettlementAccount?
 
   // 캠프, 레슨 패키지, 경기 비용, 대관 예약 · 계약 · 스케줄
   camps                Camp[]
@@ -1020,7 +1023,8 @@ model RefundLog {
   actorId      String?  @map("actor_id") /// 환불 실행 주체(승인 감독·ADMIN·trusted 시스템). null=레거시. FK/relation 없는 감사 컬럼.
 
   // Relationships
-  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  payment          Payment           @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  settlementDetail SettlementDetail?
 
   @@index([paymentId])
   @@map("refund_logs")
@@ -3340,7 +3344,7 @@ model AppSettings {
   privacyVersion String @default("1.0") @map("privacy_version")
 
   // 정산 설정 (P-12, P-13 — 2026-05-21 추가)
-  commissionRate Decimal @default(0.03) @map("commission_rate") @db.Decimal(5, 4) /// 플랫폼 수수료율 (0.0000 ~ 1.0000, 기본 0.03 = 3%)
+  commissionRate Decimal @default(0) @map("commission_rate") @db.Decimal(5, 4) /// 플랫폼 수수료율 (0.0000 ~ 1.0000, 기본 0 = 플랫폼 수수료 없음)
   settlementDays Int[]   @default([10, 31]) @map("settlement_days") /// 정산 지급일 (월간, 31은 말일 의미. 예: [10, 31] = 매월 10일·말일)
 
   // 결제사 설정
@@ -4450,32 +4454,89 @@ enum ConsultationCategory {
 
 // ==================== Settlement Detail (거래 단위 정산 상세) ====================
 
-/// 정산 상세 내역 - 결제(Payment)별 거래 단위 정산 레코드
+/// 정산 상세 내역 - "1 이벤트(결제 완료 또는 환불 1건) = 1 행"(마감 기준 = 결제일/환불일 현금 기준).
 /// SettlementTransaction(요약)과 구분되며 실제 매니저 승인 대상
 model SettlementDetail {
-  id            String                 @id @default(cuid())
-  settlementId  String                 @map("settlement_id")
-  paymentId     String                 @map("payment_id") /// 원본 결제 (FK 보존)
-  orderNumber   String                 @unique @map("order_number") /// 결제 주문번호 (멱등성 키)
-  productName   String                 @map("product_name")
-  paymentDate   DateTime               @map("payment_date") @db.Date
-  paymentMethod String                 @map("payment_method") /// card | wallet | etc
-  paymentAmount Int                    @map("payment_amount") /// 결제 금액
-  feeRate       Float                  @map("fee_rate") /// 수수료율 (0.0 ~ 1.0)
-  feeAmount     Int                    @map("fee_amount") /// 수수료 금액
-  actualAmount  Int                    @map("actual_amount") /// 실지급 금액
-  status        SettlementDetailStatus @default(PENDING) /// 정산 상세 상태
-  memo          String?                @db.Text /// 비고/메모
-  createdAt     DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt     DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id               String                 @id @default(cuid())
+  settlementId     String                 @map("settlement_id")
+  paymentId        String                 @map("payment_id") /// 원본 결제 (FK 보존) — REFUND 행도 원 결제를 가리킨다
+  orderNumber      String                 @map("order_number") /// 원 결제 주문번호(참조용, 유일성은 eventKey 가 담당)
+  entryType        SettlementEntryType    @default(PAYMENT) @map("entry_type") /// PAYMENT(결제 완료) | REFUND(환불)
+  refundLogId      String?                @unique @map("refund_log_id") /// REFUND 행만 — 이 환불이 유래한 RefundLog(1:1)
+  /// 전역 "1 이벤트 = 1 정산" 유일키 — `P:{paymentId}` | `R:{refundLogId}`
+  eventKey         String                 @unique @map("event_key")
+  productName      String                 @map("product_name")
+  paymentDate      DateTime               @map("payment_date") @db.Date
+  paymentMethod    String                 @map("payment_method") /// card | wallet | etc
+  paymentAmount    Int                    @map("payment_amount") /// PAYMENT=결제 금액(+), REFUND=환불 금액(-)
+  feeRate          Float                  @map("fee_rate") /// 수수료율 (0.0 ~ 1.0)
+  feeAmount        Int                    @map("fee_amount") /// PAYMENT=수수료(+), REFUND=환급 수수료(-)
+  actualAmount     Int                    @map("actual_amount") /// 실지급 금액(paymentAmount-feeAmount, REFUND 는 음수)
+  /// 귀속월(YYYY-MM) 병기 — 선불=enrollment.billingMonth, 후불=billing.yearMonth, 대회=completedAt KST 월.
+  /// 마감 판정에는 쓰지 않는다(마감은 결제일/환불일 현금 기준) — 표시·분석 참고용.
+  attributionMonth String?                @map("attribution_month") @db.VarChar(7)
+  /// 출처 — 요약(수업·대회별 묶음)의 그룹 키. productName 은 마감 시점 이름 스냅샷이라 키로 쓰지 않는다.
+  sourceType       SettlementSourceType   @default(OTHER) @map("source_type") /// CLASS | TOURNAMENT | OTHER(수업·대회 연결 없음)
+  sourceId         String?                @map("source_id") /// CLASS=Class.id, TOURNAMENT=Tournament.id, OTHER=null
+  status           SettlementDetailStatus @default(PENDING) /// 정산 상세 상태
+  memo             String?                @db.Text /// 비고/메모
+  createdAt        DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   settlement Settlement @relation(fields: [settlementId], references: [id], onDelete: Cascade)
   payment    Payment    @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  refundLog  RefundLog? @relation(fields: [refundLogId], references: [id], onDelete: Restrict)
 
   @@index([settlementId, status])
   @@index([paymentDate])
   @@index([paymentId])
+  @@index([orderNumber])
+  @@index([settlementId, sourceType, sourceId])
   @@map("settlement_details")
+}
+
+/// 팀 정산 수취 계좌 (팀 1:1) — 팀 소유 감독만 입력, 운영자는 조회 후 나이스 관리자에 서브몰을 수동 등록한다.
+/// 사업자번호·계좌번호는 encryptField 로 암호화 저장하고 응답은 역할별로 마스킹한다.
+model TeamSettlementAccount {
+  id             String                      @id @default(cuid())
+  teamId         String                      @unique @map("team_id")
+  businessNumber String                      @map("business_number") /// 암호화. 첫 저장 후 감독 변경 불가(변경은 운영자 초기화 후 재입력)
+  bankCode       String                      @map("bank_code") @db.VarChar(3) /// BANK_CODE 공통코드 code
+  bankAccount    String                      @map("bank_account") /// 암호화
+  accountHolder  String                      @map("account_holder") @db.VarChar(30)
+  status         TeamSettlementAccountStatus @default(SUBMITTED)
+  submittedById  String                      @map("submitted_by_id") /// 마지막으로 저장한 감독
+  submittedAt    DateTime                    @map("submitted_at") @db.Timestamptz(3)
+  registeredById String?                     @map("registered_by_id") /// 나이스 등록 완료로 표시한 운영자
+  registeredAt   DateTime?                   @map("registered_at") @db.Timestamptz(3)
+  createdAt      DateTime                    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  team         Team  @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  submittedBy  User  @relation("TeamSettlementAccountSubmitter", fields: [submittedById], references: [id])
+  registeredBy User? @relation("TeamSettlementAccountRegistrar", fields: [registeredById], references: [id])
+
+  @@index([status])
+  @@map("team_settlement_accounts")
+}
+
+/// 팀 정산 계좌 상태 — SUBMITTED(감독 입력, 나이스 등록 전) / REGISTERED(운영자가 나이스 서브몰 등록 완료로 표시)
+enum TeamSettlementAccountStatus {
+  SUBMITTED
+  REGISTERED
+}
+
+/// 정산 상세 항목 종류 — 결제 완료(PAYMENT) / 환불(REFUND)
+enum SettlementEntryType {
+  PAYMENT
+  REFUND
+}
+
+/// 정산 상세 출처 — 수업(CLASS) / 대회(TOURNAMENT) / 연결 없음(OTHER)
+enum SettlementSourceType {
+  CLASS
+  TOURNAMENT
+  OTHER
 }
 
 /// 정산 상세 상태

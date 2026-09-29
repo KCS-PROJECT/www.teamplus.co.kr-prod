@@ -155,8 +155,12 @@ function PostpaidPayContent() {
   //   이 화면은 결제 요청 알림 딥링크로도 진입해 "이전 화면"이 없을 수 있어,
   //   수업·대회 후불을 모두 담는 미납 목록으로 내보낸다.
   const isTossReturn = (searchParams?.get('error') ?? '') === 'fail';
+  // [임시] 앱에서는 취소 복귀 보초를 쌓지 않는다 — 현재 스토어 앱의 백키가 `goBack()` 으로
+  //   보초를 빼면서 복귀 문서까지 건너뛰어(Chromium 건너뛰기 규칙) 만료된 결제창에 착지한다.
+  //   보초가 없으면 앱이 "직전 항목이 외부 페이지" 판정으로 역할 홈으로 보낸다. 스크립트
+  //   되짚기로 고친 앱이 배포되면 이 조건을 지워 상세 복귀를 되살린다.
   useBlockBackNavigation({
-    enabled: isTossReturn,
+    enabled: isTossReturn && !isNativeApp(),
     returnPastExternal: true,
     getRedirectTarget: () => '/payment/history?tab=pending',
   });

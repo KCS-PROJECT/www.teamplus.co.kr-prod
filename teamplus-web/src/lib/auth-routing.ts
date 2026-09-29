@@ -27,7 +27,8 @@ const ADMIN_PROTECTED_PATHS = [
   '/teen',
   '/academy',
   '/payment',
-  '/settlements',
+  // [제거 2026-09-28 P2-2d] '/settlements' — 팀 정산 조회는 director/coach 전용으로 전환.
+  //  관리자는 teamplus-admin(포트 5002)의 정산 화면을 사용한다.
   '/member-approvals',
   '/skill-report',
   '/skill-evaluations',

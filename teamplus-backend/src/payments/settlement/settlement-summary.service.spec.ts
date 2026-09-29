@@ -6,6 +6,7 @@ import { ResourceAccessService } from "@/common/access/resource-access.service";
 import { NotificationsService } from "@/notifications/notifications.service";
 import { RedisService } from "@/redis/redis.service";
 import { JwtUserPayload } from "@/common/interfaces/authenticated-request.interface";
+import { isAdminRole } from "@/auth/constants/chldiv.constants";
 
 /**
  * [Phase 2b] 팀/Academy 정산 소계 배치 집계 검증.
@@ -56,6 +57,10 @@ describe("SettlementSummaryService", () => {
   const resourceAccessMock = {
     assertAcademyManager: jest.fn(),
     resolveManageableTeamIds: jest.fn(),
+    // [공용 이동] resolveTeamScope 본체는 ResourceAccessService 로 옮겨졌다(resource-access.service.spec.ts
+    //   에서 정책 자체를 검증). 여기서는 위임 경계만 확인하면 되므로, 기존 다수 테스트가 이미
+    //   설정해 둔 resolveManageableTeamIds/team.findMany 값을 그대로 재사용하는 얇은 미러 구현을 쓴다.
+    resolveTeamScope: jest.fn(),
   };
 
   const notificationsMock = {
@@ -131,6 +136,23 @@ describe("SettlementSummaryService", () => {
     prismaMock.monthlyPostpaidBillingLine.count.mockResolvedValue(0);
     prismaMock.tournamentRegistration.count.mockResolvedValue(0);
     resourceAccessMock.resolveManageableTeamIds.mockResolvedValue([]);
+    // resolveTeamScope 위임 경계 미러 — 실제 정책 검증은 resource-access.service.spec.ts 담당.
+    //   개별 테스트가 resolveManageableTeamIds/prismaMock.team.findMany 를 그대로 mock 하면
+    //   이 구현이 그 값을 읽어 위임 결과를 재현한다(호출 스파이 검증도 동일하게 통과).
+    resourceAccessMock.resolveTeamScope.mockImplementation(
+      async (requester: JwtUserPayload, teamId?: string) => {
+        if (isAdminRole(requester.userType)) {
+          if (teamId) return [teamId];
+          const allTeams = await prismaMock.team.findMany({
+            select: { id: true },
+          });
+          return allTeams.map((t: { id: string }) => t.id);
+        }
+        const managed =
+          await resourceAccessMock.resolveManageableTeamIds(requester);
+        return teamId ? (managed.includes(teamId) ? [teamId] : []) : managed;
+      },
+    );
     notificationsMock.notifyUsers.mockResolvedValue(undefined);
     redisMock.setIfNotExists.mockResolvedValue(true);
 
@@ -280,7 +302,10 @@ describe("SettlementSummaryService", () => {
     it("관리 코치는 resolveManageableTeamIds 기준 관리 팀만 조회", async () => {
       resourceAccessMock.resolveManageableTeamIds.mockResolvedValue(["team-1"]);
       mockClassQueries([
-        classDetail("c1", "PREPAID", { teamId: "team-1", team: { name: "팀1" } }),
+        classDetail("c1", "PREPAID", {
+          teamId: "team-1",
+          team: { name: "팀1" },
+        }),
       ]);
       prismaMock.enrollment.findMany.mockResolvedValue([
         prepaidEnrollment("u1", 30000),
@@ -310,7 +335,10 @@ describe("SettlementSummaryService", () => {
         { id: "team-2" },
       ]);
       mockClassQueries([
-        classDetail("c1", "PREPAID", { teamId: "team-1", team: { name: "팀1" } }),
+        classDetail("c1", "PREPAID", {
+          teamId: "team-1",
+          team: { name: "팀1" },
+        }),
       ]);
       prismaMock.enrollment.findMany.mockResolvedValue([
         prepaidEnrollment("u1", 30000),
@@ -559,8 +587,14 @@ describe("SettlementSummaryService", () => {
         { id: "team-2" },
       ]);
       mockClassQueries([
-        classDetail("c1", "PREPAID", { teamId: "team-1", team: { name: "팀1" } }),
-        classDetail("c2", "PREPAID", { teamId: "team-2", team: { name: "팀2" } }),
+        classDetail("c1", "PREPAID", {
+          teamId: "team-1",
+          team: { name: "팀1" },
+        }),
+        classDetail("c2", "PREPAID", {
+          teamId: "team-2",
+          team: { name: "팀2" },
+        }),
       ]);
       prismaMock.enrollment.findMany.mockResolvedValue([
         prepaidEnrollment("u1", 30000),
@@ -605,7 +639,11 @@ describe("SettlementSummaryService", () => {
         return Promise.resolve([{ id: "t9" }]);
       });
 
-      const res = await service.getTeamSettlementSummary(coach, FAR_YM, "team-1");
+      const res = await service.getTeamSettlementSummary(
+        coach,
+        FAR_YM,
+        "team-1",
+      );
       expect(res.tournaments).toHaveLength(1);
       expect(res.tournaments[0].settlementStatus).toBe("NOT_READY");
       expect(res.tournaments[0].blockedReasonCode).toBe("TOURNAMENT_NOT_ENDED");
@@ -1032,7 +1070,9 @@ describe("SettlementSummaryService", () => {
       expect(c.prepaidCount).toBe(1);
       expect(c.postpaidCount).toBe(1);
       expect(c.unassignedCount).toBe(0);
-      expect(c.prepaidCount + c.postpaidCount + c.unassignedCount).toBe(c.total);
+      expect(c.prepaidCount + c.postpaidCount + c.unassignedCount).toBe(
+        c.total,
+      );
     });
   });
 
@@ -1326,7 +1366,11 @@ describe("SettlementSummaryService", () => {
       ]);
       resourceAccessMock.assertAcademyManager.mockResolvedValue(undefined);
 
-      const res = await service.getAcademySettlementSummary("a1", coach, AUG_YM);
+      const res = await service.getAcademySettlementSummary(
+        "a1",
+        coach,
+        AUG_YM,
+      );
       expect(res.classes).toHaveLength(0);
     });
   });
@@ -1456,9 +1500,9 @@ describe("SettlementSummaryService", () => {
 
       expect(unpaid.totalOutstanding).toBe(60000);
       expect(unpaid.totalOutstanding).toBe(summary.unpaid.amount); // 불변식
-      expect(
-        unpaid.members.reduce((s, m) => s + m.outstandingAmount, 0),
-      ).toBe(unpaid.totalOutstanding); // 회원별 합 = 총액
+      expect(unpaid.members.reduce((s, m) => s + m.outstandingAmount, 0)).toBe(
+        unpaid.totalOutstanding,
+      ); // 회원별 합 = 총액
       expect(unpaid.totalCount).toBe(2);
       expect(unpaid.yearMonth).toBe(YM);
     });
@@ -1854,7 +1898,9 @@ describe("SettlementSummaryService", () => {
       resourceAccessMock.resolveManageableTeamIds.mockResolvedValue([]);
       const res = await service.getTeamUnpaidTotal(coach);
       expect(res).toEqual({ count: 0 });
-      expect(prismaMock.monthlyPostpaidBillingLine.count).not.toHaveBeenCalled();
+      expect(
+        prismaMock.monthlyPostpaidBillingLine.count,
+      ).not.toHaveBeenCalled();
       expect(prismaMock.tournamentRegistration.count).not.toHaveBeenCalled();
     });
 
@@ -1963,6 +2009,139 @@ describe("SettlementSummaryService", () => {
         memberName: "자삼녀",
         amount: 50000,
       });
+    });
+  });
+
+  // ── [정산 센터] 팀별 수업·대회 소계 배치 ──────────────────
+  describe("getTeamSummariesForTeams — 팀별 소계 배치", () => {
+    const setupMixedFixture = () => {
+      mockClassQueries([
+        classDetail("c1", "BOTH", { teamId: "team-1", team: { name: "팀1" } }),
+      ]);
+      prismaMock.classRegistration.findMany.mockResolvedValue([
+        { classId: "c1", userId: "u1" },
+        { classId: "c1", userId: "u2" },
+      ]);
+      prismaMock.enrollment.findMany.mockResolvedValue([
+        // u1 — 선불 완료(결제 참조 전체 필드 보유).
+        prepaidEnrollment("u1", 30000, {
+          payment: {
+            id: "pay-u1",
+            orderNumber: "order-u1",
+            pgProvider: "inicis",
+            paymentMethod: "card",
+            paymentStatus: "completed",
+            completedAt: JULY,
+            createdAt: JULY,
+            amount: 30000,
+            refundLogs: [],
+          },
+        }),
+        // u2 — 후불(확정 라인에서 처리, 결제 미발생).
+        {
+          classId: "c1",
+          childId: "u2",
+          status: "approved",
+          paidAt: null,
+          product: {
+            feeType: "PER_SESSION",
+            billingTiming: "POSTPAID",
+            billingMonth: null,
+            feePerSession: 5000,
+            price: null,
+          },
+          payment: null,
+        },
+      ]);
+      prismaMock.monthlyPostpaidBilling.findMany.mockResolvedValue([
+        {
+          classId: "c1",
+          status: "confirmed",
+          items: [
+            {
+              userId: "u2",
+              amount: 20000,
+              paymentStatus: "pending", // 확정 청구인데 아직 미결제 — BILLED(미수).
+              attendanceCount: 4,
+              payment: null,
+            },
+          ],
+        },
+      ]);
+
+      prismaMock.tournament.findMany.mockImplementation((args: any) => {
+        if (args?.select?.registrations) {
+          return Promise.resolve([
+            {
+              id: "t1",
+              name: "가을컵",
+              billingMode: "POSTPAID",
+              endDate: new Date("2026-07-01T00:00:00Z"),
+              teamId: "team-1",
+              team: { name: "팀1" },
+              registrations: [
+                {
+                  userId: "p3",
+                  childId: "u3",
+                  paymentStatus: "PAID",
+                  calculatedFee: 15000,
+                  payment: {
+                    id: "pay-u3",
+                    orderNumber: "order-u3",
+                    pgProvider: "toss",
+                    paymentMethod: "card",
+                    paymentStatus: "completed",
+                    completedAt: JULY,
+                    createdAt: JULY,
+                    refundLogs: [],
+                  },
+                },
+              ],
+            },
+          ]);
+        }
+        return Promise.resolve([{ id: "t1" }]);
+      });
+    };
+
+    it("classes/tournaments 소계를 함께 반환한다(팀별 배치)", async () => {
+      setupMixedFixture();
+
+      const result = await service.getTeamSummariesForTeams(["team-1"], YM);
+
+      const classSummary = result.classes.find((c) => c.classId === "c1");
+      const tournamentSummary = result.tournaments.find(
+        (t) => t.tournamentId === "t1",
+      );
+      expect(classSummary).toBeDefined();
+      expect(tournamentSummary).toBeDefined();
+      expect(result.yearMonth).toBe(YM);
+    });
+
+    it("outstandingMemberCount — 확정 청구 후 미결제 인원만 센다", async () => {
+      setupMixedFixture();
+
+      const result = await service.getTeamSummariesForTeams(["team-1"], YM);
+
+      const classSummary = result.classes.find((c) => c.classId === "c1");
+      const tournamentSummary = result.tournaments.find(
+        (t) => t.tournamentId === "t1",
+      );
+      // u1(선불 완납)은 미수 아님, u2(후불 BILLED·미결제)만 미수 — 1명.
+      expect(classSummary?.outstandingMemberCount).toBe(1);
+      // u3 는 완납 — 0명.
+      expect(tournamentSummary?.outstandingMemberCount).toBe(0);
+    });
+
+    it("teamIds 빈 배열 → 배치 쿼리 없이 빈 결과", async () => {
+      const result = await service.getTeamSummariesForTeams([], YM);
+      expect(result).toEqual({
+        yearMonth: YM,
+        classes: [],
+        tournaments: [],
+      });
+      expect(prismaMock.class.findMany).not.toHaveBeenCalled();
+      expect(prismaMock.tournament.findMany).not.toHaveBeenCalled();
     });
   });
 });

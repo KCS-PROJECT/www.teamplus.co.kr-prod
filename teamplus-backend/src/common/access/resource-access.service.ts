@@ -119,6 +119,30 @@ export class ResourceAccessService {
     return Array.from(set);
   }
 
+  /**
+   * 관리자 전용 소계·정산 API 공용 팀 scope resolver(IDOR 단일 SoT) — 원래
+   * SettlementSummaryService 내부 private 메서드였으나 다른 관리자 전용 소계 경로도
+   * 재사용할 수 있도록 이 서비스로 공개 이동했다(시그니처 동결).
+   *   · 관리자급(ADMIN/SYSTEM/OPER): teamId 지정 시 해당 팀, 미지정 시 **전체 팀**(옵셔널
+   *     파라미터가 조용히 "데이터 없음" 이 되지 않도록 — Codex MED-5).
+   *   · 일반 관리자(DIRECTOR/COACH): resolveManageableTeamIds 로 관리 팀 해석(일반 멤버·
+   *     CoachProfile-only 유출 차단 — Codex HIGH-1). teamId 지정 시 교집합만(비관리 → 빈 결과).
+   */
+  async resolveTeamScope(
+    requester: JwtUserPayload,
+    teamId?: string,
+  ): Promise<string[]> {
+    if (isAdminRole(requester.userType)) {
+      if (teamId) return [teamId];
+      const allTeams = await this.prisma.team.findMany({
+        select: { id: true },
+      });
+      return allTeams.map((t) => t.id);
+    }
+    const managed = await this.resolveManageableTeamIds(requester);
+    return teamId ? (managed.includes(teamId) ? [teamId] : []) : managed;
+  }
+
   /** 소속(멤버십) 판정만 수행 — 역할 게이트·관리자급 통과는 호출측 책임 */
   private async isTeamManagerMember(
     teamId: string,

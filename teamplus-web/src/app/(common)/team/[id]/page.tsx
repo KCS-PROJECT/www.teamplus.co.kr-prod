@@ -45,6 +45,7 @@ import { useSessionAuth } from "@/hooks/useSessionAuth";
 import { useViewId } from "@/hooks/useViewId";
 import { MESSAGES } from "@/lib/messages";
 import { useRefreshSubscription, REFRESH_KEYS } from "@/lib/refresh-bus";
+import { settlementAccountStatusView } from "@/lib/settlement-account-status";
 import { isTeamManagerOf } from "@/lib/team-roles";
 import { cn } from "@/lib/utils";
 import {
@@ -54,6 +55,8 @@ import {
   addRosterMember,
   updateRosterMember,
   removeRosterMember,
+  getTeamSettlementAccount,
+  type TeamSettlementAccount,
   type TeamDetail,
   type RosterMember,
   type AvailableMember,
@@ -112,6 +115,14 @@ export default function TeamDetailPage() {
   const canManage = isTeamManagerOf(user, team);
   // [추가 2026-05-21] 학부모는 자녀 소속 팀 조회 경로로 진입 — 진입 차단 대상 아님.
   const isParentUser = user?.userType === 'parent';
+  // 정산 계좌 행은 팀 오너 감독에게만 보이고, 그 외 역할은 API 도 호출하지 않는다.
+  const isOwnerDirector =
+    user?.userType === 'director' && !!user.id && team?.club?.coachId === user.id;
+  const [settlementRow, setSettlementRow] = useState<
+    | { state: "loading" }
+    | { state: "error" }
+    | { state: "ready"; account: TeamSettlementAccount | null }
+  >({ state: "loading" });
   // [추가 2026-05-21 v2] 권한 거부 토스트 1회만 노출 보장 (React StrictMode 재실행 + loadTeam 403
   //  + useEffect 진입 게이트 둘 다 트리거 시 중복 방지).
   const deniedToastShownRef = useRef(false);
@@ -291,6 +302,27 @@ export default function TeamDetailPage() {
   }, [team, user, canManage, isParentUser, navigate, toast]);
 
 
+  useEffect(() => {
+    if (!isOwnerDirector || !teamId) return;
+    let cancelled = false;
+    setSettlementRow({ state: "loading" });
+    getTeamSettlementAccount(teamId)
+      .then((res) => {
+        if (cancelled) return;
+        setSettlementRow(
+          res.success
+            ? { state: "ready", account: res.data ?? null }
+            : { state: "error" },
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setSettlementRow({ state: "error" });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOwnerDirector, teamId]);
+
   // ─── 핸들러 ────────────────────────────────
   // [수정 2026-05-23] 사용자 보고: 수정하기 버튼 클릭 시 fullsize 로더 미표시.
   //   원인 추정: useNavigation.dispatch 가 async 라 performRoute 내부 startLoading 호출 시점이
@@ -301,6 +333,11 @@ export default function TeamDetailPage() {
   const handleEdit = useCallback(() => {
     startLoading("navigation");
     navigate(`/team/${teamId}/edit`);
+  }, [navigate, startLoading, teamId]);
+
+  const handleOpenSettlementAccount = useCallback(() => {
+    startLoading("navigation");
+    navigate(`/team/${teamId}/settlement-account`);
   }, [navigate, startLoading, teamId]);
 
   const handleRosterAdded = useCallback(async () => {
@@ -590,6 +627,45 @@ export default function TeamDetailPage() {
             </div>
           )}
         </section>
+
+        {isOwnerDirector && (
+          <div className="px-5 mt-2 mb-3">
+            <button
+              type="button"
+              onClick={handleOpenSettlementAccount}
+              className="flex w-full items-center gap-3 rounded-w-md border-[1.5px] border-it-line-strong bg-it-surface px-4 py-3.5 text-left transition-colors hover:bg-it-fill active:brightness-95 motion-reduce:transition-none dark:border-it-blue-900 dark:bg-it-blue-950 dark:hover:bg-it-blue-900"
+            >
+              <Icon name="account_balance" className="shrink-0 text-[20px] text-it-ink-500 dark:text-it-ink-300" aria-hidden="true" />
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-2">
+                  <span className="text-card-body font-extrabold text-it-ink-800 dark:text-white">
+                    {MESSAGES.settlementAccount.rowLabel}
+                  </span>
+                  {settlementRow.state === "ready" && (
+                    <span
+                      className={cn(
+                        "inline-flex items-center rounded-w-pill px-2 py-0.5 text-[11px] font-extrabold",
+                        settlementAccountStatusView(settlementRow.account?.status).badge,
+                      )}
+                    >
+                      {settlementAccountStatusView(settlementRow.account?.status).label}
+                    </span>
+                  )}
+                </span>
+                <span className="mt-0.5 block truncate text-card-meta font-semibold tabular-nums text-it-ink-500 dark:text-it-ink-300">
+                  {settlementRow.state === "loading"
+                    ? MESSAGES.settlementAccount.rowLoading
+                    : settlementRow.state === "error"
+                      ? MESSAGES.settlementAccount.rowLoadError
+                      : settlementRow.account
+                        ? `${settlementRow.account.bankName} ${settlementRow.account.bankAccount}`
+                        : MESSAGES.settlementAccount.rowNoneHint}
+                </span>
+              </span>
+              <Icon name="chevron_right" className="shrink-0 text-base text-it-ink-300" aria-hidden="true" />
+            </button>
+          </div>
+        )}
 
         {/* ─── Bottom CTA — body 흐름 마지막에 위치 (fixed 해제, 2026-05-09)
             기존 `fixed inset-x-0 bottom-[72px]` 화면 고정 → 사용자 요청에 따라
