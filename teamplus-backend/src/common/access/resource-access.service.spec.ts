@@ -143,6 +143,41 @@ describe("ResourceAccessService", () => {
     });
   });
 
+  // ─── 관리자 전용 팀 scope resolver (정산·소계 IDOR 단일 SoT) ────
+  describe("resolveTeamScope", () => {
+    it("관리자급(teamId 미지정)은 전체 활성 팀 id 를 반환한다", async () => {
+      prismaMock.team.findMany.mockResolvedValue([
+        { id: "team-1" },
+        { id: "team-2" },
+      ]);
+      const ids = await service.resolveTeamScope(admin);
+      expect(ids).toEqual(["team-1", "team-2"]);
+      expect(prismaMock.teamMember.findMany).not.toHaveBeenCalled();
+    });
+
+    it("관리자급 + teamId 지정 시 해당 팀만 반환한다(전체 조회 스킵)", async () => {
+      const ids = await service.resolveTeamScope(admin, "team-9");
+      expect(ids).toEqual(["team-9"]);
+      expect(prismaMock.team.findMany).not.toHaveBeenCalled();
+    });
+
+    it("일반 사용자는 resolveManageableTeamIds 결과를 그대로 반환한다", async () => {
+      prismaMock.team.findMany.mockResolvedValue([{ id: "team-own" }]);
+      prismaMock.teamMember.findMany.mockResolvedValue([
+        { teamId: "team-mgr" },
+      ]);
+      const ids = await service.resolveTeamScope(teamCoach);
+      expect(ids.sort()).toEqual(["team-mgr", "team-own"]);
+    });
+
+    it("일반 사용자 + 비관리 teamId 지정 시 빈 배열(교집합 없음)", async () => {
+      prismaMock.team.findMany.mockResolvedValue([{ id: "team-own" }]);
+      prismaMock.teamMember.findMany.mockResolvedValue([]);
+      const ids = await service.resolveTeamScope(teamCoach, "team-other");
+      expect(ids).toEqual([]);
+    });
+  });
+
   // ─── 오픈클래스(Academy) 관리자 판정 ────────────────────────────
   describe("assertAcademyManager", () => {
     it("Academy.directorId 본인은 통과한다", async () => {

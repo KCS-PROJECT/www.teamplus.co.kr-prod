@@ -158,8 +158,9 @@ export default function DashboardPage() {
     activeTeams: 0,
     totalAcademies: 0,
     academyMembers: 0,
-    settlementCount: 0,
-    settlementAmount: 0,
+    // [수정 2026-09-28] 정산 위젯 = /settlements/summary 기반 승인 대기·지급 예정액
+    settlementPendingCount: 0,
+    settlementApprovedAmount: 0,
   });
   const [notices, setNotices] = useState<DashboardNotice[]>([]);
   const [pendingMembers, setPendingMembers] = useState<PendingMember[]>([]);
@@ -193,12 +194,18 @@ export default function DashboardPage() {
         // [추가 2026-04-30] 팀 / 오픈클래스 / 정산 현황 fetch
         type TeamItem = { id: string; isActive?: boolean };
         type AcademyItem = { id: string; memberCount?: number };
-        type SettlementItem = { id: string; status?: string; netAmount?: number; totalAmount?: number };
+        type SettlementSummaryResponse = {
+          pending: { count: number; netAmount: number };
+          approved: { count: number; netAmount: number };
+          paid: { count: number; netAmount: number };
+          rejected: { count: number };
+        };
         // [수정 2026-07-22] 현황 카드 데이터 소스 정정:
         //   · 팀: '/team'(단수) → 404 였음 → 실제 경로 '/teams'
         //   · 오픈클래스: '/admin/clubs?type=academy'(0 반환) → academies 페이지와 동일한 '/academies/public'
         //   · 응답이 배열이 아닌 { data, meta } 페이지네이션 형태여도 배열로 정규화
-        const [dashData, pendingData, teamsData, academyData, settlementsData, noticesData] = await Promise.all([
+        // [수정 2026-09-28] 정산 카드: 전체 목록 조회 → /settlements/summary(승인 대기·지급 예정액) 로 교체
+        const [dashData, pendingData, teamsData, academyData, settlementSummary, noticesData] = await Promise.all([
           api.get<AdminDashboardData>('/dashboard/admin').catch(() => null),
           // [수정 2026-08-11] '/admin/members/pending' 은 백엔드에 없는 경로라 매 진입마다 404 였음.
           //   실제 SoT 는 member-approvals 모듈(teamId 생략 시 전역 pending). teamplus-web 감독
@@ -211,7 +218,7 @@ export default function DashboardPage() {
             .catch(() => EMPTY_PENDING),
           api.get<unknown>('/teams', { params: { limit: 200 } }).catch(() => []),
           api.get<unknown>('/academies/public', { params: { limit: 200 } }).catch(() => []),
-          api.get<unknown>('/settlements').catch(() => []),
+          api.get<SettlementSummaryResponse>('/settlements/summary').catch(() => null),
           // [수정 2026-07-22] 대시보드 공지 = 시스템(서비스) 공지만. 팀 공지(scope=team) 제외.
           //   admin 앱 공지사항(/dashboard/app/notices)과 동일한 소스(scope=service).
           api.get<unknown>('/notices/admin/list', { params: { scope: 'service', limit: 5 } }).catch(() => []),
@@ -243,7 +250,6 @@ export default function DashboardPage() {
         };
         const teams = toArray<TeamItem>(teamsData);
         const academies = toArray<AcademyItem>(academyData);
-        const settlements = toArray<SettlementItem>(settlementsData);
         // [수정 2026-07-22] 총 회원 = 실제 회원(감독·코치·학부모·선수 = 비관리자 User) 합.
         //   기존 clubs.totalMembers 는 '승인된 팀멤버' 라 학부모가 빠져 부정확했음.
         //   users.byType(userType별 count)로 관리자(ADMIN/SYSTEM/OPER) 제외하고 집계.
@@ -278,11 +284,8 @@ export default function DashboardPage() {
           activeTeams: teams.filter((t) => t.isActive !== false).length,
           totalAcademies: academies.length,
           academyMembers: academies.reduce((sum, a) => sum + (a.memberCount ?? 0), 0),
-          settlementCount: settlements.length,
-          settlementAmount: settlements.reduce(
-            (sum, s) => sum + (s.netAmount ?? s.totalAmount ?? 0),
-            0,
-          ),
+          settlementPendingCount: settlementSummary?.pending.count ?? 0,
+          settlementApprovedAmount: settlementSummary?.approved.netAmount ?? 0,
         });
         // [수정 2026-07-22] 최근 시스템 공지 5개 — /notices/admin/list?scope=service
         const noticeRows = toArray<{
@@ -318,8 +321,8 @@ export default function DashboardPage() {
           activeTeams: 0,
           totalAcademies: 0,
           academyMembers: 0,
-          settlementCount: 0,
-          settlementAmount: 0,
+          settlementPendingCount: 0,
+          settlementApprovedAmount: 0,
         });
         // 코치 계정은 공지 표시 없음(관리자 대시보드 전용)
         setNotices([]);
@@ -452,9 +455,9 @@ export default function DashboardPage() {
           </div>
           <h3 className="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-1">정산 관리 현황</h3>
           <p className="text-2xl font-bold text-slate-900 dark:text-white tabular-nums">
-            {stats.settlementCount.toLocaleString('ko-KR')}<span className="text-base font-medium text-slate-500 dark:text-slate-400 ml-1">건</span>
+            {stats.settlementPendingCount.toLocaleString('ko-KR')}<span className="text-base font-medium text-slate-500 dark:text-slate-400 ml-1">건 승인 대기</span>
           </p>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">{formatCurrency(stats.settlementAmount)}원</p>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">지급 예정액 {formatCurrency(stats.settlementApprovedAmount)}원</p>
         </Link>
       </div>
 

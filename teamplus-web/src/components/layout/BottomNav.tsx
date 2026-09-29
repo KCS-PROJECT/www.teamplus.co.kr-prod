@@ -362,10 +362,10 @@ export const adminNavItems: NavItem[] = [
     matchPaths: ["/members", "/member", "/approval", "/director-approvals"],
   },
   {
-    href: "/settlements",
+    href: "/payments-manage",
     icon: "account_balance_wallet",
     label: "정산",
-    matchPaths: ["/settlements", "/payments-manage"],
+    matchPaths: ["/payments-manage"],
   },
   { href: "/admin", icon: "home", label: "홈" },
   { href: "/notifications", icon: "notifications", label: "알림" },

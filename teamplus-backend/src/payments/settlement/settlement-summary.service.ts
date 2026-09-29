@@ -5,7 +5,6 @@ import { JwtUserPayload } from "@/common/interfaces/authenticated-request.interf
 import { ResourceAccessService } from "@/common/access/resource-access.service";
 import { NotificationsService } from "@/notifications/notifications.service";
 import { RedisService } from "@/redis/redis.service";
-import { isAdminRole } from "@/auth/constants/chldiv.constants";
 import { kstTodayUtcMidnight } from "@/common/utils/kst-date.util";
 import {
   resolveSettlementYearMonth,
@@ -20,6 +19,7 @@ import {
 } from "./attribution.util";
 import { isEligibleForMonth } from "@/common/billing/enrollment-eligibility.util";
 import { deriveSource } from "../payment-source.util";
+import { buildPaymentTeamScopeWhere } from "./payment-team-scope.util";
 
 /** 소계 결제 상태 — 취소·환불 제외한 유효 청구 기준. */
 export type SubtotalPaymentStatus =
@@ -65,6 +65,8 @@ export interface ClassSettlementSummary {
   /** 순수납 합계. */
   paidAmount: number;
   outstandingAmount: number;
+  /** 확정 청구(BILLED)가 있고 전부 결제되진 않은 인원 — userId distinct. */
+  outstandingMemberCount: number;
   /** 후불 미확정 월 예상액 합계(출석 × 단가). */
   estimatedAmount: number;
   /** 취소 **결제 건수**(사람 수 아님). */
@@ -100,6 +102,8 @@ export interface TournamentSettlementSummary {
   billedAmount: number;
   paidAmount: number;
   outstandingAmount: number;
+  /** 확정 청구(BILLED)가 있고 전부 결제되진 않은 인원 — userId distinct. */
+  outstandingMemberCount: number;
   estimatedAmount: number;
   cancelledCount: number;
   refundedCount: number;
@@ -317,6 +321,8 @@ interface AggregatedAmounts {
   refundedAmount: number;
   estimatedAmount: number;
   outstandingAmount: number;
+  /** 확정 청구(BILLED)가 있고 전부 결제되진 않은 인원 — userId distinct. */
+  outstandingMemberCount: number;
   cancelledCount: number;
   refundedCount: number;
   /** 행 단위 선불 존재(mixedBilling 계약용). */
@@ -403,6 +409,54 @@ export class SettlementSummaryService {
       tournaments,
       unpaid: this.computeUnpaid([...classes, ...tournaments]),
     };
+  }
+
+  /**
+   * [정산 센터] 여러 팀의 수업·대회 소계를 한 번에 — admin 정산 개요(getSettlementOverview)
+   *  등 팀별 소계 재가공이 필요한 내부 소비자 전용 배치 빌더.
+   *  ⚠️ requester 인가를 받지 않는다 — 호출측이 ADMIN 등 권한 가드를 직접 책임진다.
+   *   컨트롤러에 직결하지 말 것(IDOR).
+   *  배치 쿼리 수는 팀 수와 무관하게 고정(class/tournament id 조회 2회 + buildClassSourceRows
+   *  5회 + buildTournamentSourceRows 1회).
+   */
+  async getTeamSummariesForTeams(
+    teamIds: string[],
+    yearMonth: string,
+  ): Promise<{
+    yearMonth: string;
+    classes: ClassSettlementSummary[];
+    tournaments: TournamentSettlementSummary[];
+  }> {
+    if (teamIds.length === 0) {
+      return { yearMonth, classes: [], tournaments: [] };
+    }
+
+    const [classRows, tournamentRows] = await Promise.all([
+      this.prisma.class.findMany({
+        where: { teamId: { in: teamIds } },
+        select: { id: true },
+      }),
+      this.prisma.tournament.findMany({
+        where: { teamId: { in: teamIds } },
+        select: { id: true },
+      }),
+    ]);
+
+    const [classSources, tournamentSources] = await Promise.all([
+      this.buildClassSourceRows(
+        classRows.map((c) => c.id),
+        yearMonth,
+      ),
+      this.buildTournamentSourceRows(
+        tournamentRows.map((t) => t.id),
+        yearMonth,
+      ),
+    ]);
+
+    const classes = this.summarizeClassSources(classSources, yearMonth);
+    const tournaments = this.summarizeTournamentSources(tournamentSources);
+
+    return { yearMonth, classes, tournaments };
   }
 
   /** 연체 기준 시각 — 이 시각 이전에 청구된 미결제만 "연체"로 승격. */
@@ -605,25 +659,14 @@ export class SettlementSummaryService {
 
   /**
    * 팀 정산 scope resolver — summary·미수금 목록·상세·remind 4메서드 단일 SoT(IDOR).
-   *   · 관리자급(ADMIN/SYSTEM/OPER): teamId 지정 시 해당 팀, 미지정 시 **전체 팀**(옵셔널
-   *     파라미터가 조용히 "데이터 없음" 이 되지 않도록 — Codex MED-5).
-   *   · 일반 관리자(DIRECTOR/COACH): resolveManageableTeamIds 로 관리 팀 해석(일반 멤버·
-   *     CoachProfile-only 유출 차단 — Codex HIGH-1). teamId 지정 시 교집합만(비관리 → 빈 결과).
+   *  본체는 ResourceAccessService.resolveTeamScope 로 공개 이동(다른 관리자 전용 소계
+   *  경로도 재사용할 수 있도록). 시그니처·정책은 그대로, 이 메서드는 위임 지점만 유지.
    */
   private async resolveTeamScope(
     requester: JwtUserPayload,
     teamId?: string,
   ): Promise<string[]> {
-    if (isAdminRole(requester.userType)) {
-      if (teamId) return [teamId];
-      const allTeams = await this.prisma.team.findMany({
-        select: { id: true },
-      });
-      return allTeams.map((t) => t.id);
-    }
-    const managed =
-      await this.resourceAccess.resolveManageableTeamIds(requester);
-    return teamId ? (managed.includes(teamId) ? [teamId] : []) : managed;
+    return this.resourceAccess.resolveTeamScope(requester, teamId);
   }
 
   /** [R5] Academy 소계 — 대회 제외. assertAcademyManager 로 인가(비관리 403). */
@@ -727,6 +770,10 @@ export class SettlementSummaryService {
             },
             payment: {
               select: {
+                id: true,
+                orderNumber: true,
+                pgProvider: true,
+                paymentMethod: true,
                 paymentStatus: true,
                 completedAt: true,
                 createdAt: true,
@@ -750,7 +797,13 @@ export class SettlementSummaryService {
                 attendanceCount: true,
                 payment: {
                   select: {
+                    id: true,
+                    orderNumber: true,
+                    pgProvider: true,
+                    paymentMethod: true,
                     paymentStatus: true,
+                    completedAt: true,
+                    createdAt: true,
                     refundLogs: { select: { refundAmount: true } },
                   },
                 },
@@ -1080,6 +1133,18 @@ export class SettlementSummaryService {
     yearMonth: string,
   ): Promise<ClassSettlementSummary[]> {
     const sources = await this.buildClassSourceRows(classIds, yearMonth);
+    return this.summarizeClassSources(sources, yearMonth);
+  }
+
+  /**
+   * [정산 센터 Phase 2] 수업 소스(sources) → 소계 순수 집계. getTeamSummariesForTeams 가
+   *  여러 팀 배치 처리를 위해 computeClassSummaries 에서 분리했다.
+   *  로직은 이전 computeClassSummaries 본체 그대로(동작 불변).
+   */
+  private summarizeClassSources(
+    sources: ClassSourceRows[],
+    yearMonth: string,
+  ): ClassSettlementSummary[] {
     const currentYm = resolveSettlementYearMonth();
     const monthEnded = yearMonth < currentYm; // "YYYY-MM" 문자열 비교 = 월 순서.
     const result: ClassSettlementSummary[] = [];
@@ -1138,6 +1203,7 @@ export class SettlementSummaryService {
         billedAmount: agg.billedAmount,
         paidAmount: agg.paidAmount,
         outstandingAmount: agg.outstandingAmount,
+        outstandingMemberCount: agg.outstandingMemberCount,
         estimatedAmount: agg.estimatedAmount,
         cancelledCount: agg.cancelledCount,
         refundedCount: agg.refundedCount,
@@ -1184,6 +1250,10 @@ export class SettlementSummaryService {
             calculatedFee: true,
             payment: {
               select: {
+                id: true,
+                orderNumber: true,
+                pgProvider: true,
+                paymentMethod: true,
                 paymentStatus: true,
                 completedAt: true,
                 createdAt: true,
@@ -1278,6 +1348,17 @@ export class SettlementSummaryService {
       tournamentIds,
       yearMonth,
     );
+    return this.summarizeTournamentSources(sources);
+  }
+
+  /**
+   * [정산 센터 Phase 2] 대회 소스(sources) → 소계 순수 집계. getTeamSummariesForTeams 가
+   *  여러 팀 배치 처리를 위해 computeTournamentSummaries 에서 분리했다. 로직은 이전
+   *  computeTournamentSummaries 본체 그대로(동작 불변).
+   */
+  private summarizeTournamentSources(
+    sources: TournamentSourceRows[],
+  ): TournamentSettlementSummary[] {
     const result: TournamentSettlementSummary[] = [];
 
     for (const src of sources) {
@@ -1316,6 +1397,7 @@ export class SettlementSummaryService {
         billedAmount: agg.billedAmount,
         paidAmount: agg.paidAmount,
         outstandingAmount: agg.outstandingAmount,
+        outstandingMemberCount: agg.outstandingMemberCount,
         estimatedAmount: agg.estimatedAmount,
         cancelledCount: agg.cancelledCount,
         refundedCount: agg.refundedCount,
@@ -1453,9 +1535,12 @@ export class SettlementSummaryService {
     }
 
     // 완납 인원 = 유효 청구가 있고 그 청구가 전부 PAID인 선수(distinct).
+    // 미수 인원 = 유효 청구가 있고 그 청구가 전부 PAID는 아닌 선수(distinct, paidCount 와 배타).
     let paidCount = 0;
+    let outstandingMemberCount = 0;
     for (const g of userCharge.values()) {
       if (g.hasCharge && g.allPaid) paidCount++;
+      else if (g.hasCharge) outstandingMemberCount++;
     }
 
     // 결제방식별 인원(distinct·파티션 — 합=total).
@@ -1482,6 +1567,7 @@ export class SettlementSummaryService {
       refundedAmount,
       estimatedAmount,
       outstandingAmount,
+      outstandingMemberCount,
       cancelledCount,
       refundedCount,
       hasPrepaid,
@@ -1830,19 +1916,7 @@ export class SettlementSummaryService {
       paymentStatus: {
         in: ["completed", "refunded", "partially_refunded", "cancelled"],
       },
-      OR: [
-        { enrollments: { some: { class: { teamId: { in: scopeTeamIds } } } } },
-        {
-          monthlyBillingLines: {
-            some: { billing: { class: { teamId: { in: scopeTeamIds } } } },
-          },
-        },
-        {
-          tournamentRegistrations: {
-            some: { tournament: { teamId: { in: scopeTeamIds } } },
-          },
-        },
-      ],
+      ...buildPaymentTeamScopeWhere(scopeTeamIds),
     };
 
     const TRANSACTIONS_MAX = 300;

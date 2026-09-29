@@ -1,132 +1,100 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Icon } from '@/components/ui/Icon';
 import { MobileContainer } from '@/components/layout/MobileContainer';
 import { SubmainAppBar } from '@/components/layout/SubmainAppBar';
 import { useNativeUI } from '@/hooks/useNativeUI';
-import { StatCard } from '@/components/shared';
+import { useNavigation } from '@/hooks/useNavigation';
 import { MonthNavigator } from '@/components/shared';
 import { api } from '@/services/api-client';
-import { useToast } from '@/components/ui/Toast';
 import { MESSAGES } from '@/lib/messages';
+import { kstYearMonth } from '@/lib/kst-month';
 
 import { usePageReady } from '@/hooks/usePageReady';
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-type SettlementStatus = 'completed' | 'pending' | 'processing';
-type TransactionStatus = 'completed' | 'pending';
+type SettlementStatus = 'pending' | 'approved' | 'processing' | 'paid' | 'failed' | 'rejected';
 
-interface Settlement {
+// 목록 로드 실패 3분류 — 404/403/기타(네트워크·서버 오류). 성공+0건(빈 달)은 별도(EmptyState).
+type SettlementListErrorKind = 'notFound' | 'denied' | 'load' | null;
+
+interface SettlementListItem {
   id: string;
-  period: string;
-  totalPayment: number;
-  totalFee: number;
+  teamId: string;
+  teamName: string;
+  settlementMonth: string;
+  totalRevenue: number;
+  platformFee: number;
+  paymentFee: number;
+  refundAmount: number;
   netAmount: number;
   status: SettlementStatus;
-  transactionCount: number;
 }
 
-interface Transaction {
+interface ApiSettlementListItem {
   id: string;
-  orderNumber: string;
-  productName: string;
-  paidAt: string;
-  paymentMethod: string;
-  amount: number;
-  netAmount: number;
-  fee: number;
-  status: TransactionStatus;
-}
-
-interface ApiSettlement {
-  id: string;
-  period?: string;
+  teamId?: string;
   settlementMonth?: string;
-  totalPayment?: number;
   totalRevenue?: number;
-  totalFee?: number;
   platformFee?: number;
   paymentFee?: number;
+  refundAmount?: number;
   netAmount?: number;
   status?: string;
-  transactionCount?: number;
-  transactions?: ApiTransaction[];
-}
-
-interface ApiTransaction {
-  id?: string;
-  orderNumber?: string;
-  productName?: string;
-  paidAt?: string;
-  paymentMethod?: string;
-  amount?: number;
-  netAmount?: number;
-  fee?: number;
-  status?: string;
+  team?: { id?: string; name?: string };
 }
 
 // ---------------------------------------------------------------------------
 // Data helpers
 // ---------------------------------------------------------------------------
 
-// Backend SettlementDetailStatus (PENDING · APPROVED · REJECTED · PAID · HOLD) +
-// SettlementApprovalStatus (PENDING · APPROVED · REJECTED · REVIEW) 를 UI 3-state로 정규화
-function normalizeSettlementStatus(status?: string): SettlementStatus {
+const VALID_STATUSES: SettlementStatus[] = [
+  'pending',
+  'approved',
+  'processing',
+  'paid',
+  'failed',
+  'rejected',
+];
+
+function normalizeStatus(status?: string): SettlementStatus {
   const value = (status ?? '').toLowerCase();
-  // 정산 완료 상태
-  if (value === 'completed' || value === 'paid') return 'completed';
-  // 승인/처리 중 상태
-  if (value === 'processing' || value === 'approved' || value === 'review') {
-    return 'processing';
-  }
-  // 대기/반려/보류 등 pending 계열
-  return 'pending';
+  return (VALID_STATUSES as string[]).includes(value) ? (value as SettlementStatus) : 'pending';
 }
 
-function extractSettlementItems(payload: unknown): ApiSettlement[] {
-  if (Array.isArray(payload)) return payload as ApiSettlement[];
+// 정산은 결제일 기준 월 마감 후 확정되므로 당월은 항상 비어 보인다 — 기본 노출월을
+// 지난달로 잡는다. KST 오늘은 프로젝트 유틸(kstYearMonth)로 산출하고, 이후는 정수
+// 연산만 사용해(로컬 Date 생성 없이) 월 경계 오류를 피한다.
+function getDefaultSettlementMonth(): { year: number; month: number } {
+  const [y, m] = kstYearMonth().split('-').map(Number);
+  return m === 1 ? { year: y - 1, month: 12 } : { year: y, month: m - 1 };
+}
+
+function extractSettlementItems(payload: unknown): ApiSettlementListItem[] {
+  if (Array.isArray(payload)) return payload as ApiSettlementListItem[];
   if (payload && typeof payload === 'object') {
     const obj = payload as Record<string, unknown>;
-    if (Array.isArray(obj.data)) return obj.data as ApiSettlement[];
-    if (Array.isArray(obj.items)) return obj.items as ApiSettlement[];
-    const nested = obj.data;
-    if (nested && typeof nested === 'object') {
-      const nestedObj = nested as Record<string, unknown>;
-      if (Array.isArray(nestedObj.data)) return nestedObj.data as ApiSettlement[];
-      if (Array.isArray(nestedObj.items)) return nestedObj.items as ApiSettlement[];
-    }
+    if (Array.isArray(obj.data)) return obj.data as ApiSettlementListItem[];
+    if (Array.isArray(obj.items)) return obj.items as ApiSettlementListItem[];
   }
   return [];
 }
 
-function mapApiSettlement(item: ApiSettlement): Settlement {
-  const totalPayment = item.totalPayment ?? item.totalRevenue ?? 0;
-  const totalFee = item.totalFee ?? (item.platformFee ?? 0) + (item.paymentFee ?? 0);
+function mapApiSettlement(item: ApiSettlementListItem): SettlementListItem {
   return {
     id: item.id,
-    period: item.period ?? item.settlementMonth ?? '-',
-    totalPayment,
-    totalFee,
-    netAmount: item.netAmount ?? Math.max(0, totalPayment - totalFee),
-    status: normalizeSettlementStatus(item.status),
-    transactionCount: item.transactionCount ?? item.transactions?.length ?? 0,
-  };
-}
-
-function mapApiTransaction(t: ApiTransaction, idx: number): Transaction {
-  return {
-    id: t.id ?? `tx-${idx}`,
-    orderNumber: t.orderNumber ?? `ORD-${String(idx + 1).padStart(4, '0')}`,
-    productName: t.productName ?? '수업 결제',
-    paidAt: t.paidAt ?? '',
-    paymentMethod: t.paymentMethod ?? '카드',
-    amount: t.amount ?? 0,
-    netAmount: t.netAmount ?? 0,
-    fee: t.fee ?? 0,
-    status: (t.status ?? 'completed') === 'completed' ? 'completed' : 'pending',
+    teamId: item.teamId ?? item.team?.id ?? '',
+    teamName: item.team?.name ?? MESSAGES.settlements.teamFallback,
+    settlementMonth: item.settlementMonth ?? '-',
+    totalRevenue: item.totalRevenue ?? 0,
+    platformFee: item.platformFee ?? 0,
+    paymentFee: item.paymentFee ?? 0,
+    refundAmount: item.refundAmount ?? 0,
+    netAmount: item.netAmount ?? 0,
+    status: normalizeStatus(item.status),
   };
 }
 
@@ -134,140 +102,130 @@ function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('ko-KR').format(amount) + '원';
 }
 
-function formatDateTime(iso?: string): { date: string; time: string } {
-  if (!iso) return { date: '-', time: '' };
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return { date: '-', time: '' };
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mi = String(d.getMinutes()).padStart(2, '0');
-  return { date: `${yyyy}.${mm}.${dd}`, time: `${hh}:${mi}` };
+// 수수료는 항상 차감액으로 표기하되, 0원일 때는 "-0원"이 되지 않도록 부호를 붙이지 않는다.
+function formatFeeAmount(fee: number): string {
+  return fee ? `-${formatCurrency(fee)}` : formatCurrency(0);
 }
 
 // ---------------------------------------------------------------------------
-// Status configs
+// Status config
 // ---------------------------------------------------------------------------
 
 const SETTLEMENT_STATUS: Record<SettlementStatus, { label: string; className: string }> = {
-  completed: {
-    label: '정산 완료',
-    className: 'bg-mint/10 text-mint dark:bg-mint/15 dark:text-mint',
-  },
   pending: {
-    label: '정산 대기',
+    label: MESSAGES.settlements.statusPending,
     className: 'bg-it-fill text-it-ink-600 dark:bg-rink-700 dark:text-rink-100',
   },
-  processing: {
-    label: '처리 중',
+  approved: {
+    label: MESSAGES.settlements.statusApproved,
     className: 'bg-it-blue-50 text-it-blue-500 dark:bg-it-blue-500/15 dark:text-it-blue-500',
   },
-};
-
-// primaryStatus 가 위 3개 외 값일 경우 크래시 방지용 fallback
-const SETTLEMENT_STATUS_FALLBACK: { label: string; className: string } = {
-  label: '미정',
-  className: 'bg-it-fill text-it-ink-400 dark:bg-rink-700 dark:text-rink-300',
-};
-
-const TX_STATUS: Record<TransactionStatus, { label: string; className: string }> = {
-  completed: {
-    label: '완료',
+  processing: {
+    label: MESSAGES.settlements.statusProcessing,
+    className: 'bg-sun-500/10 text-sun-500 dark:bg-sun-500/15 dark:text-sun-500',
+  },
+  paid: {
+    label: MESSAGES.settlements.statusPaid,
     className: 'bg-mint/10 text-mint dark:bg-mint/15 dark:text-mint',
   },
-  pending: {
-    label: '정산 대기',
-    className: 'bg-it-fill text-it-ink-600 dark:bg-rink-700 dark:text-rink-100',
+  failed: {
+    label: MESSAGES.settlements.statusFailed,
+    className: 'bg-flame-500/10 text-flame-500 dark:bg-flame-500/15 dark:text-flame-500',
   },
-};
-
-// 알 수 없는 TransactionStatus (백엔드 enum 확장) 대비 fallback
-const TX_STATUS_FALLBACK: { label: string; className: string } = {
-  label: '미정',
-  className: 'bg-it-fill text-it-ink-400 dark:bg-rink-700 dark:text-rink-300',
+  rejected: {
+    label: MESSAGES.settlements.statusRejected,
+    className: 'bg-flame-500/10 text-flame-500 dark:bg-flame-500/15 dark:text-flame-500',
+  },
 };
 
 // ---------------------------------------------------------------------------
 // Sub-components
 // ---------------------------------------------------------------------------
 
-function TransactionCard({ tx, isLast }: { tx: Transaction; isLast?: boolean }) {
-  const { date, time } = formatDateTime(tx.paidAt);
-  const statusCfg = TX_STATUS[tx.status] ?? TX_STATUS_FALLBACK;
+function SettlementCard({
+  item,
+  onOpen,
+}: {
+  item: SettlementListItem;
+  onOpen: (id: string) => void;
+}) {
+  const statusCfg = SETTLEMENT_STATUS[item.status];
+  const fee = item.platformFee + item.paymentFee;
+  const isNetNegative = item.netAmount < 0;
 
   return (
-    <article
-      className={`py-4 transition-colors motion-reduce:transition-none ${
-        !isLast ? 'border-b border-it-line dark:border-rink-700' : ''
-      }`}
+    <button
+      type="button"
+      onClick={() => onOpen(item.id)}
+      className="w-full py-4 text-left transition-colors motion-reduce:transition-none border-b border-it-line dark:border-rink-700 last:border-b-0 active:brightness-95"
     >
-      {/* Header: 주문번호 + 상품명 */}
       <div className="flex items-start justify-between mb-3">
         <div className="min-w-0 flex-1">
-          <p className="text-card-meta font-mono text-it-ink-400 dark:text-rink-300 mb-0.5">
-            {tx.orderNumber}
-          </p>
           <p className="text-card-title font-bold text-it-ink-800 dark:text-white truncate">
-            {tx.productName}
+            {item.teamName}
+          </p>
+          <p className="text-card-meta text-it-ink-400 dark:text-rink-300 mt-0.5">
+            {item.settlementMonth}
           </p>
         </div>
-        <span className={`shrink-0 ml-3 inline-flex items-center px-2 py-0.5 rounded-w-pill text-card-meta font-bold ${statusCfg.className}`}>
+        <span
+          className={`shrink-0 ml-3 inline-flex items-center px-2 py-0.5 rounded-w-pill text-card-meta font-bold ${statusCfg.className}`}
+        >
           {statusCfg.label}
         </span>
       </div>
 
-      {/* 2-col grid: 결제일시/수단, 결제금액/실지급액 */}
-      <div className="grid grid-cols-2 gap-3 mb-3">
+      <div className="grid grid-cols-2 gap-3">
         <div>
           <p className="text-card-meta text-it-ink-400 dark:text-rink-300 font-medium mb-0.5">
-            결제 일시
+            {MESSAGES.settlements.totalRevenueLabel}
           </p>
-          <p className="text-card-meta font-medium text-it-ink-600 dark:text-rink-100 tabular-nums">
-            {date}
-            {time && <span className="text-it-ink-400 dark:text-rink-300 ml-1">{time}</span>}
-          </p>
-        </div>
-        <div>
-          <p className="text-card-meta text-it-ink-400 dark:text-rink-300 font-medium mb-0.5">
-            결제 수단
-          </p>
-          <p className="text-card-meta font-medium text-it-ink-600 dark:text-rink-100">
-            {tx.paymentMethod}
-          </p>
-        </div>
-        <div>
-          <p className="text-card-meta text-it-ink-400 dark:text-rink-300 font-medium mb-0.5">
-            결제 금액
-          </p>
-          <p className="text-card-body font-bold text-it-ink-800 dark:text-white tabular-nums text-right">
-            {formatCurrency(tx.amount)}
+          <p className="text-card-body font-bold text-it-ink-800 dark:text-white tabular-nums">
+            {formatCurrency(item.totalRevenue)}
           </p>
         </div>
         <div className="text-right">
           <p className="text-card-meta text-it-ink-400 dark:text-rink-300 font-medium mb-0.5">
-            실지급액
+            {MESSAGES.settlements.refundLabel}
           </p>
-          <p className="text-card-body font-bold text-it-blue-500 tabular-nums">
-            {formatCurrency(tx.netAmount)}
+          <p className="text-card-body font-bold text-it-ink-800 dark:text-white tabular-nums">
+            {formatCurrency(item.refundAmount)}
+          </p>
+        </div>
+        <div>
+          <p className="text-card-meta text-it-ink-400 dark:text-rink-300 font-medium mb-0.5">
+            {MESSAGES.settlements.feeLabel}
+          </p>
+          <p className="text-card-body font-bold text-it-red-500 tabular-nums">
+            {formatFeeAmount(fee)}
+          </p>
+        </div>
+        <div className="text-right">
+          <p className="text-card-meta text-it-ink-400 dark:text-rink-300 font-medium mb-0.5">
+            {MESSAGES.settlements.netAmountLabel}
+          </p>
+          <p
+            className={`text-card-body font-bold tabular-nums ${
+              isNetNegative ? 'text-flame-500' : 'text-it-blue-500'
+            }`}
+          >
+            {formatCurrency(item.netAmount)}
           </p>
         </div>
       </div>
 
-      {/* Footer: 수수료 + 상세 보기 */}
-      <div className="flex items-center justify-between pt-3 border-t border-it-line dark:border-rink-700">
-        <span className="text-card-meta text-it-red-500 dark:text-it-red-300 font-medium">
-          수수료 -{formatCurrency(tx.fee)}
-        </span>
-        <button
-          type="button"
-          className="text-it-blue-500 text-card-meta font-semibold flex items-center gap-0.5 hover:underline"
-        >
-          상세 보기
-          <Icon name="chevron_right" className="text-card-body" />
-        </button>
+      {/* 순지급액 마이너스 — 환불 초과로 지급 보류 */}
+      {isNetNegative && (
+        <p className="mt-3 text-card-meta font-bold text-flame-500">
+          {MESSAGES.settlements.negativeNetAmountNotice}
+        </p>
+      )}
+
+      <div className="flex items-center justify-end gap-0.5 pt-3 mt-3 border-t border-it-line dark:border-rink-700 text-it-blue-500 text-card-meta font-semibold">
+        {MESSAGES.settlements.detailsTitle}
+        <Icon name="chevron_right" className="text-card-body" />
       </div>
-    </article>
+    </button>
   );
 }
 
@@ -277,11 +235,8 @@ function EmptyState() {
       <div className="flex items-center justify-center size-16 rounded-w-md bg-it-fill dark:bg-rink-800 mb-4">
         <Icon name="receipt_long" className="text-3xl text-it-ink-400 dark:text-rink-500" />
       </div>
-      <p className="text-card-body font-medium text-it-ink-500 dark:text-rink-300 mb-1">
-        {MESSAGES.empty('거래 내역')}
-      </p>
-      <p className="text-card-meta text-it-ink-400 dark:text-rink-300">
-        해당 월의 거래 내역이 없습니다.
+      <p className="text-card-body font-medium text-it-ink-500 dark:text-rink-300">
+        {MESSAGES.settlements.emptyMonth}
       </p>
     </div>
   );
@@ -299,44 +254,35 @@ export default function SettlementsPage() {
     showBottomNav: true,
   });
 
-
-  const { toast } = useToast();
-  const [settlements, setSettlements] = useState<Settlement[]>([]);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const { navigate } = useNavigation();
+  const [settlements, setSettlements] = useState<SettlementListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [errorKind, setErrorKind] = useState<SettlementListErrorKind>(null);
 
   // 풀스크린 로더 fast-path (v11) — fetch 완료 시점에 PageTransitionLoader OFF
   usePageReady(!isLoading);
-  const [navYear, setNavYear] = useState(() => new Date().getFullYear());
-  const [navMonth, setNavMonth] = useState(() => new Date().getMonth() + 1);
-  const [visibleCount, setVisibleCount] = useState(5);
+  const [navYear, setNavYear] = useState(() => getDefaultSettlementMonth().year);
+  const [navMonth, setNavMonth] = useState(() => getDefaultSettlementMonth().month);
 
   const loadSettlements = useCallback(async (year: number, month: number) => {
     setIsLoading(true);
     try {
-      const res = await api.get<unknown>('/admin/settlements', {
-        params: { year, month },
+      const monthParam = `${year}-${String(month).padStart(2, '0')}`;
+      const res = await api.get<unknown>('/settlements', {
+        params: { month: monthParam, page: 1, pageSize: 50 },
       });
       if (!res.success) {
         setSettlements([]);
-        setTransactions([]);
+        const status = res.error?.statusCode;
+        setErrorKind(status === 404 ? 'notFound' : status === 403 ? 'denied' : 'load');
         return;
       }
-      const items = extractSettlementItems(res.data);
-      const mapped = items.map(mapApiSettlement);
-      setSettlements(mapped);
-
-      // 거래 내역 추출
-      const txList: Transaction[] = [];
-      for (const item of items) {
-        if (Array.isArray(item.transactions)) {
-          txList.push(...item.transactions.map(mapApiTransaction));
-        }
-      }
-      setTransactions(txList);
+      const items = extractSettlementItems(res.data).map(mapApiSettlement);
+      setSettlements(items);
+      setErrorKind(null);
     } catch {
       setSettlements([]);
-      setTransactions([]);
+      setErrorKind('load');
     } finally {
       setIsLoading(false);
     }
@@ -346,45 +292,29 @@ export default function SettlementsPage() {
     void loadSettlements(navYear, navMonth);
   }, [loadSettlements, navYear, navMonth]);
 
-  const settlementList = Array.isArray(settlements) ? settlements : [];
-
-  // Derived stats
-  const stats = useMemo(() => {
-    const totalPayment = settlementList.reduce((s, v) => s + v.totalPayment, 0);
-    const totalFee = settlementList.reduce((s, v) => s + v.totalFee, 0);
-    const netAmount = settlementList.reduce((s, v) => s + v.netAmount, 0);
-    const completedCount = settlementList.filter((s) => s.status === 'completed').length;
-    const pendingCount = settlementList.filter((s) => s.status === 'pending').length;
-    const primaryStatus: SettlementStatus =
-      pendingCount > 0 ? 'pending' : completedCount > 0 ? 'completed' : 'processing';
-    return { totalPayment, totalFee, netAmount, primaryStatus };
-  }, [settlementList]);
-
-  const visibleTx = useMemo(
-    () => transactions.slice(0, visibleCount),
-    [transactions, visibleCount],
+  const handleMonthChange = useCallback(
+    (y: number, m: number) => {
+      setNavYear(y);
+      setNavMonth(m);
+      void loadSettlements(y, m);
+    },
+    [loadSettlements],
   );
 
-  const handleMonthChange = useCallback((y: number, m: number) => {
-    setNavYear(y);
-    setNavMonth(m);
-    setVisibleCount(5);
-    void loadSettlements(y, m);
-  }, [loadSettlements]);
-
-  const handleDownload = useCallback(() => {
-    toast.info(MESSAGES.settlements.downloadComingSoon);
-  }, [toast]);
+  const handleOpenDetail = useCallback(
+    (id: string) => {
+      void navigate(`/settlements/${id}`);
+    },
+    [navigate],
+  );
 
   if (isLoading) return null;
 
-  const statusCfg = SETTLEMENT_STATUS[stats.primaryStatus] ?? SETTLEMENT_STATUS_FALLBACK;
-
   return (
     <MobileContainer hasBottomNav>
-      <SubmainAppBar title="정산 상세" />
+      <SubmainAppBar title={MESSAGES.settlements.pageTitle} />
 
-      <main className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck !pb-8">
+      <main className="flex-1 overflow-y-auto hide-scrollbar bg-it-canvas dark:bg-puck !pb-8 flex flex-col">
         {/* MonthNavigator — 공유 컴포넌트(ICETIMES flat variant). flat 흰 헤더 래퍼. */}
         <MonthNavigator
           year={navYear}
@@ -394,93 +324,39 @@ export default function SettlementsPage() {
           className="bg-it-surface dark:bg-it-blue-950 border-b border-it-line dark:border-rink-700"
         />
 
-        {/* flat 흰 섹션 — 통계 그리드 + 거래 내역(카드 박스 제거) */}
-        <section className="mt-2 bg-it-surface dark:bg-it-blue-950 p-4 flex flex-col gap-4">
-          {/* StatCard 4-grid */}
-          <div className="grid grid-cols-2 gap-3">
-            <StatCard
-              label="총 결제"
-              value={formatCurrency(stats.totalPayment)}
-              icon={<Icon name="payments" className="text-xl" />}
-              accentColor="primary"
-              iceTheme
-            />
-            <StatCard
-              label="수수료"
-              value={`-${formatCurrency(stats.totalFee)}`}
-              icon={<Icon name="receipt_long" className="text-xl" />}
-              accentColor="error"
-              iceTheme
-            />
-            <StatCard
-              label="최종 정산예정액"
-              value={formatCurrency(stats.netAmount)}
-              icon={<Icon name="account_balance" className="text-xl" />}
-              accentColor="success"
-              iceTheme
-            />
-            <StatCard
-              label="상태"
-              value={statusCfg.label}
-              icon={<Icon name="info" className="text-xl" />}
-              accentColor={
-                stats.primaryStatus === 'completed'
-                  ? 'success'
-                  : stats.primaryStatus === 'pending'
-                    ? 'warning'
-                    : 'primary'
-              }
-              iceTheme
-            />
-          </div>
+        {/* flat 흰 섹션 — 정산 건 카드 목록(카드 박스 제거). flex-1 로 잔여 높이까지
+            흰 배경을 채워 카드 1~2건일 때 하단에 큰 회색(bg-it-canvas) 여백이 남지 않게 한다. */}
+        <section className="mt-2 flex-1 bg-it-surface dark:bg-it-blue-950 p-4">
+          <p className="mb-3 text-card-meta text-it-ink-400 dark:text-rink-300">
+            {MESSAGES.settlements.basisNotice}
+          </p>
 
-          {/* Transaction List Section */}
-          <section>
-            <div className="flex items-center justify-between mb-1 px-1">
-              <h2 className="text-card-emphasis font-bold text-it-ink-800 dark:text-white">
-                상세 거래 내역
-              </h2>
-              <span className="text-card-meta font-medium text-it-ink-400 dark:text-rink-300">
-                총 {transactions.length}건
-              </span>
-            </div>
-
-            {transactions.length === 0 ? (
-              <EmptyState />
-            ) : (
-              <div className="flex flex-col">
-                {visibleTx.map((tx, idx) => (
-                  <TransactionCard
-                    key={tx.id}
-                    tx={tx}
-                    isLast={idx === visibleTx.length - 1 && visibleCount >= transactions.length}
-                  />
-                ))}
-              </div>
-            )}
-
-            {/* 더보기 버튼 */}
-            {visibleCount < transactions.length && (
+          {errorKind ? (
+            <div className="flex flex-col items-center gap-3 py-12 text-center">
+              <p className="text-card-body text-it-ink-500 dark:text-rink-300">
+                {errorKind === 'notFound'
+                  ? MESSAGES.settlements.notFound
+                  : errorKind === 'denied'
+                    ? MESSAGES.settlements.deniedList
+                    : MESSAGES.settlements.loadError}
+              </p>
               <button
                 type="button"
-                onClick={() => setVisibleCount((v) => v + 5)}
-                className="mt-3 w-full py-3 rounded-w-md border border-dashed border-it-line-strong dark:border-rink-700 text-card-body font-semibold text-it-ink-500 dark:text-rink-300 hover:bg-it-fill dark:hover:bg-rink-800 active:brightness-95 transition-colors motion-reduce:transition-none"
+                onClick={() => void loadSettlements(navYear, navMonth)}
+                className="inline-flex h-10 items-center justify-center rounded-w-md bg-it-blue-500 px-5 text-card-body font-semibold text-white transition-colors hover:bg-it-blue-600 active:brightness-95 motion-reduce:transition-none"
               >
-                거래 내역 더보기
+                {MESSAGES.settlements.retry}
               </button>
-            )}
-          </section>
-
-          {/* 엑셀 다운로드 버튼 */}
-          <button
-            type="button"
-            onClick={handleDownload}
-            disabled
-            className="w-full flex items-center justify-center gap-2 py-3.5 rounded-w-md bg-it-blue-500 text-white font-semibold text-card-body hover:bg-it-blue-600 active:brightness-95 transition-colors motion-reduce:transition-none disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Icon name="download" className="text-card-title" />
-            정산 내역 엑셀 다운로드
-          </button>
+            </div>
+          ) : settlements.length === 0 ? (
+            <EmptyState />
+          ) : (
+            <div className="flex flex-col">
+              {settlements.map((item) => (
+                <SettlementCard key={item.id} item={item} onOpen={handleOpenDetail} />
+              ))}
+            </div>
+          )}
 
           {/* Bottom safe area */}
           <div className="h-8" />

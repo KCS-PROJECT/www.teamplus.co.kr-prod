@@ -1020,7 +1020,8 @@ model RefundLog {
   actorId      String?  @map("actor_id") /// 환불 실행 주체(승인 감독·ADMIN·trusted 시스템). null=레거시. FK/relation 없는 감사 컬럼.
 
   // Relationships
-  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  payment          Payment           @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  settlementDetail SettlementDetail?
 
   @@index([paymentId])
   @@map("refund_logs")
@@ -4450,20 +4451,30 @@ enum ConsultationCategory {
 
 // ==================== Settlement Detail (거래 단위 정산 상세) ====================
 
-/// 정산 상세 내역 - 결제(Payment)별 거래 단위 정산 레코드
+/// 정산 상세 내역 - "1 이벤트(결제 완료 또는 환불 1건) = 1 행"(마감 기준 = 결제일/환불일 현금 기준).
 /// SettlementTransaction(요약)과 구분되며 실제 매니저 승인 대상
 model SettlementDetail {
   id            String                 @id @default(cuid())
   settlementId  String                 @map("settlement_id")
-  paymentId     String                 @map("payment_id") /// 원본 결제 (FK 보존)
-  orderNumber   String                 @unique @map("order_number") /// 결제 주문번호 (멱등성 키)
+  paymentId     String                 @map("payment_id") /// 원본 결제 (FK 보존) — REFUND 행도 원 결제를 가리킨다
+  orderNumber   String                 @map("order_number") /// 원 결제 주문번호(참조용, 유일성은 eventKey 가 담당)
+  entryType     SettlementEntryType    @default(PAYMENT) @map("entry_type") /// PAYMENT(결제 완료) | REFUND(환불)
+  refundLogId   String?                @unique @map("refund_log_id") /// REFUND 행만 — 이 환불이 유래한 RefundLog(1:1)
+  /// 전역 "1 이벤트 = 1 정산" 유일키 — `P:{paymentId}` | `R:{refundLogId}`
+  eventKey      String                 @unique @map("event_key")
   productName   String                 @map("product_name")
   paymentDate   DateTime               @map("payment_date") @db.Date
   paymentMethod String                 @map("payment_method") /// card | wallet | etc
-  paymentAmount Int                    @map("payment_amount") /// 결제 금액
+  paymentAmount Int                    @map("payment_amount") /// PAYMENT=결제 금액(+), REFUND=환불 금액(-)
   feeRate       Float                  @map("fee_rate") /// 수수료율 (0.0 ~ 1.0)
-  feeAmount     Int                    @map("fee_amount") /// 수수료 금액
-  actualAmount  Int                    @map("actual_amount") /// 실지급 금액
+  feeAmount     Int                    @map("fee_amount") /// PAYMENT=수수료(+), REFUND=환급 수수료(-)
+  actualAmount  Int                    @map("actual_amount") /// 실지급 금액(paymentAmount-feeAmount, REFUND 는 음수)
+  /// 귀속월(YYYY-MM) 병기 — 선불=enrollment.billingMonth, 후불=billing.yearMonth, 대회=completedAt KST 월.
+  /// 마감 판정에는 쓰지 않는다(마감은 결제일/환불일 현금 기준) — 표시·분석 참고용.
+  attributionMonth String?             @db.VarChar(7) @map("attribution_month")
+  /// 출처 — 요약(수업·대회별 묶음)의 그룹 키. productName 은 마감 시점 이름 스냅샷이라 키로 쓰지 않는다.
+  sourceType    SettlementSourceType   @default(OTHER) @map("source_type") /// CLASS | TOURNAMENT | OTHER(수업·대회 연결 없음)
+  sourceId      String?                @map("source_id") /// CLASS=Class.id, TOURNAMENT=Tournament.id, OTHER=null
   status        SettlementDetailStatus @default(PENDING) /// 정산 상세 상태
   memo          String?                @db.Text /// 비고/메모
   createdAt     DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -4471,11 +4482,27 @@ model SettlementDetail {
 
   settlement Settlement @relation(fields: [settlementId], references: [id], onDelete: Cascade)
   payment    Payment    @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  refundLog  RefundLog? @relation(fields: [refundLogId], references: [id], onDelete: Restrict)
 
   @@index([settlementId, status])
   @@index([paymentDate])
   @@index([paymentId])
+  @@index([orderNumber])
+  @@index([settlementId, sourceType, sourceId])
   @@map("settlement_details")
+}
+
+/// 정산 상세 항목 종류 — 결제 완료(PAYMENT) / 환불(REFUND)
+enum SettlementEntryType {
+  PAYMENT
+  REFUND
+}
+
+/// 정산 상세 출처 — 수업(CLASS) / 대회(TOURNAMENT) / 연결 없음(OTHER)
+enum SettlementSourceType {
+  CLASS
+  TOURNAMENT
+  OTHER
 }
 
 /// 정산 상세 상태

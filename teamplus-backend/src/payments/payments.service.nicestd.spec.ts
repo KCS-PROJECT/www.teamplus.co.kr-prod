@@ -23,6 +23,7 @@ import {
 import { RedisService } from "@/redis/redis.service";
 import { CreditDomainService } from "@/credits/credit-domain.service";
 import { NotificationsService } from "@/notifications/notifications.service";
+import { SettlementSummaryService } from "./settlement/settlement-summary.service";
 
 /**
  * 구모듈 승인·통보 서비스 계약.
@@ -134,6 +135,7 @@ describe("PaymentsService — 나이스 구모듈", () => {
           useValue: { issueFromPayment: jest.fn() },
         },
         { provide: NotificationsService, useValue: mockNotifications },
+        { provide: SettlementSummaryService, useValue: {} },
       ],
     }).compile();
 

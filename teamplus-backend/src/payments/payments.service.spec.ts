@@ -16,6 +16,7 @@ import { PaymentWebhookService } from "./services/payment-webhook.service";
 import { PaymentCreateService } from "./services/payment-create.service";
 import { PaymentRefundService } from "./services/payment-refund.service";
 import { PaymentReceiptService } from "./services/payment-receipt.service";
+import { SettlementSummaryService } from "./settlement/settlement-summary.service";
 
 /**
  * PaymentsService 는 Phase B 이후 Facade 로 재편되어, 결제 생성/웹훅/환불/영수증은
@@ -69,7 +70,6 @@ describe("PaymentsService", () => {
   const mockReceiptService = {
     getReceipt: jest.fn(),
     createReceipt: jest.fn(),
-    getSettlementList: jest.fn(),
   };
   const mockTossGateway = {
     confirm: jest.fn(),
@@ -102,6 +102,10 @@ describe("PaymentsService", () => {
     notifyTeamManagers: jest.fn().mockResolvedValue(undefined),
     notifyUsers: jest.fn().mockResolvedValue(undefined),
   };
+  const mockSettlementSummaryService = {
+    getTeamSettlementSummary: jest.fn(),
+    getTeamSummariesForTeams: jest.fn(),
+  };
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -128,6 +132,12 @@ describe("PaymentsService", () => {
             academy: {
               findUnique: jest.fn().mockResolvedValue(null),
             },
+            team: {
+              findMany: jest.fn().mockResolvedValue([]),
+            },
+            appSettings: {
+              findFirst: jest.fn().mockResolvedValue(null),
+            },
             $transaction: jest.fn(),
           },
         },
@@ -141,6 +151,10 @@ describe("PaymentsService", () => {
         { provide: RedisService, useValue: mockRedisService },
         { provide: CreditDomainService, useValue: mockCreditDomain },
         { provide: NotificationsService, useValue: mockNotificationsService },
+        {
+          provide: SettlementSummaryService,
+          useValue: mockSettlementSummaryService,
+        },
       ],
     }).compile();
 
@@ -1068,6 +1082,79 @@ describe("PaymentsService", () => {
         service.mockConfirmPayment(mockUserId, mockOrderNumber),
       ).rejects.toThrow("수업 정원이 마감되어");
       expect(mockTx.payment.updateMany).not.toHaveBeenCalled(); // applyApprovedPayment 미도달
+    });
+  });
+
+  // ────────────────────────────────────────────────────────────────────
+  //  정산 개요 — 정산 센터(SettlementSummaryService) 소계 위임 검증
+  //  (금액/필드 재가공 로직은 settlement-overview.mapper.spec.ts 가 담당)
+  // ────────────────────────────────────────────────────────────────────
+  describe("getSettlementOverview", () => {
+    const mockRequester = { id: "admin-1", email: "a", userType: "ADMIN" };
+
+    it("활성 팀 id 로 정산 원장(ledger)을 배치 조회하고, 팀 목록·수수료율을 함께 조회한다", async () => {
+      const prismaMock = prismaService as unknown as {
+        team: { findMany: jest.Mock };
+        appSettings: { findFirst: jest.Mock };
+      };
+      prismaMock.team.findMany.mockResolvedValue([
+        { id: "team-1", name: "팀1", teamCode: "T1" },
+      ]);
+      prismaMock.appSettings.findFirst.mockResolvedValue({
+        commissionRate: 0.03,
+      });
+      mockSettlementSummaryService.getTeamSummariesForTeams.mockResolvedValue({
+        yearMonth: "2026-09",
+        classes: [],
+        tournaments: [],
+      });
+
+      const result = await service.getSettlementOverview(
+        mockRequester,
+        "2026-09",
+      );
+
+      // 관리자 스코프(getTeamSettlementSummary)로 전체 팀(비활성 포함)을 집계한 뒤
+      // 활성 팀만 추려 버리는 낭비 없이, 활성 팀 id 만 배치 빌더에 넘긴다.
+      expect(
+        mockSettlementSummaryService.getTeamSummariesForTeams,
+      ).toHaveBeenCalledWith(["team-1"], "2026-09");
+      expect(prismaMock.team.findMany).toHaveBeenCalledWith({
+        where: { isActive: true },
+        select: { id: true, name: true, teamCode: true },
+        orderBy: { name: "asc" },
+      });
+      expect(result.yearMonth).toBe("2026-09");
+      expect(result.feeRate).toBe(0.03);
+      expect(result.teams).toHaveLength(1);
+      // Dual Emit — alias 는 canonical 과 항상 동일.
+      expect(result.teams[0].studentCount).toBe(result.teams[0].memberCount);
+      expect(result.teams[0].unpaidAmount).toBe(
+        result.teams[0].outstandingAmount,
+      );
+      expect(result.teams[0].totalAmount).toBe(result.teams[0].billedAmount);
+    });
+
+    it("AppSettings 미설정 시 feeRate=0 으로 폴백한다", async () => {
+      const prismaMock = prismaService as unknown as {
+        team: { findMany: jest.Mock };
+        appSettings: { findFirst: jest.Mock };
+      };
+      prismaMock.team.findMany.mockResolvedValue([]);
+      prismaMock.appSettings.findFirst.mockResolvedValue(null);
+      mockSettlementSummaryService.getTeamSummariesForTeams.mockResolvedValue({
+        yearMonth: "2026-09",
+        classes: [],
+        tournaments: [],
+      });
+
+      const result = await service.getSettlementOverview(mockRequester);
+
+      expect(
+        mockSettlementSummaryService.getTeamSummariesForTeams,
+      ).toHaveBeenCalledWith([], expect.any(String));
+      expect(result.feeRate).toBe(0);
+      expect(result.teams).toHaveLength(0);
     });
   });
 });

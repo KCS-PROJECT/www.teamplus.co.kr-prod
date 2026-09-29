@@ -197,7 +197,6 @@ describe("Payment System Integration Tests (7 Scenarios)", () => {
   const mockReceiptService = {
     getReceipt: jest.fn(),
     createReceipt: jest.fn(),
-    getSettlementList: jest.fn(),
   };
   const mockTossGateway = { confirm: jest.fn(), getPayment: jest.fn() };
   const mockCreditDomain = { issueFromPayment: jest.fn() };

@@ -157,7 +157,6 @@ export default function AdminDashboardPage() {
       <ViewToggleAndChips
         chips={[
           { label: "결제 관리", onClick: () => navigate("/payments-manage") },
-          { label: "정산 관리", onClick: () => navigate("/settlements") },
         ]}
       />
 
@@ -202,13 +201,6 @@ export default function AdminDashboardPage() {
             color: "var(--c-mint-100)",
             icon: "P",
             onClick: () => navigate("/payments-manage"),
-          },
-          {
-            name: "정산 관리",
-            sub: "코치/감독 정산",
-            color: "var(--c-flame-100)",
-            icon: "S",
-            onClick: () => navigate("/settlements"),
           },
         ]}
       />
@@ -354,10 +346,10 @@ export default function AdminDashboardPage() {
             onClick: () => navigate("/notices/create"),
           },
           {
-            label: "정산",
+            label: MESSAGES.settlement.pageTitle,
             color: "var(--c-sun-500)",
             icon: <Icon name="payments" />,
-            onClick: () => navigate("/settlements"),
+            onClick: () => navigate("/payments-manage"),
           },
         ]}
       />

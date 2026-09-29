@@ -1444,6 +1444,8 @@ export const MESSAGES = {
     // AppBar 타이틀
     pageTitle: "결제 관리",
     appBarTitle: "결제 현황",
+    // 정산 집계 탭 하단 — 월별 지급 정산(/settlements) 바로가기
+    viewMonthlySettlements: "월 정산 내역 보기",
     // 미수금 탭 — 빈 상태 / 로드 실패
     emptyUnpaid: "미수금이 없습니다.",
     unpaidLoadFailed: "미수금 정보를 불러오지 못했습니다.",
@@ -4185,9 +4187,64 @@ export const MESSAGES = {
     downloadFailed: "다운로드 중 오류가 발생했습니다.",
   },
 
-  // ─── Q. 정산 ──────────────────────────────────────
+  // ─── Q. 정산 (팀 정산 조회 — /settlements, director·coach 전용) ────
   settlements: {
-    downloadComingSoon: "정산 내역 다운로드 기능이 준비 중입니다.",
+    pageTitle: "정산 내역",
+    detailTitle: (period: string) => `${period} 정산 상세`,
+    yearMonthLabel: (year: string, month: string) => `${year}년 ${month}월`,
+    teamFallback: "우리 팀",
+    emptyMonth: "이 달의 정산이 아직 마감되지 않았어요.",
+    totalRevenueLabel: "총 매출",
+    refundLabel: "환불",
+    feeLabel: "수수료",
+    netAmountLabel: "순 지급액",
+    statusPending: "정산 대기",
+    statusApproved: "지급 예정",
+    statusProcessing: "처리 중",
+    statusPaid: "지급 완료",
+    statusFailed: "지급 실패",
+    statusRejected: "반려",
+    rejectReasonLabel: "반려 사유",
+    bankInfoTitle: "지급 계좌",
+    accountHolderLabel: "예금주",
+    payoutHistoryTitle: "지급 기록",
+    emptyPayout: "지급 기록이 없습니다.",
+    detailsTitle: "결제 명세",
+    detailsEmpty: "결제 명세가 없습니다.",
+    detailsLoadMore: "결제 명세 더보기",
+    paymentAmountLabel: "결제 금액",
+    feeAmountLabel: "수수료",
+    actualAmountLabel: "실지급액",
+    memoLabel: "메모",
+    // 결제 명세 행 — 결제/환불 구분 + 귀속월(해당 결제가 속한 월)
+    entryTypePayment: "결제",
+    entryTypeRefund: "환불",
+    attributionMonthLabel: (month: number) => `${month}월분`,
+    // 순지급액 마이너스 — 환불이 매출을 초과해 이번 달 지급이 보류되는 경우
+    negativeNetAmountNotice: "이번 달은 환불이 더 많아 지급이 보류됩니다.",
+    // 정산 기준 안내 — 목록/상세 공통 1줄
+    basisNotice: "정산은 결제일 기준입니다. (해당 월에 결제·환불된 금액)",
+    // 실패 사유 3분류(404/403/기타) — 목록·상세 공통. 403 문구만 대상 범위가 달라
+    // 목록(전체)과 상세(단건)를 구분한다. 나머지 둘은 두 화면이 동일 문구를 쓴다.
+    notFound: "정산 내역을 찾을 수 없어요. 다시 마감되었거나 삭제되었을 수 있어요.",
+    deniedDetail: "이 정산을 볼 권한이 없어요.",
+    deniedList: "정산을 볼 권한이 없어요.",
+    loadError: "일시적인 오류로 정산 정보를 불러오지 못했어요.",
+    backToList: "목록으로",
+    retry: "다시 시도",
+    detailsLoadError: "결제 명세를 불러오지 못했어요.",
+    // 수업·대회별 명세 요약
+    groupsTitle: "수업·대회별 명세",
+    groupsEmpty: "수업·대회별 명세가 없습니다.",
+    groupsLoadError: "수업·대회별 명세를 불러오지 못했어요.",
+    groupSourceClass: "수업",
+    groupSourceTournament: "대회",
+    groupSourceOther: "기타",
+    groupPaymentSummary: (count: number, amount: string) => `결제 ${count}건 · ${amount}`,
+    groupRefundSummary: (count: number, amount: string) => `환불 ${count}건 · ${amount}`,
+    groupNetLabel: "지급액",
+    groupsTotalLabel: "합계",
+    groupsTotalPayoutLabel: "총 지급액",
   },
 
   // ─── R. 차단 / 신고 ────────────────────────────────

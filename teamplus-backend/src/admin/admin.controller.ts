@@ -11,7 +11,6 @@ import {
   UseInterceptors,
   UploadedFile,
   Request,
-  Res,
   HttpCode,
   HttpStatus,
   BadRequestException,
@@ -27,7 +26,6 @@ import {
   ApiConsumes,
   ApiBody,
 } from "@nestjs/swagger";
-import { Response } from "express";
 import { AdminService } from "./admin.service";
 import { OsMonitorService } from "./os-monitor.service";
 import { AuthenticatedRequest } from "@/common/interfaces/authenticated-request.interface";
@@ -36,7 +34,6 @@ import { RolesGuard } from "../auth/roles.guard";
 import { Roles } from "../auth/roles.decorator";
 import { AuditAction } from "@/common/decorators/audit-action.decorator";
 import { UserType } from "@prisma/client";
-import { UpdateSettlementBankInfoDto } from "./dto/settlement-action.dto";
 import { BulkUserStatusDto } from "./dto/bulk-user-status.dto";
 import { CreateCoachDto } from "./dto/create-coach.dto";
 import { UpdateCoachDto } from "./dto/update-coach.dto";
@@ -250,98 +247,6 @@ export class AdminController {
     @Request() req: AuthenticatedRequest,
   ) {
     return this.adminService.deleteAdminUser(id, req.user.userType);
-  }
-
-  // ==================== 정산 관리 ====================
-
-  @Get("settlements")
-  @ApiOperation({ summary: "정산 목록 조회" })
-  @ApiQuery({ name: "page", required: false, type: Number })
-  @ApiQuery({ name: "limit", required: false, type: Number })
-  @ApiQuery({ name: "status", required: false, type: String })
-  @ApiQuery({ name: "period", required: false, type: String })
-  @ApiQuery({ name: "teamId", required: false, type: String })
-  async getSettlements(
-    @Query("page") page?: string,
-    @Query("limit") limit?: string,
-    @Query("status") status?: string,
-    @Query("period") period?: string,
-    @Query("teamId") teamId?: string,
-  ) {
-    return this.adminService.getSettlements({
-      page: page ? parseInt(page) : 1,
-      limit: limit ? parseInt(limit) : 20,
-      status,
-      period,
-      teamId,
-    });
-  }
-
-  @Get("settlements/export")
-  @ApiOperation({ summary: "정산 엑셀(CSV) 다운로드" })
-  @ApiQuery({
-    name: "startDate",
-    required: false,
-    type: String,
-    description: "시작일 (YYYY-MM-DD)",
-  })
-  @ApiQuery({
-    name: "endDate",
-    required: false,
-    type: String,
-    description: "종료일 (YYYY-MM-DD)",
-  })
-  @ApiResponse({ status: 200, description: "CSV 파일 다운로드" })
-  async exportSettlements(
-    @Query("startDate") startDate?: string,
-    @Query("endDate") endDate?: string,
-    @Res() res?: Response,
-  ) {
-    const csvBuffer = await this.adminService.exportSettlements(
-      startDate ? new Date(startDate) : undefined,
-      endDate ? new Date(endDate) : undefined,
-    );
-
-    const filename = `settlements_${new Date().toISOString().slice(0, 10)}.csv`;
-
-    res!.setHeader("Content-Type", "text/csv; charset=utf-8");
-    res!.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-    res!.send(csvBuffer);
-  }
-
-  @Get("settlements/:id")
-  @ApiOperation({ summary: "정산 상세 조회" })
-  async getSettlement(@Param("id") id: string) {
-    return this.adminService.getSettlement(id);
-  }
-
-  @Post("settlements/:id/approve")
-  @ApiOperation({ summary: "정산 승인" })
-  async approveSettlement(
-    @Param("id") id: string,
-    @Request() req: AuthenticatedRequest,
-  ) {
-    return this.adminService.approveSettlement(id, req.user.id);
-  }
-
-  @Post("settlements/:id/reject")
-  @ApiOperation({ summary: "정산 거절" })
-  async rejectSettlement(
-    @Param("id") id: string,
-    @Body("reason") reason: string,
-    @Request() req: AuthenticatedRequest,
-  ) {
-    return this.adminService.rejectSettlement(id, req.user.id, reason);
-  }
-
-  @Put("settlements/:id/bank-info")
-  @ApiOperation({ summary: "정산 계좌 정보 업데이트 (암호화 저장)" })
-  async updateSettlementBankInfo(
-    @Param("id") id: string,
-    @Body() body: UpdateSettlementBankInfoDto,
-    @Request() req: AuthenticatedRequest,
-  ) {
-    return this.adminService.updateSettlementBankInfo(id, req.user.id, body);
   }
 
   // ==================== 감사 로그 ====================

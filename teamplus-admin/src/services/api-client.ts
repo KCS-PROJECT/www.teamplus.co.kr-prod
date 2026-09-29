@@ -611,6 +611,33 @@ export const del = async <T>(
   return extractData<T>(response.data);
 };
 
+/**
+ * 인증 헤더 포함 파일 다운로드 (CSV/엑셀 등 blob 응답)
+ * apiClient 요청 인터셉터가 Authorization 을 자동 첨부하므로 별도 토큰 처리가 필요 없다.
+ */
+export const downloadFile = async (
+  url: string,
+  filename: string,
+  config?: AxiosRequestConfig,
+): Promise<void> => {
+  const response = await apiClient.get(url, {
+    ...config,
+    responseType: "blob",
+  });
+  const contentType = response.headers["content-type"];
+  const blob = new Blob([response.data], {
+    type: typeof contentType === "string" ? contentType : "application/octet-stream",
+  });
+  const objectUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(objectUrl);
+};
+
 // ==================== Export ====================
 
 /**
@@ -627,5 +654,6 @@ export const api = {
   put,
   patch,
   delete: del,
+  downloadFile,
   client: apiClient,
 };

@@ -4,8 +4,16 @@ import {
   NotFoundException,
   ForbiddenException,
 } from "@nestjs/common";
-import { SettlementsService } from "./settlements.service";
+import { SettlementsService, escapeLikePattern } from "./settlements.service";
 import { PrismaService } from "@/prisma/prisma.service";
+import { ResourceAccessService } from "@/common/access/resource-access.service";
+import { JwtUserPayload } from "@/common/interfaces/authenticated-request.interface";
+import { encryptField } from "@/common/utils/field-encryption.util";
+import { randomBytes } from "crypto";
+
+// 필드 암호화 유틸이 요구하는 서버 전용 키(64 hex) — 테스트 환경엔 없으므로 즉석 생성해 채운다.
+process.env.FIELD_ENCRYPTION_KEY =
+  process.env.FIELD_ENCRYPTION_KEY ?? randomBytes(32).toString("hex");
 
 describe("SettlementsService", () => {
   let service: SettlementsService;
@@ -15,27 +23,29 @@ describe("SettlementsService", () => {
     settlement: {
       findMany: jest.fn(),
       findUnique: jest.fn(),
-      count: jest.fn(),
+      findUniqueOrThrow: jest.fn(),
+      updateMany: jest.fn(),
       update: jest.fn(),
+      count: jest.fn(),
+      groupBy: jest.fn(),
     },
     settlementDetail: {
       findMany: jest.fn(),
       count: jest.fn(),
+      updateMany: jest.fn(),
     },
     settlementTransaction: {
       create: jest.fn(),
     },
-    clubMember: {
-      findMany: jest.fn(),
-    },
     team: {
-      findFirst: jest.fn(),
-    },
-    teamMember: {
       findMany: jest.fn(),
-      findFirst: jest.fn(),
     },
+    $queryRaw: jest.fn(),
     $transaction: jest.fn(),
+  };
+
+  const mockResourceAccess = {
+    resolveTeamScope: jest.fn(),
   };
 
   const setupTransaction = () => {
@@ -44,59 +54,136 @@ describe("SettlementsService", () => {
     );
   };
 
+  const asUser = (id: string, userType: string): JwtUserPayload => ({
+    id,
+    email: `${id}@t.dev`,
+    userType,
+  });
+
+  const admin = asUser("admin-1", "ADMIN");
+  const director = asUser("director-1", "DIRECTOR");
+  const otherCoach = asUser("coach-999", "COACH");
+  const coach = asUser("coach-1", "COACH");
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         SettlementsService,
         { provide: PrismaService, useValue: mockPrisma },
+        { provide: ResourceAccessService, useValue: mockResourceAccess },
       ],
     }).compile();
 
     service = module.get<SettlementsService>(SettlementsService);
     jest.clearAllMocks();
     setupTransaction();
+    mockPrisma.$queryRaw.mockResolvedValue(undefined);
+    // approve/reject/payout 가 advisory lock 을 얻기 위해 조회하는 teamId 기본값.
+    //   개별 테스트가 findUnique 를 재정의하면 이 기본값은 그 테스트에서 덮인다.
+    mockPrisma.settlement.findUnique.mockResolvedValue({ teamId: "team-1" });
   });
 
   it("should be defined", () => {
     expect(service).toBeDefined();
   });
 
-  // ==================== getSettlements ====================
+  // ==================== getSettlements (스코프) ====================
 
   describe("getSettlements", () => {
-    it("기간 필터 적용 시 createdAt 범위가 설정된다", async () => {
+    it("목록 select 는 계좌 관련 필드(bankName·bankAccount·accountHolder)를 조회하지 않는다", async () => {
       mockPrisma.settlement.findMany.mockResolvedValue([]);
       mockPrisma.settlement.count.mockResolvedValue(0);
 
-      await service.getSettlements({
-        startDate: "2026-01-01",
-        endDate: "2026-01-31",
-      } as any);
+      await service.getSettlements({} as any, admin);
 
-      const callArgs = mockPrisma.settlement.findMany.mock.calls[0][0];
-      expect(callArgs.where.createdAt).toBeDefined();
-      expect(callArgs.where.createdAt.gte).toEqual(new Date("2026-01-01"));
-      expect(callArgs.where.createdAt.lte).toEqual(new Date("2026-01-31"));
+      const { select } = mockPrisma.settlement.findMany.mock.calls[0][0];
+      expect(select.bankName).toBeUndefined();
+      expect(select.bankAccount).toBeUndefined();
+      expect(select.accountHolder).toBeUndefined();
     });
 
-    it("상태 필터를 올바르게 적용한다", async () => {
+    it("ADMIN + teamId 지정 시 스코프 조회 없이 해당 팀만 필터한다", async () => {
       mockPrisma.settlement.findMany.mockResolvedValue([]);
       mockPrisma.settlement.count.mockResolvedValue(0);
 
-      await service.getSettlements({ status: "PENDING" } as any);
+      await service.getSettlements({ teamId: "team-1" } as any, admin);
+
+      expect(mockResourceAccess.resolveTeamScope).not.toHaveBeenCalled();
+      const callArgs = mockPrisma.settlement.findMany.mock.calls[0][0];
+      expect(callArgs.where.teamId).toBe("team-1");
+    });
+
+    it("ADMIN 이 teamId 없이 조회하면 팀 필터를 걸지 않는다", async () => {
+      mockPrisma.settlement.findMany.mockResolvedValue([]);
+      mockPrisma.settlement.count.mockResolvedValue(0);
+
+      await service.getSettlements({} as any, admin);
+
+      expect(mockResourceAccess.resolveTeamScope).not.toHaveBeenCalled();
+      const callArgs = mockPrisma.settlement.findMany.mock.calls[0][0];
+      expect(callArgs.where.teamId).toBeUndefined();
+    });
+
+    it("startDate/endDate 는 KST 달력일 경계(UTC 자정 −9h / +15h)로 변환한다", async () => {
+      mockPrisma.settlement.findMany.mockResolvedValue([]);
+      mockPrisma.settlement.count.mockResolvedValue(0);
+
+      await service.getSettlements(
+        { startDate: "2026-01-01", endDate: "2026-01-31" } as any,
+        admin,
+      );
 
       const callArgs = mockPrisma.settlement.findMany.mock.calls[0][0];
-      expect(callArgs.where.status).toBe("PENDING");
+      expect(callArgs.where.createdAt).toEqual({
+        gte: new Date("2025-12-31T15:00:00.000Z"),
+        lt: new Date("2026-01-31T15:00:00.000Z"),
+      });
+    });
+
+    it("DIRECTOR 는 관리 팀 교집합으로만 조회한다", async () => {
+      mockResourceAccess.resolveTeamScope.mockResolvedValue(["team-a"]);
+      mockPrisma.settlement.findMany.mockResolvedValue([]);
+      mockPrisma.settlement.count.mockResolvedValue(0);
+
+      await service.getSettlements({} as any, director);
+
+      const callArgs = mockPrisma.settlement.findMany.mock.calls[0][0];
+      expect(callArgs.where.teamId).toEqual({ in: ["team-a"] });
+    });
+
+    it("타 팀 teamId 지정(관리 범위 밖) → 빈 결과, DB 미조회", async () => {
+      mockResourceAccess.resolveTeamScope.mockResolvedValue([]);
+
+      const result = await service.getSettlements(
+        { teamId: "team-other" } as any,
+        otherCoach,
+      );
+
+      expect(result.data).toEqual([]);
+      expect(result.meta.total).toBe(0);
+      expect(mockPrisma.settlement.findMany).not.toHaveBeenCalled();
+    });
+
+    it("월(month) 필터를 settlementMonth 로 적용한다", async () => {
+      mockResourceAccess.resolveTeamScope.mockResolvedValue(["team-1"]);
+      mockPrisma.settlement.findMany.mockResolvedValue([]);
+      mockPrisma.settlement.count.mockResolvedValue(0);
+
+      await service.getSettlements({ month: "2026-04" } as any, admin);
+
+      const callArgs = mockPrisma.settlement.findMany.mock.calls[0][0];
+      expect(callArgs.where.settlementMonth).toBe("2026-04");
     });
 
     it("페이지네이션 메타를 올바르게 반환한다", async () => {
+      mockResourceAccess.resolveTeamScope.mockResolvedValue(["team-1"]);
       mockPrisma.settlement.findMany.mockResolvedValue([]);
       mockPrisma.settlement.count.mockResolvedValue(45);
 
-      const result = await service.getSettlements({
-        page: 3,
-        pageSize: 10,
-      } as any);
+      const result = await service.getSettlements(
+        { page: 3, pageSize: 10 } as any,
+        admin,
+      );
 
       expect(result.meta).toEqual({
         total: 45,
@@ -105,201 +192,488 @@ describe("SettlementsService", () => {
         totalPages: 5,
       });
     });
-
-    it("필터 없이 호출하면 기본 페이징으로 전체 조회한다", async () => {
-      mockPrisma.settlement.findMany.mockResolvedValue([]);
-      mockPrisma.settlement.count.mockResolvedValue(0);
-
-      const result = await service.getSettlements({} as any);
-
-      expect(result.meta.page).toBe(1);
-      expect(result.meta.pageSize).toBe(20);
-    });
   });
 
-  // ==================== getMySettlements ====================
+  // ==================== getSettlementById ====================
 
-  describe("getMySettlements", () => {
-    it("코치가 소속된 클럽의 정산만 반환한다", async () => {
-      mockPrisma.clubMember.findMany.mockResolvedValue([
-        { teamId: "club-1" },
-        { teamId: "club-2" },
-      ]);
-      mockPrisma.settlement.findMany.mockResolvedValue([]);
-      mockPrisma.settlement.count.mockResolvedValue(0);
+  describe("getSettlementById", () => {
+    const baseSettlement = {
+      id: "s-1",
+      teamId: "team-1",
+      settlementMonth: "2026-01",
+      status: "pending",
+      bankAccount: null,
+      transactions: [],
+      manager: null,
+      team: { id: "team-1", name: "Test Team" },
+    };
 
-      await service.getMySettlements("coach-1", {} as any);
-
-      const callArgs = mockPrisma.settlement.findMany.mock.calls[0][0];
-      expect(callArgs.where.teamId).toEqual({ in: ["club-1", "club-2"] });
-    });
-
-    it("소속 클럽이 없으면 빈 데이터를 반환한다", async () => {
-      mockPrisma.clubMember.findMany.mockResolvedValue([]);
-
-      const result = await service.getMySettlements("coach-1", {} as any);
-
-      expect(result.data).toEqual([]);
-      expect(result.meta.total).toBe(0);
-      expect(mockPrisma.settlement.findMany).not.toHaveBeenCalled();
-    });
-  });
-
-  // ==================== approveSettlement ====================
-
-  describe("approveSettlement", () => {
-    it("정상적으로 정산을 승인한다", async () => {
+    it("스코프 통과 + 관리자급이면 계좌 평문을 반환한다", async () => {
+      const encrypted = encryptField("110-222-333444");
       mockPrisma.settlement.findUnique.mockResolvedValue({
-        id: "s-1",
-        managerApprovalStatus: "PENDING",
-        status: "PENDING",
+        ...baseSettlement,
+        bankAccount: encrypted,
       });
-      mockPrisma.settlement.update.mockResolvedValue({
-        id: "s-1",
-        managerApprovalStatus: "APPROVED",
-        managerApprovalAt: new Date(),
-        managerId: "manager-1",
-      });
+      mockResourceAccess.resolveTeamScope.mockResolvedValue(["team-1"]);
 
-      const result = await service.approveSettlement("s-1", "manager-1");
+      const result = await service.getSettlementById("s-1", admin);
 
-      expect(result.managerApprovalStatus).toBe("APPROVED");
-      expect(result.managerId).toBe("manager-1");
+      expect(result.bankAccount).toBe("110-222-333444");
     });
 
-    it("이미 승인된 정산이면 BadRequestException", async () => {
+    it("스코프 통과 + 비관리자면 계좌를 마스킹한다", async () => {
+      const encrypted = encryptField("110-222-333444");
       mockPrisma.settlement.findUnique.mockResolvedValue({
-        id: "s-1",
-        managerApprovalStatus: "APPROVED",
-        status: "APPROVED",
+        ...baseSettlement,
+        bankAccount: encrypted,
       });
+      mockResourceAccess.resolveTeamScope.mockResolvedValue(["team-1"]);
+
+      const result = await service.getSettlementById("s-1", director);
+
+      expect(result.bankAccount).toBe("****3444");
+    });
+
+    it("[보안] 스코프 밖이면 ForbiddenException", async () => {
+      mockPrisma.settlement.findUnique.mockResolvedValue(baseSettlement);
+      mockResourceAccess.resolveTeamScope.mockResolvedValue([]);
 
       await expect(
-        service.approveSettlement("s-1", "manager-1"),
-      ).rejects.toThrow(BadRequestException);
+        service.getSettlementById("s-1", otherCoach),
+      ).rejects.toThrow(ForbiddenException);
     });
 
     it("존재하지 않는 정산이면 NotFoundException", async () => {
       mockPrisma.settlement.findUnique.mockResolvedValue(null);
 
       await expect(
-        service.approveSettlement("not-exist", "manager-1"),
+        service.getSettlementById("not-exist", admin),
       ).rejects.toThrow(NotFoundException);
+    });
+
+    it("COACH 는 스코프 통과해도 bankName·bankAccount·accountHolder 가 null 이다", async () => {
+      const encrypted = encryptField("110-222-333444");
+      mockPrisma.settlement.findUnique.mockResolvedValue({
+        ...baseSettlement,
+        bankName: "국민은행",
+        bankAccount: encrypted,
+        accountHolder: "홍길동",
+      });
+      mockResourceAccess.resolveTeamScope.mockResolvedValue(["team-1"]);
+
+      const result = await service.getSettlementById("s-1", coach);
+
+      expect(result.bankName).toBeNull();
+      expect(result.bankAccount).toBeNull();
+      expect(result.accountHolder).toBeNull();
     });
   });
 
-  // ==================== rejectSettlement ====================
+  // ==================== getSettlementDetails (스코프) ====================
 
-  describe("rejectSettlement", () => {
-    it("정상적으로 정산을 반려하고 사유를 반환한다", async () => {
+  describe("getSettlementDetails", () => {
+    it("스코프 밖이면 ForbiddenException", async () => {
       mockPrisma.settlement.findUnique.mockResolvedValue({
         id: "s-1",
-        managerApprovalStatus: "PENDING",
-        status: "PENDING",
+        teamId: "team-1",
       });
-      mockPrisma.settlement.update.mockResolvedValue({
-        id: "s-1",
-        managerApprovalStatus: "REJECTED",
-        managerApprovalAt: new Date(),
-        managerId: "manager-1",
-      });
+      mockResourceAccess.resolveTeamScope.mockResolvedValue([]);
 
-      const result = await service.rejectSettlement(
+      await expect(
+        service.getSettlementDetails(
+          "s-1",
+          { page: 1, pageSize: 20 },
+          otherCoach,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it("스코프 통과 시 상세 내역을 페이징 반환한다", async () => {
+      mockPrisma.settlement.findUnique.mockResolvedValue({
+        id: "s-1",
+        teamId: "team-1",
+      });
+      mockResourceAccess.resolveTeamScope.mockResolvedValue(["team-1"]);
+      mockPrisma.settlementDetail.findMany.mockResolvedValue([]);
+      mockPrisma.settlementDetail.count.mockResolvedValue(0);
+
+      const result = await service.getSettlementDetails(
         "s-1",
-        "manager-1",
-        "금액 오류",
+        { page: 1, pageSize: 20 },
+        director,
       );
 
-      expect(result.managerApprovalStatus).toBe("REJECTED");
-      expect(result.reason).toBe("금액 오류");
-    });
-
-    it("사유 없이 반려해도 null로 처리된다", async () => {
-      mockPrisma.settlement.findUnique.mockResolvedValue({
-        id: "s-1",
-        managerApprovalStatus: "PENDING",
-        status: "PENDING",
-      });
-      mockPrisma.settlement.update.mockResolvedValue({
-        id: "s-1",
-        managerApprovalStatus: "REJECTED",
-        managerApprovalAt: new Date(),
-        managerId: "manager-1",
-      });
-
-      const result = await service.rejectSettlement("s-1", "manager-1");
-
-      expect(result.reason).toBeNull();
-    });
-
-    it("이미 반려된 정산이면 BadRequestException", async () => {
-      mockPrisma.settlement.findUnique.mockResolvedValue({
-        id: "s-1",
-        managerApprovalStatus: "REJECTED",
-        status: "REJECTED",
-      });
-
-      await expect(
-        service.rejectSettlement("s-1", "manager-1", "중복 반려"),
-      ).rejects.toThrow(BadRequestException);
+      expect(result.meta.page).toBe(1);
     });
 
     it("존재하지 않는 정산이면 NotFoundException", async () => {
       mockPrisma.settlement.findUnique.mockResolvedValue(null);
 
       await expect(
-        service.rejectSettlement("not-exist", "manager-1"),
+        service.getSettlementDetails(
+          "not-exist",
+          { page: 1, pageSize: 20 },
+          admin,
+        ),
       ).rejects.toThrow(NotFoundException);
+    });
+
+    it("COACH 는 스코프 통과해도 건별 명세는 403 이다", async () => {
+      mockPrisma.settlement.findUnique.mockResolvedValue({
+        id: "s-1",
+        teamId: "team-1",
+      });
+      mockResourceAccess.resolveTeamScope.mockResolvedValue(["team-1"]);
+
+      await expect(
+        service.getSettlementDetails("s-1", { page: 1, pageSize: 20 }, coach),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockPrisma.settlementDetail.findMany).not.toHaveBeenCalled();
     });
   });
 
-  // ==================== adminApproveSettlement ====================
+  // ==================== 명세 필터·요약·CSV ====================
 
-  describe("adminApproveSettlement", () => {
-    it("pending 상태 정산을 approved로 전환하고 managerApprovalStatus를 APPROVED로 설정한다", async () => {
+  describe("명세 필터·요약·CSV", () => {
+    const inScope = () => {
+      mockPrisma.settlement.findUnique.mockResolvedValue({
+        id: "s-1",
+        teamId: "team-1",
+        settlementMonth: "2026-07",
+      });
+      mockResourceAccess.resolveTeamScope.mockResolvedValue(["team-1"]);
+      mockPrisma.settlementDetail.findMany.mockResolvedValue([]);
+      mockPrisma.settlementDetail.count.mockResolvedValue(0);
+    };
+
+    it("구분·검색어·출처 필터가 where 로 전달되고 count 와 같은 조건이다", async () => {
+      inScope();
+      mockPrisma.$queryRaw.mockResolvedValue([{ id: "d-1" }, { id: "d-2" }]);
+
+      await service.getSettlementDetails(
+        "s-1",
+        {
+          page: 2,
+          pageSize: 10,
+          entryType: "REFUND",
+          q: "화요",
+          sourceType: "CLASS",
+          sourceId: "cls-1",
+        },
+        director,
+      );
+
+      const where = {
+        settlementId: "s-1",
+        entryType: "REFUND",
+        sourceType: "CLASS",
+        sourceId: "cls-1",
+        id: { in: ["d-1", "d-2"] },
+      };
+      expect(mockPrisma.settlementDetail.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where, skip: 10, take: 10 }),
+      );
+      expect(mockPrisma.settlementDetail.count).toHaveBeenCalledWith({ where });
+    });
+
+    it("검색어의 역슬래시·%·_ 는 LIKE 리터럴로 이스케이프한다", () => {
+      expect(escapeLikePattern("50%_a\\b")).toBe("50\\%\\_a\\\\b");
+      expect(escapeLikePattern("화요")).toBe("화요");
+    });
+
+    it("검색어가 있으면 이스케이프된 패턴으로 이 정산 안에서만 찾는다", async () => {
+      inScope();
+      mockPrisma.$queryRaw.mockResolvedValue([]);
+
+      await service.getSettlementDetails("s-1", { q: "%" }, admin);
+
+      const sql = mockPrisma.$queryRaw.mock.calls[0][0];
+      expect(sql.values).toEqual(["s-1", "%\\%%", "%\\%%"]);
+      expect(mockPrisma.settlementDetail.count).toHaveBeenCalledWith({
+        where: { settlementId: "s-1", id: { in: [] } },
+      });
+    });
+
+    it("OTHER 출처는 sourceId=null + 상품명 정확 일치로 거른다", async () => {
+      inScope();
+
+      await service.getSettlementDetails(
+        "s-1",
+        { sourceType: "OTHER", productName: "알 수 없음" },
+        admin,
+      );
+
+      expect(mockPrisma.settlementDetail.count).toHaveBeenCalledWith({
+        where: {
+          settlementId: "s-1",
+          sourceType: "OTHER",
+          sourceId: null,
+          productName: "알 수 없음",
+        },
+      });
+    });
+
+    it("sourceId 없는 CLASS 그룹도 sourceId=null + 상품명으로 거른다(요약 그룹 키와 동일)", async () => {
+      inScope();
+
+      await service.getSettlementDetails(
+        "s-1",
+        { sourceType: "CLASS", productName: "화요반" },
+        admin,
+      );
+
+      expect(mockPrisma.settlementDetail.count).toHaveBeenCalledWith({
+        where: {
+          settlementId: "s-1",
+          sourceType: "CLASS",
+          sourceId: null,
+          productName: "화요반",
+        },
+      });
+    });
+
+    it("sourceId 만 오면 400", async () => {
+      inScope();
+
+      await expect(
+        service.getSettlementDetails("s-1", { sourceId: "cls-1" }, admin),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it.each([
+      ["ADMIN", admin],
+      ["DIRECTOR", director],
+      ["COACH", coach],
+    ])("요약은 %s 도 조회할 수 있다", async (_label, user) => {
+      inScope();
+
+      const result = await service.getSettlementDetailsSummary("s-1", user);
+
+      expect(result.meta.groupCount).toBe(0);
+    });
+
+    it("요약도 스코프 밖이면 403, 없으면 404", async () => {
+      mockPrisma.settlement.findUnique.mockResolvedValue({
+        id: "s-1",
+        teamId: "team-1",
+      });
+      mockResourceAccess.resolveTeamScope.mockResolvedValue([]);
+      await expect(
+        service.getSettlementDetailsSummary("s-1", otherCoach),
+      ).rejects.toThrow(ForbiddenException);
+
+      mockPrisma.settlement.findUnique.mockResolvedValue(null);
+      await expect(
+        service.getSettlementDetailsSummary("x", admin),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it("CSV 는 COACH 403", async () => {
+      inScope();
+
+      await expect(
+        service.exportSettlementDetails("s-1", {}, coach),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it("CSV 는 같은 필터로 전체 행을 내리고 음수 금액은 숫자로 둔다", async () => {
+      inScope();
+      mockPrisma.settlementDetail.findMany.mockResolvedValue([
+        {
+          entryType: "REFUND",
+          sourceType: "CLASS",
+          productName: "=HYPERLINK()",
+          orderNumber: "ORD-1",
+          paymentDate: new Date("2026-07-10T00:00:00Z"),
+          paymentMethod: "card",
+          attributionMonth: "2026-07",
+          paymentAmount: -3000,
+          feeRate: 0,
+          feeAmount: 0,
+          actualAmount: -3000,
+          memo: "환불",
+        },
+      ]);
+
+      const { buffer, filename } = await service.exportSettlementDetails(
+        "s-1",
+        { entryType: "REFUND", page: 3, pageSize: 5 },
+        director,
+      );
+
+      const call = mockPrisma.settlementDetail.findMany.mock.calls[0][0];
+      expect(call.where).toEqual({ settlementId: "s-1", entryType: "REFUND" });
+      expect(call.skip).toBeUndefined();
+      expect(call.take).toBe(10001);
+      expect(mockPrisma.settlementDetail.count).not.toHaveBeenCalled();
+      const csv = buffer.toString("utf-8");
+      expect(csv).toContain(
+        "환불,수업,'=HYPERLINK(),ORD-1,2026-07-10,card,2026-07,-3000,0,0,-3000,환불",
+      );
+      expect(filename).toBe("settlement_details_2026-07_s-1.csv");
+    });
+
+    it("CSV 상한을 넘으면 400", async () => {
+      inScope();
+      mockPrisma.settlementDetail.findMany.mockResolvedValue(
+        Array.from({ length: 10001 }, () => ({})),
+      );
+
+      await expect(
+        service.exportSettlementDetails("s-1", {}, admin),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  // ==================== approve ====================
+
+  describe("approve", () => {
+    it("pending → approved 전이에 성공하고 소속 Detail 을 APPROVED 로 동기화한다", async () => {
+      mockPrisma.settlement.updateMany.mockResolvedValue({ count: 1 });
+      mockPrisma.settlement.findUniqueOrThrow.mockResolvedValue({
+        id: "s-1",
+        status: "approved",
+        managerId: "admin-1",
+        managerApprovalStatus: "APPROVED",
+        managerApprovalAt: new Date(),
+      });
+
+      const result = await service.approve("s-1", "admin-1", "확인 완료");
+
+      expect(mockPrisma.settlement.updateMany).toHaveBeenCalledWith({
+        where: { id: "s-1", status: "pending", netAmount: { gte: 0 } },
+        data: expect.objectContaining({
+          status: "approved",
+          managerId: "admin-1",
+          managerApprovalStatus: "APPROVED",
+        }),
+      });
+      expect(mockPrisma.settlementDetail.updateMany).toHaveBeenCalledWith({
+        where: { settlementId: "s-1" },
+        data: { status: "APPROVED" },
+      });
+      expect(result.status).toBe("approved");
+    });
+
+    it("마감 생성기와 동일한 팀 단위 advisory lock 을 tx 선두에서 획득한다", async () => {
+      mockPrisma.settlement.findUnique.mockResolvedValue({ teamId: "team-42" });
+      mockPrisma.settlement.updateMany.mockResolvedValue({ count: 1 });
+      mockPrisma.settlement.findUniqueOrThrow.mockResolvedValue({
+        id: "s-1",
+        status: "approved",
+      });
+
+      await service.approve("s-1", "admin-1");
+
+      // acquireSettlementCloseLock 은 내부적으로 $queryRaw(pg_advisory_xact_lock) 를 호출한다 —
+      //   마감 생성기(SettlementCloseService)의 재마감과 같은 lock 을 공유함을 증명한다.
+      expect(mockPrisma.$queryRaw).toHaveBeenCalled();
+    });
+
+    it("이미 approved 인 정산은 updateMany count 0 → 400, 거래 행 미생성", async () => {
+      mockPrisma.settlement.updateMany.mockResolvedValue({ count: 0 });
+      mockPrisma.settlement.findUnique.mockResolvedValue({
+        id: "s-1",
+        status: "approved",
+      });
+
+      await expect(service.approve("s-1", "admin-1")).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(mockPrisma.settlementTransaction.create).not.toHaveBeenCalled();
+    });
+
+    it("순지급액이 음수면 상태가 pending 이어도 승인할 수 없다(전용 메시지, Detail 불변)", async () => {
+      mockPrisma.settlement.updateMany.mockResolvedValue({ count: 0 });
       mockPrisma.settlement.findUnique.mockResolvedValue({
         id: "s-1",
         status: "pending",
-      });
-      mockPrisma.settlement.update.mockResolvedValue({
-        id: "s-1",
-        status: "approved",
-        managerApprovalStatus: "APPROVED",
-        managerApprovalAt: new Date(),
-        managerId: "admin-1",
+        netAmount: -1000,
       });
 
-      const result = await service.adminApproveSettlement("s-1", "admin-1");
-
-      expect(result.status).toBe("approved");
-      expect(result.managerApprovalStatus).toBe("APPROVED");
-      expect(result.managerId).toBe("admin-1");
-      const updateArgs = mockPrisma.settlement.update.mock.calls[0][0];
-      expect(updateArgs.data.status).toBe("approved");
+      await expect(service.approve("s-1", "admin-1")).rejects.toThrow(
+        "순지급액이 음수인 정산은 승인할 수 없습니다. 다음 달 정산에서 처리하세요.",
+      );
+      expect(mockPrisma.settlementDetail.updateMany).not.toHaveBeenCalled();
+      expect(mockPrisma.settlement.findUniqueOrThrow).not.toHaveBeenCalled();
     });
 
-    it("pending이 아닌 정산은 BadRequestException을 발생시킨다", async () => {
-      mockPrisma.settlement.findUnique.mockResolvedValue({
-        id: "s-1",
-        status: "approved",
-      });
+    it("존재하지 않는 정산이면 NotFoundException", async () => {
+      mockPrisma.settlement.updateMany.mockResolvedValue({ count: 0 });
+      mockPrisma.settlement.findUnique.mockResolvedValue(null);
 
-      await expect(
-        service.adminApproveSettlement("s-1", "admin-1"),
-      ).rejects.toThrow(BadRequestException);
+      await expect(service.approve("not-exist", "admin-1")).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 
-  // ==================== payoutSettlement ====================
+  // ==================== reject ====================
 
-  describe("payoutSettlement", () => {
-    it("approved 상태 정산을 paid로 전환하고 SettlementTransaction(type=payout)을 생성한다", async () => {
+  describe("reject", () => {
+    it("pending → rejected 전이에 성공하고 사유를 반환한다", async () => {
+      mockPrisma.settlement.updateMany.mockResolvedValue({ count: 1 });
+      mockPrisma.settlement.findUniqueOrThrow.mockResolvedValue({
+        id: "s-1",
+        status: "rejected",
+        managerId: "admin-1",
+        managerApprovalStatus: "REJECTED",
+        managerApprovalAt: new Date(),
+      });
+
+      const result = await service.reject("s-1", "admin-1", "금액 오류");
+
+      expect(result.reason).toBe("금액 오류");
+      expect(result.status).toBe("rejected");
+    });
+
+    it("소속 Detail 을 REJECTED 로 동기화하고 사유를 SettlementTransaction(reject, amount 0)로 남긴다", async () => {
+      mockPrisma.settlement.updateMany.mockResolvedValue({ count: 1 });
+      mockPrisma.settlement.findUniqueOrThrow.mockResolvedValue({
+        id: "s-1",
+        status: "rejected",
+        managerId: "admin-1",
+        managerApprovalStatus: "REJECTED",
+        managerApprovalAt: new Date(),
+      });
+
+      await service.reject("s-1", "admin-1", "금액 오류");
+
+      expect(mockPrisma.settlementDetail.updateMany).toHaveBeenCalledWith({
+        where: { settlementId: "s-1" },
+        data: { status: "REJECTED" },
+      });
+      expect(mockPrisma.settlementTransaction.create).toHaveBeenCalledTimes(1);
+      const txArgs = mockPrisma.settlementTransaction.create.mock.calls[0][0];
+      expect(txArgs.data).toEqual(
+        expect.objectContaining({
+          settlementId: "s-1",
+          transactionType: "reject",
+          amount: 0,
+          description: "금액 오류",
+        }),
+      );
+    });
+
+    it("pending 이 아니면 400", async () => {
+      mockPrisma.settlement.updateMany.mockResolvedValue({ count: 0 });
       mockPrisma.settlement.findUnique.mockResolvedValue({
         id: "s-1",
-        status: "approved",
-        netAmount: 500000,
+        status: "paid",
       });
-      mockPrisma.settlement.update.mockResolvedValue({
+
+      await expect(service.reject("s-1", "admin-1", "사유")).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+  });
+
+  // ==================== payout ====================
+
+  describe("payout", () => {
+    it("approved → paid 전이 성공 시 SettlementTransaction(payout) 1건을 생성한다", async () => {
+      mockPrisma.settlement.updateMany.mockResolvedValue({ count: 1 });
+      mockPrisma.settlement.findUniqueOrThrow.mockResolvedValue({
         id: "s-1",
         status: "paid",
         completedAt: new Date(),
@@ -307,80 +681,267 @@ describe("SettlementsService", () => {
       });
       mockPrisma.settlementTransaction.create.mockResolvedValue({});
 
-      const result = await service.payoutSettlement("s-1", "admin-1");
+      const result = await service.payout("s-1", "admin-1");
 
       expect(result.status).toBe("paid");
-      expect(result.completedAt).toBeDefined();
-      const txCreateArgs =
-        mockPrisma.settlementTransaction.create.mock.calls[0][0];
-      expect(txCreateArgs.data.transactionType).toBe("payout");
-      expect(txCreateArgs.data.amount).toBe(500000);
+      expect(mockPrisma.settlementTransaction.create).toHaveBeenCalledTimes(1);
+      const txArgs = mockPrisma.settlementTransaction.create.mock.calls[0][0];
+      expect(txArgs.data.transactionType).toBe("payout");
+      expect(txArgs.data.amount).toBe(500000);
+      expect(mockPrisma.settlementDetail.updateMany).toHaveBeenCalledWith({
+        where: { settlementId: "s-1" },
+        data: { status: "PAID" },
+      });
     });
 
-    it("approved가 아닌 정산은 BadRequestException을 발생시킨다", async () => {
+    it("approved 가 아니면 400 이고 거래 행이 생성되지 않는다(이중 요청 방지)", async () => {
+      mockPrisma.settlement.updateMany.mockResolvedValue({ count: 0 });
       mockPrisma.settlement.findUnique.mockResolvedValue({
         id: "s-1",
         status: "paid",
-        netAmount: 500000,
       });
 
-      await expect(service.payoutSettlement("s-1", "admin-1")).rejects.toThrow(
+      await expect(service.payout("s-1", "admin-1")).rejects.toThrow(
         BadRequestException,
       );
+      expect(mockPrisma.settlementTransaction.create).not.toHaveBeenCalled();
+    });
+
+    it("순지급액이 음수면 상태가 approved 여도 지급할 수 없다(방어 가드, 전용 메시지)", async () => {
+      mockPrisma.settlement.updateMany.mockResolvedValue({ count: 0 });
+      mockPrisma.settlement.findUnique.mockResolvedValue({
+        id: "s-1",
+        status: "approved",
+        netAmount: -1000,
+      });
+
+      await expect(service.payout("s-1", "admin-1")).rejects.toThrow(
+        "순지급액이 음수인 정산은 지급할 수 없습니다. 다음 달 정산에서 처리하세요.",
+      );
+      expect(mockPrisma.settlementTransaction.create).not.toHaveBeenCalled();
+      expect(mockPrisma.settlementDetail.updateMany).not.toHaveBeenCalled();
     });
   });
 
-  // ==================== getSettlementById ====================
+  // ==================== updateBankInfo ====================
 
-  describe("getSettlementById", () => {
-    it("존재하는 정산 상세를 반환한다", async () => {
-      const mockSettlement = {
+  describe("updateBankInfo", () => {
+    const dto = {
+      bankName: "국민은행",
+      bankAccount: "110-222-333444",
+      accountHolder: "홍길동",
+    };
+
+    it("계좌번호를 암호화하여 저장하고 마스킹된 값을 응답한다", async () => {
+      mockPrisma.settlement.updateMany.mockResolvedValue({ count: 1 });
+      mockPrisma.settlement.findUniqueOrThrow.mockResolvedValue({
         id: "s-1",
-        teamId: "club-1",
-        settlementMonth: "2026-01",
-        totalRevenue: 1000000,
-        status: "COMPLETED",
-        details: [],
-        manager: null,
-        team: { id: "club-1", name: "Test Club" },
-      };
-      mockPrisma.settlement.findUnique.mockResolvedValue(mockSettlement);
-
-      // [2026-06-10 SECURITY] 클럽 스코프 검증 추가 — ADMIN 요청자는 통과.
-      const result = await service.getSettlementById("s-1", {
-        id: "admin-1",
-        userType: "ADMIN",
+        bankName: "국민은행",
+        accountHolder: "홍길동",
       });
 
-      expect(result.id).toBe("s-1");
+      const result = await service.updateBankInfo("s-1", "admin-1", dto);
+
+      const updateArgs = mockPrisma.settlement.updateMany.mock.calls[0][0];
+      expect(updateArgs.where).toEqual({ id: "s-1", status: { not: "paid" } });
+      expect(updateArgs.data.bankAccount).not.toBe(dto.bankAccount);
+      expect(result.bankAccount).toBe("****3444");
     });
 
-    it("[보안] 타 클럽 코치는 정산 상세 조회 시 ForbiddenException", async () => {
-      const mockSettlement = {
-        id: "s-1",
-        teamId: "club-1",
-        details: [],
-        manager: null,
-        team: { id: "club-1", name: "Test Club" },
-      };
-      mockPrisma.settlement.findUnique.mockResolvedValue(mockSettlement);
-      mockPrisma.team.findFirst.mockResolvedValue(null);
-      mockPrisma.teamMember.findFirst.mockResolvedValue(null);
+    it("status가 paid 면 400 (조건부 updateMany 0건)", async () => {
+      mockPrisma.settlement.updateMany.mockResolvedValue({ count: 0 });
+      mockPrisma.settlement.findUnique.mockResolvedValue({ id: "s-1" });
 
       await expect(
-        service.getSettlementById("s-1", {
-          id: "other-coach",
-          userType: "COACH",
-        }),
-      ).rejects.toThrow(ForbiddenException);
+        service.updateBankInfo("s-1", "admin-1", dto),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockPrisma.settlement.findUniqueOrThrow).not.toHaveBeenCalled();
     });
 
     it("존재하지 않는 정산이면 NotFoundException", async () => {
+      mockPrisma.settlement.updateMany.mockResolvedValue({ count: 0 });
       mockPrisma.settlement.findUnique.mockResolvedValue(null);
 
-      await expect(service.getSettlementById("not-exist")).rejects.toThrow(
-        NotFoundException,
+      await expect(
+        service.updateBankInfo("not-exist", "admin-1", dto),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  // ==================== exportSettlements ====================
+
+  describe("exportSettlements", () => {
+    it("13열 헤더 + BOM 을 포함한 CSV 를 생성한다", async () => {
+      mockPrisma.settlement.findMany.mockResolvedValue([
+        {
+          id: "s-1",
+          settlementMonth: "2026-01",
+          totalRevenue: 100000,
+          platformFee: 5000,
+          paymentFee: 3000,
+          refundAmount: 0,
+          netAmount: 92000,
+          status: "paid",
+          bankName: "국민은행",
+          bankAccount: encryptField("110-222-333444"),
+          accountHolder: "홍길동",
+          createdAt: new Date("2026-01-15T00:00:00Z"),
+          team: { id: "team-1", name: "Test Team" },
+        },
+      ]);
+
+      const buffer = await service.exportSettlements();
+      const csv = buffer.toString("utf-8");
+
+      expect(csv.charCodeAt(0)).toBe(0xfeff);
+      expect(csv).toContain(
+        "ID,정산월,클럽명,총매출,플랫폼수수료,PG수수료,환불금액,정산금액,상태,은행명,계좌번호,예금주,생성일",
       );
+      expect(csv).toContain("110-222-333444");
+    });
+
+    it("month 필터를 settlementMonth 로 적용한다", async () => {
+      mockPrisma.settlement.findMany.mockResolvedValue([]);
+
+      await service.exportSettlements(undefined, undefined, "2026-04");
+
+      const callArgs = mockPrisma.settlement.findMany.mock.calls[0][0];
+      expect(callArgs.where.settlementMonth).toBe("2026-04");
+    });
+  });
+
+  // ==================== getSettlementsSummary ====================
+
+  describe("getSettlementsSummary", () => {
+    it("월 단위 상태별 건수·순지급액 합계를 반환한다", async () => {
+      mockPrisma.settlement.groupBy.mockResolvedValue([
+        { status: "pending", _count: { _all: 3 }, _sum: { netAmount: 30000 } },
+        { status: "approved", _count: { _all: 2 }, _sum: { netAmount: 20000 } },
+        { status: "paid", _count: { _all: 1 }, _sum: { netAmount: 10000 } },
+        { status: "rejected", _count: { _all: 1 }, _sum: { netAmount: 0 } },
+      ]);
+
+      const result = await service.getSettlementsSummary("2026-07");
+
+      expect(mockPrisma.settlement.groupBy).toHaveBeenCalledWith({
+        by: ["status"],
+        where: { settlementMonth: "2026-07" },
+        _count: { _all: true },
+        _sum: { netAmount: true },
+      });
+      expect(result).toEqual({
+        pending: { count: 3, netAmount: 30000 },
+        approved: { count: 2, netAmount: 20000 },
+        paid: { count: 1, netAmount: 10000 },
+        rejected: { count: 1 },
+      });
+    });
+
+    it("특정 상태가 없으면 0으로 채운다", async () => {
+      mockPrisma.settlement.groupBy.mockResolvedValue([]);
+
+      const result = await service.getSettlementsSummary("2026-07");
+
+      expect(result).toEqual({
+        pending: { count: 0, netAmount: 0 },
+        approved: { count: 0, netAmount: 0 },
+        paid: { count: 0, netAmount: 0 },
+        rejected: { count: 0 },
+      });
+    });
+
+    it("month 형식이 아니면 400", async () => {
+      await expect(service.getSettlementsSummary("2026-13")).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(service.getSettlementsSummary("")).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it("month 를 생략하면 전체 기간을 집계한다(어드민 대시보드 위젯)", async () => {
+      mockPrisma.settlement.groupBy.mockResolvedValue([]);
+
+      const result = await service.getSettlementsSummary();
+
+      expect(mockPrisma.settlement.groupBy).toHaveBeenCalledWith({
+        by: ["status"],
+        where: {},
+        _count: { _all: true },
+        _sum: { netAmount: true },
+      });
+      expect(result).toEqual({
+        pending: { count: 0, netAmount: 0 },
+        approved: { count: 0, netAmount: 0 },
+        paid: { count: 0, netAmount: 0 },
+        rejected: { count: 0 },
+      });
+    });
+  });
+
+  // ==================== getPayoutExport ====================
+
+  describe("getPayoutExport", () => {
+    it("approved 상태만 조회하고 계좌를 복호화 평문으로 포함한다", async () => {
+      mockPrisma.settlement.findMany.mockResolvedValue([
+        {
+          netAmount: 92000,
+          status: "approved",
+          bankName: "국민은행",
+          bankAccount: encryptField("110-222-333444"),
+          accountHolder: "홍길동",
+          team: { name: "Test Team", teamCode: "TP001" },
+        },
+      ]);
+
+      const buffer = await service.getPayoutExport("2026-07");
+      const csv = buffer.toString("utf-8");
+
+      expect(mockPrisma.settlement.findMany.mock.calls[0][0].where).toEqual({
+        settlementMonth: "2026-07",
+        status: "approved",
+        netAmount: { gt: 0 },
+      });
+      expect(csv.charCodeAt(0)).toBe(0xfeff);
+      expect(csv).toContain(
+        "팀명,팀코드,정산월,순지급액,상태,은행명,계좌번호,예금주",
+      );
+      expect(csv).toContain("110-222-333444");
+      expect(csv).toContain("TP001");
+    });
+
+    it("팀명이 수식으로 시작하면 앞에 작은따옴표를 붙여 무해화한다(CSV 수식 주입 방지)", async () => {
+      mockPrisma.settlement.findMany.mockResolvedValue([
+        {
+          netAmount: 1000,
+          status: "approved",
+          bankName: null,
+          bankAccount: null,
+          accountHolder: null,
+          team: { name: "=SUM(A1:A10)", teamCode: "@evil" },
+        },
+      ]);
+
+      const buffer = await service.getPayoutExport("2026-07");
+      const csv = buffer.toString("utf-8");
+
+      expect(csv).toContain("'=SUM(A1:A10)");
+      expect(csv).toContain("'@evil");
+    });
+
+    it("month 형식이 아니면 400", async () => {
+      await expect(service.getPayoutExport("bad-month")).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it("음수·0원 정산은 쿼리 조건에서 제외한다(netAmount > 0)", async () => {
+      mockPrisma.settlement.findMany.mockResolvedValue([]);
+
+      await service.getPayoutExport("2026-07");
+
+      const where = mockPrisma.settlement.findMany.mock.calls[0][0].where;
+      expect(where.netAmount).toEqual({ gt: 0 });
     });
   });
 });

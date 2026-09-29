@@ -714,6 +714,18 @@ export default function DirectorPaymentsPage() {
                   </>
                 )}
               </div>
+
+              {/* 월별 지급 정산(/settlements) 바로가기 — 훈련/대회 소계와 별개로 팀 계좌 지급 내역 조회 */}
+              <div className="px-5 pb-5">
+                <button
+                  type="button"
+                  onClick={() => void navigate('/settlements')}
+                  className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-w-md border-[1.5px] border-it-line-strong py-3 text-[14px] font-semibold text-it-blue-600 transition-colors hover:bg-it-fill active:brightness-95 motion-reduce:transition-none dark:border-rink-700 dark:text-wtext-4 dark:hover:bg-rink-700"
+                >
+                  {MESSAGES.settlement.viewMonthlySettlements}
+                  <Icon name="chevron_right" className="text-[16px]" aria-hidden="true" />
+                </button>
+              </div>
             </section>
           )}
         </div>

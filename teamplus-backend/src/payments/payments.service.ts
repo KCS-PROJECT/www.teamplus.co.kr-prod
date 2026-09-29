@@ -47,6 +47,10 @@ import { JwtUserPayload } from "@/common/interfaces/authenticated-request.interf
 import { acquireClassSeatLock } from "@/classes/utils/class-locks.util";
 import { resolveRefundRequestRecipients } from "./refund-requests/refund-request-recipients.util";
 import { Logger } from "@nestjs/common";
+import { SettlementSummaryService } from "./settlement/settlement-summary.service";
+import { buildSettlementOverviewResponse } from "./settlement/settlement-overview.mapper";
+import { resolveSettlementYearMonth } from "./settlement/attribution.util";
+import { buildPaymentTeamScopeWhere } from "./settlement/payment-team-scope.util";
 
 export interface InitiatePaymentDto {
   productId: string;
@@ -167,6 +171,7 @@ export class PaymentsService {
     private readonly redisService: RedisService,
     private readonly creditDomain: CreditDomainService, // PR-D 후속 (v0.8): 토스 confirm MemberCredit 발급
     private readonly notificationsService: NotificationsService, // [2026-06-19] 결제 완료 → 감독/코치 알림
+    private readonly settlementSummaryService: SettlementSummaryService, // [정산 센터 소비] 정산 개요 소계 재사용
   ) {}
 
   // ────────────────────────────────────────────────────────────────────
@@ -2280,148 +2285,49 @@ export class PaymentsService {
   }
 
   /**
-   * [신규 2026-05-14] 정산 개요 — admin 정산관리 "수업 결제 정산" 탭용.
+   * [정산 센터 소비 2026-09] 정산 개요 — admin 정산관리 "수업 결제 정산" 탭용.
    *
-   * 전체 활성 팀 → 수업 → ClassRegistration/Enrollment 를 집계하여
-   * 팀별 + 전체 합계의 결제완료/미납 금액·인원 통계를 반환한다.
-   *  - paid 판정: ClassRegistration.status !== 'inactive' AND (Payment.completed OR Enrollment.status='paid')
-   *  - paidAmount: 실제 Payment.amount 우선, 없으면 Enrollment.product.price, 그래도 없으면 수업 최저 상품가
-   *  - unpaidAmount: 미납 학생의 추정 금액 (Enrollment.product.price 또는 수업 최저 상품가)
-   *  - 수수료(3%)는 프론트에서 표시 계산 — 본 메서드는 raw 금액만 반환.
+   * ⚠️ 자체 집계 금지 — SettlementSummaryService.getTeamSummariesForTeams(정산 센터 SoT)가
+   *  이미 산출한 수업/대회 소계를 팀별로 재가공만 한다(attribution.util 순수 함수 재사용).
+   *  이 라우트는 @Roles("ADMIN") 로만 열려 있어 요청자 스코프 가드가 필요 없다 — 활성 팀
+   *  id 를 직접 좁혀 배치 빌더에 넘긴다(관리자 스코프로 getTeamSettlementSummary 를 부르면
+   *  전체 팀 — 비활성 포함 — 을 집계한 뒤 활성 팀만 추려 버려서 낭비였다).
+   *  Dual Emit — 기존 7개 응답 키(classCount/studentCount/paidCount/unpaidCount/
+   *  paidAmount/unpaidAmount/totalAmount)는 alias 로 값 의미 그대로 유지하고
+   *  canonical 키(memberCount/outstandingAmount/billedAmount 등)를 추가한다.
    */
-  async getSettlementOverview() {
-    const teams = await this.prisma.team.findMany({
-      where: { isActive: true },
-      select: { id: true, name: true, teamCode: true },
-      orderBy: { name: "asc" },
-    });
-    const teamIds = teams.map((t) => t.id);
+  async getSettlementOverview(
+    _requester: JwtUserPayload,
+    yearMonthRaw?: string,
+  ) {
+    const yearMonth = resolveSettlementYearMonth(yearMonthRaw);
 
-    const classes = await this.prisma.class.findMany({
-      where: { teamId: { in: teamIds } },
-      select: {
-        id: true,
-        teamId: true,
-        products: { select: { price: true }, orderBy: { price: "asc" } },
-      },
-    });
-    const classIds = classes.map((c) => c.id);
-
-    const registrations = classIds.length
-      ? await this.prisma.classRegistration.findMany({
-          where: { classId: { in: classIds } },
-          select: { id: true, classId: true, userId: true, status: true },
-        })
-      : [];
-
-    const enrollments = classIds.length
-      ? await this.prisma.enrollment.findMany({
-          where: { classId: { in: classIds } },
-          orderBy: { updatedAt: "desc" },
-          select: {
-            classId: true,
-            childId: true,
-            status: true,
-            product: { select: { price: true } },
-            payment: { select: { amount: true, paymentStatus: true } },
-          },
-        })
-      : [];
-
-    // classId:childId → 최신 enrollment
-    const enrollMap = new Map<string, (typeof enrollments)[number]>();
-    for (const e of enrollments) {
-      const key = `${e.classId}:${e.childId}`;
-      if (!enrollMap.has(key)) enrollMap.set(key, e);
-    }
-
-    const isPaid = (e: (typeof enrollments)[number] | undefined): boolean => {
-      if (!e) return false;
-      return e.payment?.paymentStatus === "completed" || e.status === "paid";
-    };
-
-    const classByTeam = new Map<string, typeof classes>();
-    for (const c of classes) {
-      // teamId 는 where 절로 teamIds 에 포함된 값만 조회되므로 사실상 non-null.
-      //  Prisma 스키마 타입(string|null) 대응 위해 가드.
-      if (!c.teamId) continue;
-      const arr = classByTeam.get(c.teamId) ?? [];
-      arr.push(c);
-      classByTeam.set(c.teamId, arr);
-    }
-    const regByClass = new Map<string, typeof registrations>();
-    for (const r of registrations) {
-      const arr = regByClass.get(r.classId) ?? [];
-      arr.push(r);
-      regByClass.set(r.classId, arr);
-    }
-
-    const teamStats = teams.map((team) => {
-      const teamClasses = classByTeam.get(team.id) ?? [];
-      let paidAmount = 0;
-      let unpaidAmount = 0;
-      let paidCount = 0;
-      let unpaidCount = 0;
-      let studentCount = 0;
-      for (const c of teamClasses) {
-        const fallbackPrice = c.products[0]?.price
-          ? Number(c.products[0].price)
-          : 0;
-        const regs = regByClass.get(c.id) ?? [];
-        for (const reg of regs) {
-          studentCount += 1;
-          const e = enrollMap.get(`${c.id}:${reg.userId}`);
-          // active 만 결제 집계 — expired(만료) 등 비활성 상태가 완납으로 오집계되지 않게 양성 비교.
-          const paid = reg.status === "active" && isPaid(e);
-          if (paid) {
-            paidCount += 1;
-            paidAmount +=
-              e?.payment?.amount ??
-              (e?.product?.price ? Number(e.product.price) : fallbackPrice);
-          } else {
-            unpaidCount += 1;
-            unpaidAmount += e?.product?.price
-              ? Number(e.product.price)
-              : fallbackPrice;
-          }
-        }
-      }
-      return {
-        teamId: team.id,
-        teamName: team.name,
-        teamCode: team.teamCode,
-        classCount: teamClasses.length,
-        studentCount,
-        paidCount,
-        unpaidCount,
-        paidAmount,
-        unpaidAmount,
-        totalAmount: paidAmount + unpaidAmount,
-      };
-    });
-
-    const totals = teamStats.reduce(
-      (acc, t) => ({
-        classCount: acc.classCount + t.classCount,
-        studentCount: acc.studentCount + t.studentCount,
-        paidCount: acc.paidCount + t.paidCount,
-        unpaidCount: acc.unpaidCount + t.unpaidCount,
-        paidAmount: acc.paidAmount + t.paidAmount,
-        unpaidAmount: acc.unpaidAmount + t.unpaidAmount,
-        totalAmount: acc.totalAmount + t.totalAmount,
+    const [teams, appSettings] = await Promise.all([
+      this.prisma.team.findMany({
+        where: { isActive: true },
+        select: { id: true, name: true, teamCode: true },
+        orderBy: { name: "asc" },
       }),
-      {
-        classCount: 0,
-        studentCount: 0,
-        paidCount: 0,
-        unpaidCount: 0,
-        paidAmount: 0,
-        unpaidAmount: 0,
-        totalAmount: 0,
-      },
-    );
+      this.prisma.appSettings.findFirst({
+        select: { commissionRate: true },
+      }),
+    ]);
 
-    return { totals, teams: teamStats };
+    const summaries =
+      await this.settlementSummaryService.getTeamSummariesForTeams(
+        teams.map((t) => t.id),
+        yearMonth,
+      );
+
+    const feeRate = appSettings ? Number(appSettings.commissionRate) : 0;
+
+    return buildSettlementOverviewResponse(
+      teams,
+      summaries.classes,
+      summaries.tournaments,
+      feeRate,
+      summaries.yearMonth,
+    );
   }
 
   /**
@@ -2838,20 +2744,14 @@ export class PaymentsService {
   }
 
   /**
-   * 팀 귀속 조건 — 결제↔수업/대회 연결로 판정한다.
+   * 팀 귀속 조건 — 결제↔수업/대회 연결로 판정한다(payment-team-scope.util 단일 SoT 위임).
    *  결제자는 보호자이고 팀에 속한 사람은 자녀라, TeamMember 축(레거시 getClubPayments)은
-   *  결제를 누락·오집계한다. 정산 센터(getTeamTransactions)와 동일 기준을 사용한다.
+   *  결제를 누락·오집계한다. 정산 센터(getTeamTransactions)·마감 생성기와 동일 기준을 쓴다.
    */
   private buildTeamScopeFilter(
     teamId: string,
   ): import("@prisma/client").Prisma.PaymentWhereInput {
-    return {
-      OR: [
-        { enrollments: { some: { class: { teamId } } } },
-        { monthlyBillingLines: { some: { billing: { class: { teamId } } } } },
-        { tournamentRegistrations: { some: { tournament: { teamId } } } },
-      ],
-    };
+    return buildPaymentTeamScopeWhere([teamId]);
   }
 
   /**
@@ -3061,57 +2961,6 @@ export class PaymentsService {
     attendanceCount?: number,
   ): Promise<{ amount: number; description: string }> {
     return this.createService.calculateFee(classId, feeType, attendanceCount);
-  }
-
-  // ==================== 정산 승인/지급 워크플로우 ====================
-
-  /**
-   * @deprecated Phase B-5 — PaymentReceiptService.getSettlementList 위임
-   */
-  async getSettlementList(params: {
-    search?: string;
-    status?: string;
-    month?: string;
-    page?: number;
-    limit?: number;
-  }) {
-    return this.receiptService.getSettlementList(params);
-  }
-
-  /**
-   * @deprecated Phase B-5 — PaymentReceiptService.getSettlementDetail 위임
-   */
-  async getSettlementDetail(settlementId: string) {
-    return this.receiptService.getSettlementDetail(settlementId);
-  }
-
-  /**
-   * @deprecated Phase B-5 — PaymentReceiptService.approveSettlement 위임
-   */
-  async approveSettlement(settlementId: string, adminUserId: string) {
-    return this.receiptService.approveSettlement(settlementId, adminUserId);
-  }
-
-  /**
-   * @deprecated Phase B-5 — PaymentReceiptService.completeSettlement 위임
-   */
-  async completeSettlement(settlementId: string, adminUserId: string) {
-    return this.receiptService.completeSettlement(settlementId, adminUserId);
-  }
-
-  /**
-   * @deprecated Phase B-5 — PaymentReceiptService.rejectSettlement 위임
-   */
-  async rejectSettlement(
-    settlementId: string,
-    adminUserId: string,
-    reason: string,
-  ) {
-    return this.receiptService.rejectSettlement(
-      settlementId,
-      adminUserId,
-      reason,
-    );
   }
 
   // ==================== 영수증 관리 ====================
