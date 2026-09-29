@@ -2,7 +2,8 @@ import {
   Controller,
   Get,
   Post,
-  Put,
+  Patch,
+  Delete,
   Param,
   Query,
   Body,
@@ -37,7 +38,9 @@ import {
   RejectSettlementDto,
 } from "./dto/approve-settlement.dto";
 import { PayoutSettlementDto } from "./dto/payout-settlement.dto";
-import { UpdateBankInfoDto } from "./dto/update-bank-info.dto";
+import { TeamSettlementAccountService } from "./team-settlement-account.service";
+import { QuerySettlementAccountsDto } from "./dto/query-settlement-accounts.dto";
+import { UpdateAccountRegistrationDto } from "./dto/update-account-registration.dto";
 import { CloseSettlementDto } from "./dto/close-settlement.dto";
 
 @ApiTags("Settlements")
@@ -50,6 +53,7 @@ export class SettlementsController {
   constructor(
     private readonly settlementsService: SettlementsService,
     private readonly settlementCloseService: SettlementCloseService,
+    private readonly accountService: TeamSettlementAccountService,
   ) {}
 
   @Get()
@@ -160,6 +164,68 @@ export class SettlementsController {
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     res.send(csvBuffer);
+  }
+
+  /**
+   * static path — `:id` 보다 반드시 위에 선언해야 "accounts" 가 :id 로 매칭되지 않는다.
+   */
+  @Get("accounts")
+  @Roles("ADMIN")
+  @ApiOperation({
+    summary: "팀 정산 계좌 목록",
+    description:
+      "관리자 전용. 활성 팀 전체(계좌 미입력 팀 포함)를 계좌 상태와 함께 조회합니다. 사업자번호·계좌번호는 평문입니다.",
+  })
+  @ApiResponse({ status: 200, description: "계좌 목록 조회 성공" })
+  async getSettlementAccounts(@Query() query: QuerySettlementAccountsDto) {
+    return this.accountService.listForAdmin(query);
+  }
+
+  @Patch("accounts/:teamId/registration")
+  @Roles("ADMIN")
+  @ApiOperation({
+    summary: "팀 정산 계좌 나이스 등록 상태 변경",
+    description:
+      "운영자가 나이스 관리자에 서브몰 등록을 마친 뒤 REGISTERED 로 표시하거나, SUBMITTED 로 해제합니다. " +
+      "expectedUpdatedAt 이 현재 계좌와 다르면(그 사이 감독 수정) 409.",
+  })
+  @ApiParam({ name: "teamId", description: "팀 ID" })
+  @ApiResponse({ status: 200, description: "상태 변경 성공" })
+  @ApiResponse({ status: 404, description: "정산 계좌가 등록되지 않은 팀" })
+  @ApiResponse({ status: 409, description: "계좌 정보가 변경됨" })
+  @AuditAction({
+    action: "settlement-account.registration",
+    resource: "TeamSettlementAccount",
+    includeKeys: ["teamId", "status"],
+  })
+  async updateAccountRegistration(
+    @Param("teamId") teamId: string,
+    @Body() dto: UpdateAccountRegistrationDto,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    return this.accountService.updateRegistration(teamId, dto, req.user.id);
+  }
+
+  @Delete("accounts/:teamId")
+  @Roles("ADMIN")
+  @ApiOperation({
+    summary: "팀 정산 계좌 초기화",
+    description:
+      "운영자가 사업자번호 변경 등을 확인한 뒤 계좌를 삭제합니다. 감독이 처음부터 다시 입력합니다. 지급 완료 정산은 스냅샷이라 영향 없습니다.",
+  })
+  @ApiParam({ name: "teamId", description: "팀 ID" })
+  @ApiResponse({ status: 200, description: "초기화 성공" })
+  @ApiResponse({ status: 404, description: "정산 계좌가 등록되지 않은 팀" })
+  @AuditAction({
+    action: "settlement-account.reset",
+    resource: "TeamSettlementAccount",
+    includeKeys: ["teamId"],
+  })
+  async resetSettlementAccount(
+    @Param("teamId") teamId: string,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    return this.accountService.reset(teamId, req.user.id);
   }
 
   @Get(":id")
@@ -349,34 +415,11 @@ export class SettlementsController {
     this.logger.log(
       `정산 지급 요청: settlementId=${id}, adminId=${req.user.id}`,
     );
-    return this.settlementsService.payout(id, req.user.id, dto.note);
-  }
-
-  @Put(":id/bank-info")
-  @Roles("ADMIN")
-  @ApiOperation({
-    summary: "정산 계좌 정보 갱신",
-    description:
-      "ADMIN이 정산 계좌 정보를 갱신합니다(암호화 저장). 이미 지급 완료된 정산은 변경할 수 없습니다.",
-  })
-  @ApiParam({ name: "id", description: "정산 ID" })
-  @ApiResponse({ status: 200, description: "계좌 정보 갱신 성공" })
-  @ApiResponse({
-    status: 400,
-    description: "이미 지급 완료된 정산은 계좌 정보를 변경할 수 없습니다.",
-  })
-  @ApiResponse({ status: 404, description: "정산 정보를 찾을 수 없습니다." })
-  @AuditAction({
-    action: "settlement.bank-info.update",
-    resource: "Settlement",
-    // bankAccount(계좌번호)는 AuditInterceptor 마스킹 대상이 아니므로 평문 유출 방지 위해 제외.
-    includeKeys: ["id", "bankName", "accountHolder"],
-  })
-  async updateBankInfo(
-    @Param("id") id: string,
-    @Body() dto: UpdateBankInfoDto,
-    @Request() req: AuthenticatedRequest,
-  ) {
-    return this.settlementsService.updateBankInfo(id, req.user.id, dto);
+    return this.settlementsService.payout(
+      id,
+      req.user.id,
+      dto.note,
+      dto.expectedAccountUpdatedAt,
+    );
   }
 }

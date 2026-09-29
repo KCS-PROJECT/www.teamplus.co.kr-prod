@@ -1370,7 +1370,7 @@ export const MESSAGES = {
   settlement: {
     // 탭 — 거래 내역(건별 장부·기본) / 정산 집계(훈련·대회 소계)
     tabTransactions: "거래 내역",
-    tabSettlementAgg: "정산 집계",
+    tabSettlementAgg: "수납 현황",
     tabTraining: "훈련",
     tabTournament: "대회",
     tabUnpaid: "미수금",
@@ -1461,7 +1461,6 @@ export const MESSAGES = {
     pageTitle: "결제 관리",
     appBarTitle: "결제 현황",
     // 정산 집계 탭 하단 — 월별 지급 정산(/settlements) 바로가기
-    viewMonthlySettlements: "월 정산 내역 보기",
     // 미수금 탭 — 빈 상태 / 로드 실패
     emptyUnpaid: "미수금이 없습니다.",
     unpaidLoadFailed: "미수금 정보를 불러오지 못했습니다.",
@@ -3365,8 +3364,10 @@ export const MESSAGES = {
     homeMenuGroupsEmpty: "아직 그룹이 없어요",
     homeMenuNotices: "팀 공지",
     homeMenuNoticesMeta: "공지 작성 · 관리",
-    homeMenuSettlement: "결제·정산",
-    homeMenuSettlementMeta: "거래 내역 · 정산 집계 · 미납",
+    homeMenuCollections: "결제 관리",
+    homeMenuCollectionsMeta: "거래 내역 · 수납 현황 · 미납",
+    homeMenuPayout: "지급 정산",
+    homeMenuPayoutMeta: "월별 지급 · 정산 계좌",
   },
   academy: {
     created: "오픈클래스가 등록되었습니다.",
@@ -4203,13 +4204,54 @@ export const MESSAGES = {
     downloadFailed: "다운로드 중 오류가 발생했습니다.",
   },
 
+  // ─── 팀 정산 계좌 (/team/[id]/settlement-account, 팀 오너 감독 전용) ────
+  settlementAccount: {
+    pageTitle: "정산 계좌",
+    rowLabel: "정산 계좌",
+    rowNoneHint: "정산금을 받을 계좌를 등록해주세요",
+    rowLoading: "확인 중...",
+    rowLoadError: "정보를 불러오지 못했어요",
+    cardManage: "관리",
+    cardRegister: "등록하기",
+    homeTodo: "정산 계좌를 등록해주세요",
+    statusNone: "미등록",
+    statusSubmitted: "등록 확인 중",
+    statusRegistered: "등록 완료",
+    statusNoneHint:
+      "정산금을 받을 계좌를 등록해주세요. 등록한 계좌는 운영자 확인 후 지급에 사용됩니다.",
+    statusSubmittedHint:
+      "운영자가 계좌를 확인하고 있어요. 확인이 끝나면 등록 완료로 바뀝니다.",
+    statusRegisteredHint:
+      "계좌 등록이 완료되었어요. 은행·계좌번호·예금주를 바꾸면 운영자가 다시 확인합니다.",
+    businessNumberLabel: "사업자등록번호",
+    businessNumberPlaceholder: "숫자 10자리",
+    businessNumberLockedHint: "사업자번호 변경은 운영자에게 문의해주세요.",
+    businessNumberInvalid: "사업자등록번호 10자리를 입력해주세요.",
+    bankLabel: "은행",
+    bankPlaceholder: "은행 선택",
+    bankSheetTitle: "은행을 선택해주세요.",
+    accountLabel: "계좌번호",
+    accountPlaceholder: "숫자만 입력",
+    accountCurrent: (masked: string) => `현재 등록된 계좌 ${masked}`,
+    accountReenterHint: "계좌번호를 바꾸려면 전체 번호를 다시 입력해주세요.",
+    accountInvalid: "계좌번호는 숫자 6~30자리로 입력해주세요.",
+    holderLabel: "예금주",
+    holderPlaceholder: "예금주명",
+    notOwner: "팀 오너 감독만 정산 계좌를 관리할 수 있어요.",
+    backToTeam: "팀으로 돌아가기",
+    loadError: "정산 계좌 정보를 불러오지 못했습니다.",
+    saveSuccess: "정산 계좌가 저장되었습니다.",
+  },
+
   // ─── Q. 정산 (팀 정산 조회 — /settlements, director·coach 전용) ────
   settlements: {
-    pageTitle: "정산 내역",
+    pageTitle: "지급 정산",
     detailTitle: (period: string) => `${period} 정산 상세`,
     yearMonthLabel: (year: string, month: string) => `${year}년 ${month}월`,
     teamFallback: "우리 팀",
-    emptyMonth: "이 달의 정산이 아직 마감되지 않았어요.",
+    emptyList: "아직 지급 정산 내역이 없어요.",
+    loadMore: "더보기",
+    paidDateLabel: (date: string) => `지급일 ${date}`,
     totalRevenueLabel: "총 매출",
     refundLabel: "환불",
     feeLabel: "수수료",
@@ -4225,7 +4267,6 @@ export const MESSAGES = {
     accountHolderLabel: "예금주",
     payoutHistoryTitle: "지급 기록",
     emptyPayout: "지급 기록이 없습니다.",
-    detailsTitle: "결제 명세",
     detailsEmpty: "결제 명세가 없습니다.",
     detailsLoadMore: "결제 명세 더보기",
     paymentAmountLabel: "결제 금액",

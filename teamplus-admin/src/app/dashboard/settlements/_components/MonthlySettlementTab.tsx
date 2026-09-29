@@ -51,6 +51,7 @@ import {
 } from 'lucide-react';
 import { api } from '@/services/api-client';
 import { SettlementDetailDialog, type SettlementStatus } from './SettlementDetailDialog';
+import { getAccountStatusMeta, type AccountStatus } from './accountStatusMeta';
 
 // ════════════════════════════════════════════════
 // 타입
@@ -66,6 +67,7 @@ interface SettlementListItem {
   refundAmount: number;
   netAmount: number;
   status: SettlementStatus;
+  accountStatus?: AccountStatus | null;
   team: { id: string; name: string };
   _count: { details: number };
 }
@@ -653,6 +655,7 @@ export function MonthlySettlementTab() {
               <TableHead className="text-right">수수료</TableHead>
               <TableHead className="text-right">순지급액</TableHead>
               <TableHead>상태</TableHead>
+              <TableHead>{MESSAGES.settlement.colAccountStatus}</TableHead>
               <TableHead className="text-right">명세</TableHead>
               <TableHead className="text-right">관리</TableHead>
             </TableRow>
@@ -660,13 +663,13 @@ export function MonthlySettlementTab() {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-10">
+                <TableCell colSpan={9} className="text-center py-10">
                   로딩 중...
                 </TableCell>
               </TableRow>
             ) : rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-10 text-slate-500">
+                <TableCell colSpan={9} className="text-center py-10 text-slate-500">
                   해당 월 정산 내역이 없습니다.
                 </TableCell>
               </TableRow>
@@ -674,6 +677,7 @@ export function MonthlySettlementTab() {
               rows.map((row) => {
                 const statusInfo = STATUS_META[row.status] ?? STATUS_META.pending;
                 const StatusIcon = statusInfo.icon;
+                const accountMeta = getAccountStatusMeta(row.accountStatus);
                 const fee = (row.platformFee ?? 0) + (row.paymentFee ?? 0);
                 return (
                   <TableRow key={row.id}>
@@ -709,6 +713,9 @@ export function MonthlySettlementTab() {
                           </Badge>
                         )}
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge className={accountMeta.badge}>{accountMeta.label}</Badge>
                     </TableCell>
                     <TableCell className="text-right tabular-nums text-slate-500 dark:text-slate-400">
                       {row._count?.details ?? 0}건

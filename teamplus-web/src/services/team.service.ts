@@ -759,3 +759,65 @@ export function getTeamMatches(
     params: limit ? { limit: String(limit) } : undefined,
   });
 }
+
+// ============================================
+// Settlement Account API (팀 정산 계좌 — 팀 오너 감독 전용)
+// ============================================
+
+export type TeamSettlementAccountStatus = 'SUBMITTED' | 'REGISTERED';
+
+/** 응답의 사업자번호·계좌번호는 서버가 마스킹한 값 — 원문은 내려오지 않는다. */
+export interface TeamSettlementAccount {
+  teamId: string;
+  status: TeamSettlementAccountStatus;
+  businessNumber: string;
+  bankCode: string;
+  bankName: string;
+  bankAccount: string;
+  accountHolder: string;
+  submittedAt: string;
+  registeredAt: string | null;
+}
+
+export interface UpsertTeamSettlementAccountPayload {
+  /** 최초 등록 때만 필수 — 이후에는 보내지 않는다(서버가 변경 거부). */
+  businessNumber?: string;
+  bankCode: string;
+  bankAccount: string;
+  accountHolder: string;
+}
+
+export interface BankCodeOption {
+  code: string;
+  name: string;
+  sortOrder: number;
+}
+
+/** 미등록이면 data 가 null. */
+export function getTeamSettlementAccount(
+  teamId: string,
+): Promise<ApiResponse<TeamSettlementAccount | null>> {
+  return apiRequest<TeamSettlementAccount | null>({
+    method: 'GET',
+    url: `${BASE}/${teamId}/settlement-account`,
+  });
+}
+
+export function upsertTeamSettlementAccount(
+  teamId: string,
+  payload: UpsertTeamSettlementAccountPayload,
+): Promise<ApiResponse<TeamSettlementAccount>> {
+  return apiRequest<TeamSettlementAccount>({
+    method: 'PUT',
+    url: `${BASE}/${teamId}/settlement-account`,
+    data: payload,
+    retry: false,
+  });
+}
+
+export function getBankCodes(): Promise<ApiResponse<BankCodeOption[]>> {
+  return apiRequest<BankCodeOption[]>({
+    method: 'GET',
+    url: '/common-codes/group/BANK_CODE',
+  });
+}

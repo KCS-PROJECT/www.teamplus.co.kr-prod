@@ -41,7 +41,7 @@ import {
 import { InlineRetryError } from '@/components/settlement/InlineRetryError';
 
 // ─── Types ──────────────────────────────────────────
-// 거래 내역(건별 장부·기본) / 정산 집계(훈련·대회 소계) — 업계 관행(거래 vs 정산) 2분법.
+// 거래 내역(건별 장부·기본) / 수납 현황(훈련·대회별 청구·수납 소계). 팀이 받는 지급 정산은 /settlements 로 분리.
 type TabType = 'transactions' | 'settlement';
 
 // formatCurrency · staggerDelay · shiftMonth 는 공유 모듈(components/settlement/settlement-format)로 이동.
@@ -77,9 +77,9 @@ export default function DirectorPaymentsPage() {
   const [yearMonth, setYearMonth] = useState<string>(currentYm);
   const [activeTab, setActiveTab] = useState<TabType>('transactions');
 
-  // 신규 월인식 소계 (정산 집계 탭 + Hero)
+  // 신규 월인식 소계 (수납 현황 탭 + Hero)
   const [settlement, setSettlement] = useState<TeamSettlementSummaryResponse | null>(null);
-  // 신규 월인식 인별 미수금 (정산 집계 탭 상단 배너 — 선택 월 연동)
+  // 신규 월인식 인별 미수금 (수납 현황 탭 상단 배너 — 선택 월 연동)
   const [unpaid, setUnpaid] = useState<TeamUnpaidMembersResponse | null>(null);
   // 거래 내역 (결제 1건=1행 장부 — 선택 월 완료 기준)
   const [transactions, setTransactions] = useState<TeamTransactionsResponse | null>(null);
@@ -101,7 +101,7 @@ export default function DirectorPaymentsPage() {
   //   칩에 남도록 월 소계와 축을 분리한다. 실패는 0 취급(fail-closed).
   const [unpaidTotalCount, setUnpaidTotalCount] = useState(0);
 
-  // 미수금 배너 펼침 (정산 집계 탭 상단 — 기본 접힘)
+  // 미수금 배너 펼침 (수납 현황 탭 상단 — 기본 접힘)
   const [unpaidExpanded, setUnpaidExpanded] = useState(false);
   // 미수금 — 상세 시트 대상 회원 / 미납 안내 발송 중 회원
   const [detailMember, setDetailMember] = useState<UnpaidMemberRow | null>(null);
@@ -714,18 +714,6 @@ export default function DirectorPaymentsPage() {
                   </>
                 )}
               </div>
-
-              {/* 월별 지급 정산(/settlements) 바로가기 — 훈련/대회 소계와 별개로 팀 계좌 지급 내역 조회 */}
-              <div className="px-5 pb-5">
-                <button
-                  type="button"
-                  onClick={() => void navigate('/settlements')}
-                  className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-w-md border-[1.5px] border-it-line-strong py-3 text-[14px] font-semibold text-it-blue-600 transition-colors hover:bg-it-fill active:brightness-95 motion-reduce:transition-none dark:border-rink-700 dark:text-wtext-4 dark:hover:bg-rink-700"
-                >
-                  {MESSAGES.settlement.viewMonthlySettlements}
-                  <Icon name="chevron_right" className="text-[16px]" aria-hidden="true" />
-                </button>
-              </div>
             </section>
           )}
         </div>
@@ -757,7 +745,7 @@ function EmptyState({ message }: { message: string }) {
   );
 }
 
-/** 정산 집계 탭 — 훈련/대회 소계 섹션 헤더. */
+/** 수납 현황 탭 — 훈련/대회 소계 섹션 헤더. */
 function SectionTitle({ label }: { label: string }) {
   return (
     <h3 className="pb-1 pt-4 text-[12.5px] font-extrabold text-it-ink-400 dark:text-wtext-3">

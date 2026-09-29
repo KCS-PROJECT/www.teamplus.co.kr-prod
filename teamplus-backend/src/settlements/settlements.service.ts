@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Logger,
 } from "@nestjs/common";
@@ -20,26 +21,32 @@ import {
   kstTodayUtcMidnight,
 } from "@/common/utils/kst-date.util";
 import {
-  encryptField,
-  decryptField,
-  isEncryptedField,
-} from "@/common/utils/field-encryption.util";
-import {
   SETTLEMENT_STATUS,
   SettlementStatus,
   assertTransition,
 } from "./constants/settlement-status.constant";
 import { QuerySettlementDto } from "./dto/query-settlement.dto";
 import { QuerySettlementDetailsDto } from "./dto/query-settlement-details.dto";
-import { UpdateBankInfoDto } from "./dto/update-bank-info.dto";
 import { acquireSettlementCloseLock } from "./utils/settlement-locks.util";
 import { toCsvBuffer } from "./utils/csv.util";
 import { aggregateDetailsBySource } from "./utils/settlement-detail-summary.util";
+import {
+  decryptOrRaw,
+  formatBusinessNumber,
+  maskBankAccount,
+} from "./utils/account-mask.util";
+import { TeamSettlementAccountService } from "./team-settlement-account.service";
 
 /** LIKE 패턴 리터럴화 — 이스케이프 문자 `\` 기준으로 `\`·`%`·`_` 앞에 `\` 를 붙인다. */
 export function escapeLikePattern(value: string): string {
   return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
 }
+
+const ACCOUNT_STATUS_LABEL: Record<string, string> = {
+  REGISTERED: "등록완료",
+  SUBMITTED: "등록확인중",
+  NONE: "미등록",
+};
 
 /** 명세 CSV 안전 상한 — 팀·월 단위라 통상 수백 건 이하. */
 const DETAIL_EXPORT_MAX_ROWS = 10000;
@@ -93,7 +100,13 @@ const SETTLEMENT_LIST_SELECT = {
   managerApprovalAt: true,
   createdAt: true,
   updatedAt: true,
-  team: { select: { id: true, name: true } },
+  team: {
+    select: {
+      id: true,
+      name: true,
+      settlementAccount: { select: { status: true } },
+    },
+  },
   _count: { select: { details: true } },
 } satisfies Prisma.SettlementSelect;
 
@@ -118,7 +131,21 @@ const SETTLEMENT_DETAIL_SELECT = {
   createdAt: true,
   updatedAt: true,
   manager: { select: { id: true, firstName: true, lastName: true } },
-  team: { select: { id: true, name: true } },
+  team: {
+    select: {
+      id: true,
+      name: true,
+      settlementAccount: {
+        select: {
+          status: true,
+          bankCode: true,
+          bankAccount: true,
+          accountHolder: true,
+          updatedAt: true,
+        },
+      },
+    },
+  },
   transactions: {
     select: {
       id: true,
@@ -140,6 +167,7 @@ export class SettlementsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly resourceAccess: ResourceAccessService,
+    private readonly accountService: TeamSettlementAccountService,
   ) {}
 
   /**
@@ -189,7 +217,8 @@ export class SettlementsService {
       this.prisma.settlement.findMany({
         where,
         select: SETTLEMENT_LIST_SELECT,
-        orderBy: { createdAt: "desc" },
+        // 지급 정산 목록은 최신 정산월이 위 — 과거 월을 나중에 마감해도 순서가 흔들리지 않게 정산월 기준.
+        orderBy: [{ settlementMonth: "desc" }, { createdAt: "desc" }],
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
@@ -197,7 +226,15 @@ export class SettlementsService {
     ]);
 
     return {
-      data: settlements,
+      // 계좌 상태는 team 객체에 섞지 않고 행 최상위에 둔다(team 응답은 {id, name} 계약 유지).
+      data: settlements.map(({ team, ...row }) => {
+        const { settlementAccount, ...teamInfo } = team;
+        return {
+          ...row,
+          team: teamInfo,
+          accountStatus: settlementAccount?.status ?? null,
+        };
+      }),
       meta: {
         total,
         page,
@@ -272,7 +309,7 @@ export class SettlementsService {
       s.netAmount?.toString() ?? "0",
       s.status ?? "",
       s.bankName ?? "",
-      this.decryptBankAccount(s.bankAccount) ?? "",
+      decryptOrRaw(s.bankAccount) ?? "",
       s.accountHolder ?? "",
       s.createdAt?.toISOString() ?? "",
     ]);
@@ -302,21 +339,51 @@ export class SettlementsService {
     }
 
     const isAdmin = isAdminRole(requester.userType);
-    // COACH 는 은행 정보 열람 대상이 아니다 — 감독(DIRECTOR)은 기존 마스킹 표시 유지.
+    const { settlementAccount, ...team } = settlement.team;
+    // COACH 는 은행 정보 열람 대상이 아니다 — 감독(DIRECTOR)은 마스킹 표시.
     if (requester.userType === "COACH") {
       return {
         ...settlement,
+        team,
         bankName: null,
         bankAccount: null,
         accountHolder: null,
+        teamSettlementAccount: settlementAccount
+          ? {
+              status: settlementAccount.status,
+              bankName: null,
+              bankAccount: null,
+              accountHolder: null,
+            }
+          : null,
       };
     }
+
+    const bankNames = settlementAccount
+      ? await this.accountService.loadBankNames()
+      : new Map<string, string>();
+    const displayAccount = (value: string | null | undefined) => {
+      const plain = decryptOrRaw(value);
+      return isAdmin ? plain : maskBankAccount(plain);
+    };
     return {
       ...settlement,
-      bankAccount: this.resolveBankAccountDisplay(
-        settlement.bankAccount,
-        isAdmin,
-      ),
+      team,
+      // 지급 시점 스냅샷(지급 전에는 비어 있다).
+      bankAccount: displayAccount(settlement.bankAccount),
+      // 현재 팀 정산 계좌 — 지급 가능 여부(status=REGISTERED) 판단과 지급 전 확인용.
+      teamSettlementAccount: settlementAccount
+        ? {
+            status: settlementAccount.status,
+            bankName:
+              bankNames.get(settlementAccount.bankCode) ??
+              settlementAccount.bankCode,
+            bankAccount: displayAccount(settlementAccount.bankAccount),
+            accountHolder: settlementAccount.accountHolder,
+            // 지급 확인 화면이 본 계좌 버전 — payout 의 expectedAccountUpdatedAt 으로 되돌려 받는다.
+            updatedAt: settlementAccount.updatedAt,
+          }
+        : null,
     };
   }
 
@@ -596,15 +663,63 @@ export class SettlementsService {
     return { ...updated, reason };
   }
 
-  /** 정산 지급 — approved → paid, 성공 시에만 SettlementTransaction(payout) 기록 + Detail 상태 동기화 */
-  async payout(id: string, adminId: string, note?: string) {
-    const teamId = await this.resolveTeamId(id);
+  /**
+   * 정산 지급 — approved → paid. 팀 정산 계좌가 나이스 등록 완료(REGISTERED)여야 하며,
+   * 그 계좌를 정산 행에 스냅샷으로 남긴다. 성공 시에만 SettlementTransaction(payout) 기록 + Detail 상태 동기화.
+   * 순지급액 0원은 보낼 돈이 없어 계좌 없이 완료 처리한다. approved 가 아니면 계좌보다 상태 오류를 먼저 안내한다.
+   */
+  async payout(
+    id: string,
+    adminId: string,
+    note?: string,
+    expectedAccountUpdatedAt?: string,
+  ) {
+    const target = await this.prisma.settlement.findUnique({
+      where: { id },
+      select: { teamId: true, status: true, netAmount: true },
+    });
+    if (!target) {
+      throw new NotFoundException("정산 정보를 찾을 수 없습니다.");
+    }
+    const teamId = target.teamId;
+
+    const account =
+      target.status === SETTLEMENT_STATUS.APPROVED && target.netAmount > 0
+        ? await this.accountService.getPayoutAccount(teamId)
+        : null;
+    if (
+      target.status === SETTLEMENT_STATUS.APPROVED &&
+      target.netAmount > 0 &&
+      account?.status !== "REGISTERED"
+    ) {
+      throw this.accountNotRegistered();
+    }
+    // 운영자가 확인 화면에서 본 계좌와 지금 계좌가 다르면(그 사이 수정·재등록) 스냅샷이 어긋나므로 막는다.
+    if (
+      account &&
+      expectedAccountUpdatedAt &&
+      account.updatedAt.getTime() !==
+        new Date(expectedAccountUpdatedAt).getTime()
+    ) {
+      throw this.accountChanged();
+    }
+
     const updated = await this.transition(
       id,
       teamId,
       SETTLEMENT_STATUS.APPROVED,
       SETTLEMENT_STATUS.PAID,
-      { status: SETTLEMENT_STATUS.PAID, completedAt: new Date() },
+      {
+        status: SETTLEMENT_STATUS.PAID,
+        completedAt: new Date(),
+        ...(account
+          ? {
+              bankName: account.bankName,
+              bankAccount: account.bankAccount,
+              accountHolder: account.accountHolder,
+            }
+          : {}),
+      },
       { id: true, status: true, completedAt: true, netAmount: true },
       async (tx, settlement) => {
         await tx.settlementDetail.updateMany({
@@ -623,10 +738,27 @@ export class SettlementsService {
         });
       },
       {
-        where: { netAmount: { gte: 0 } },
-        // approve 단계에서 이미 막히므로 정상 흐름에선 도달하지 않는다 — 방어적 가드.
-        message:
-          "순지급액이 음수인 정산은 지급할 수 없습니다. 다음 달 정산에서 처리하세요.",
+        // 미리 읽은 계좌가 그대로일 때만 지급한다 — 그 사이 감독이 계좌를 고쳤거나 운영자가
+        //   등록을 해제·초기화했다면 스냅샷이 틀어지므로 막는다(팀 lock 안의 단일 updateMany 로 판정).
+        //   계좌 없이 진행하는 경로(0원·비approved)는 금액이 0원 이하로 유지될 때만 통과한다.
+        where: account
+          ? {
+              netAmount: { gt: 0 },
+              team: {
+                settlementAccount: {
+                  is: { status: "REGISTERED", updatedAt: account.updatedAt },
+                },
+              },
+            }
+          : { netAmount: 0 },
+        onFail: (current) => {
+          if (current.netAmount < 0) {
+            return new BadRequestException(
+              "순지급액이 음수인 정산은 지급할 수 없습니다. 다음 달 정산에서 처리하세요.",
+            );
+          }
+          return account ? this.accountChanged() : this.accountNotRegistered();
+        },
       },
     );
 
@@ -664,93 +796,72 @@ export class SettlementsService {
   }
 
   /**
-   * 지급 대상 CSV(ADMIN 전용) — approved 상태만, 계좌는 복호화 평문 포함.
+   * 지급 대상 CSV(ADMIN 전용) — approved·순지급액 양수 정산만. 운영자가 나이스 관리자에서 수동 지급할 때 쓴다.
+   * 계좌는 현재 팀 정산 계좌(복호화 평문)에서 읽고, 미등록·확인 전 팀도 빈칸과 상태로 포함해 누락을 드러낸다.
    * 수식 주입 방지 등 이스케이프는 toCsvBuffer(csv.util) 공용 처리.
    */
   async getPayoutExport(month: string): Promise<Buffer> {
     this.assertValidMonthFormat(month);
-    const settlements = await this.prisma.settlement.findMany({
-      where: {
-        settlementMonth: month,
-        status: SETTLEMENT_STATUS.APPROVED,
-        netAmount: { gt: 0 }, // 음수·0원 행은 지급 대상이 아니다.
-      },
-      select: {
-        netAmount: true,
-        status: true,
-        bankName: true,
-        bankAccount: true,
-        accountHolder: true,
-        team: { select: { name: true, teamCode: true } },
-      },
-      orderBy: { team: { name: "asc" } },
-    });
+    const [settlements, bankNames] = await Promise.all([
+      this.prisma.settlement.findMany({
+        where: {
+          settlementMonth: month,
+          status: SETTLEMENT_STATUS.APPROVED,
+          netAmount: { gt: 0 }, // 음수·0원 행은 지급 대상이 아니다.
+        },
+        select: {
+          netAmount: true,
+          team: {
+            select: {
+              name: true,
+              teamCode: true,
+              settlementAccount: {
+                select: {
+                  status: true,
+                  businessNumber: true,
+                  bankCode: true,
+                  bankAccount: true,
+                  accountHolder: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: { team: { name: "asc" } },
+      }),
+      this.accountService.loadBankNames(),
+    ]);
 
     const headers = [
       "팀명",
       "팀코드",
       "정산월",
-      "순지급액",
-      "상태",
+      "사업자등록번호",
+      "은행코드",
       "은행명",
       "계좌번호",
       "예금주",
+      "순지급액",
+      "계좌상태",
     ];
 
-    const rows = settlements.map((s) => [
-      s.team?.name ?? "",
-      s.team?.teamCode ?? "",
-      month,
-      s.netAmount?.toString() ?? "0",
-      s.status ?? "",
-      s.bankName ?? "",
-      this.decryptBankAccount(s.bankAccount) ?? "",
-      s.accountHolder ?? "",
-    ]);
-
-    return toCsvBuffer(headers, rows);
-  }
-
-  /** 정산 계좌 정보 갱신 — bankAccount 암호화 저장, paid 상태는 변경 차단 */
-  async updateBankInfo(id: string, adminId: string, dto: UpdateBankInfoDto) {
-    // 상태 확인과 갱신을 한 조건부 updateMany 로 묶어 지급 처리와의 경쟁을 막는다.
-    const updated = await this.prisma.$transaction(async (tx) => {
-      const result = await tx.settlement.updateMany({
-        where: { id, status: { not: SETTLEMENT_STATUS.PAID } },
-        data: {
-          bankName: dto.bankName,
-          bankAccount: encryptField(dto.bankAccount),
-          accountHolder: dto.accountHolder,
-        },
-      });
-
-      if (result.count === 0) {
-        const current = await tx.settlement.findUnique({
-          where: { id },
-          select: { id: true },
-        });
-        if (!current) {
-          throw new NotFoundException("정산 정보를 찾을 수 없습니다.");
-        }
-        throw new BadRequestException(
-          "이미 지급 완료된 정산의 계좌 정보는 변경할 수 없습니다.",
-        );
-      }
-
-      return tx.settlement.findUniqueOrThrow({
-        where: { id },
-        select: { id: true, bankName: true, accountHolder: true },
-      });
+    const rows = settlements.map((s) => {
+      const account = s.team.settlementAccount;
+      return [
+        s.team.name ?? "",
+        s.team.teamCode ?? "",
+        month,
+        formatBusinessNumber(decryptOrRaw(account?.businessNumber)) ?? "",
+        account?.bankCode ?? "",
+        account ? (bankNames.get(account.bankCode) ?? account.bankCode) : "",
+        decryptOrRaw(account?.bankAccount) ?? "",
+        account?.accountHolder ?? "",
+        String(s.netAmount ?? 0),
+        ACCOUNT_STATUS_LABEL[account?.status ?? "NONE"],
+      ];
     });
 
-    this.logger.log(
-      `정산 계좌 정보 갱신: settlementId=${id}, adminId=${adminId}`,
-    );
-
-    return {
-      ...updated,
-      bankAccount: this.maskPlainBankAccount(dto.bankAccount),
-    };
+    return toCsvBuffer(headers, rows);
   }
 
   /**
@@ -811,9 +922,13 @@ export class SettlementsService {
       tx: Prisma.TransactionClient,
       settlement: Prisma.SettlementGetPayload<{ select: S }>,
     ) => Promise<void>,
-    // 상태 전이 외에 추가로 만족해야 하는 조건(예: 순지급액 음수 승인/지급 차단).
-    //   상태 전이 오류와 구분되는 메시지로 별도 안내한다.
-    guard?: { where: Prisma.SettlementWhereInput; message: string },
+    // 상태 전이 외에 추가로 만족해야 하는 조건(예: 순지급액 음수 승인/지급 차단, 지급 계좌 일치).
+    //   상태 전이 오류와 구분해 안내한다 — onFail 이 있으면 그 예외, 없으면 message 로 400.
+    guard?: {
+      where: Prisma.SettlementWhereInput;
+      message?: string;
+      onFail?: (current: { status: string; netAmount: number }) => Error;
+    },
   ): Promise<Prisma.SettlementGetPayload<{ select: S }>> {
     return this.prisma.$transaction(async (tx) => {
       await acquireSettlementCloseLock(tx, teamId);
@@ -832,8 +947,10 @@ export class SettlementsService {
           throw new NotFoundException("정산 정보를 찾을 수 없습니다.");
         }
         if (guard && current.status === expectedFrom) {
-          // 상태 전이 자체는 유효한데 guard 조건(순지급액 음수 등)만 막은 경우.
-          throw new BadRequestException(guard.message);
+          // 상태 전이 자체는 유효한데 guard 조건(순지급액 음수·계좌 변경 등)만 막은 경우.
+          throw guard.onFail
+            ? guard.onFail(current)
+            : new BadRequestException(guard.message);
         }
         assertTransition(current.status, to);
         // assertTransition 이 통과하는 이론상 케이스(예: processing→paid)는 Phase 1 서비스가
@@ -856,31 +973,20 @@ export class SettlementsService {
     });
   }
 
-  /** 이미 암호화된 값이면 복호화, 평문(마이그레이션 호환)이면 그대로 반환. 실패 시 원본 유지. */
-  private decryptBankAccount(
-    bankAccount: string | null | undefined,
-  ): string | null {
-    if (!bankAccount) return bankAccount ?? null;
-    if (!isEncryptedField(bankAccount)) return bankAccount;
-    try {
-      return decryptField(bankAccount);
-    } catch {
-      return bankAccount;
-    }
+  private accountNotRegistered() {
+    return new ConflictException({
+      message:
+        "팀 정산 계좌가 나이스 등록 완료 상태가 아닙니다. 지급 계좌 탭에서 확인해주세요.",
+      errorCode: "SETTLEMENT_ACCOUNT_NOT_REGISTERED",
+    });
   }
 
-  /** 상세 조회 표시용 — 관리자급은 평문, 그 외는 마스킹(뒤 4자리). */
-  private resolveBankAccountDisplay(
-    bankAccount: string | null | undefined,
-    isAdmin: boolean,
-  ): string | null {
-    const plain = this.decryptBankAccount(bankAccount);
-    if (!plain) return null;
-    return isAdmin ? plain : this.maskPlainBankAccount(plain);
-  }
-
-  private maskPlainBankAccount(plain: string): string {
-    return plain.length > 4 ? "****" + plain.slice(-4) : "****";
+  private accountChanged() {
+    return new ConflictException({
+      message:
+        "지급 처리 중 팀 정산 계좌가 변경되었습니다. 계좌를 다시 확인한 뒤 지급해주세요.",
+      errorCode: "SETTLEMENT_ACCOUNT_CHANGED",
+    });
   }
 
   /** summary/payout-export 의 필수 month 쿼리 파라미터 형식 검증(YYYY-MM). */

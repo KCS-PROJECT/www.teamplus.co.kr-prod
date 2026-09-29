@@ -408,10 +408,16 @@ export default function SettlementDetailPage() {
   });
 
   const params = useParams();
-  const { navigate } = useNavigation();
+  const { navigate, back } = useNavigation();
   // 인증 훅은 layout 에서만 호출 — 페이지는 이미 채워진 컨텍스트 값만 읽는다.
   const user = useContext(AuthContext)?.user;
   const canViewDetails = user?.userType === 'director' || user?.userType === 'admin';
+
+  // 알림 딥링크 등으로 히스토리가 없을 때 뒤로가기가 앱 밖으로 나가지 않도록 목록으로 보낸다.
+  const handleBack = useCallback(() => {
+    if (typeof window !== 'undefined' && window.history.length > 1) back();
+    else void navigate('/settlements');
+  }, [back, navigate]);
 
   const [settlement, setSettlement] = useState<SettlementData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -553,7 +559,7 @@ export default function SettlementDetailPage() {
         : MESSAGES.settlements.loadError;
     return (
       <MobileContainer hasBottomNav={false}>
-        <PageAppBar title={MESSAGES.settlements.pageTitle} />
+        <PageAppBar title={MESSAGES.settlements.pageTitle} onBack={handleBack} />
         <main className="flex-1 overflow-y-auto bg-it-canvas dark:bg-puck !pb-8">
           <div className="flex flex-col items-center gap-3 px-5 py-20 text-center">
             <p className="text-card-body text-it-ink-500 dark:text-rink-300">{message}</p>
@@ -593,7 +599,7 @@ export default function SettlementDetailPage() {
 
   return (
     <MobileContainer hasBottomNav={false}>
-      <PageAppBar title={MESSAGES.settlements.detailTitle(periodText)} />
+      <PageAppBar title={MESSAGES.settlements.detailTitle(periodText)} onBack={handleBack} />
 
       <main className="flex-1 overflow-y-auto bg-it-canvas dark:bg-puck !pb-8">
         {/* flat 흰 섹션 — 정산 요약(카드 박스 제거) */}

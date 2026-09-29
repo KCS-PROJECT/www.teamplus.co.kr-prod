@@ -108,6 +108,14 @@ export class CommonCodeController {
     return { success: true, data };
   }
 
+  /** static path — `:id` 보다 위에 선언해야 "group" 이 :id 로 매칭되지 않는다. */
+  @Get("group/:groupCode")
+  async findByGroupCode(@Param("groupCode") groupCode: string) {
+    const data =
+      await this.commonCodesService.findActiveCodesByGroupCode(groupCode);
+    return { success: true, data };
+  }
+
   @Get(":id")
   async findOne(@Param("id") id: string) {
     const data = await this.commonCodesService.findOneCode(id);

@@ -19,8 +19,9 @@ import { PageHeader } from '@/components/ui/page-header';
 import { AdminTabs } from '@/components/ui/admin-tabs';
 import { MonthlySettlementTab } from './_components/MonthlySettlementTab';
 import { OverviewTab } from './_components/OverviewTab';
+import { TeamSettlementAccountsTab } from './_components/TeamSettlementAccountsTab';
 
-type SettlementTab = 'monthly' | 'overview';
+type SettlementTab = 'monthly' | 'overview' | 'accounts';
 
 export default function SettlementsPage() {
   const [activeTab, setActiveTab] = useState<SettlementTab>('monthly');
@@ -36,6 +37,7 @@ export default function SettlementsPage() {
         tabs={[
           { id: 'monthly', label: MESSAGES.settlement.tabMonthly },
           { id: 'overview', label: MESSAGES.settlement.tabOverview },
+          { id: 'accounts', label: MESSAGES.settlement.tabAccounts },
         ]}
         activeTab={activeTab}
         onChange={(id) => setActiveTab(id as SettlementTab)}
@@ -44,6 +46,7 @@ export default function SettlementsPage() {
 
       {activeTab === 'monthly' && <MonthlySettlementTab />}
       {activeTab === 'overview' && <OverviewTab />}
+      {activeTab === 'accounts' && <TeamSettlementAccountsTab />}
     </div>
   );
 }

@@ -136,7 +136,7 @@ export const PAGE_TITLES: Record<string, string> = {
   '/members': '회원 관리',
   '/members-create': '회원 등록',
   '/payments-manage': '결제 관리',
-  '/settlements': '정산 관리',
+  '/settlements': '지급 정산',
   '/match-manage': '매치 관리',
   '/tournament-manage': '대회 관리',
   '/venue-manage': '경기장 관리',

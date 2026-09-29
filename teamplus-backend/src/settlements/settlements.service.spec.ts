@@ -5,6 +5,7 @@ import {
   ForbiddenException,
 } from "@nestjs/common";
 import { SettlementsService, escapeLikePattern } from "./settlements.service";
+import { TeamSettlementAccountService } from "./team-settlement-account.service";
 import { PrismaService } from "@/prisma/prisma.service";
 import { ResourceAccessService } from "@/common/access/resource-access.service";
 import { JwtUserPayload } from "@/common/interfaces/authenticated-request.interface";
@@ -48,6 +49,19 @@ describe("SettlementsService", () => {
     resolveTeamScope: jest.fn(),
   };
 
+  const mockAccountService = {
+    loadBankNames: jest.fn(),
+    getPayoutAccount: jest.fn(),
+  };
+
+  const registeredAccount = {
+    status: "REGISTERED",
+    bankName: "KB국민은행",
+    bankAccount: "enc:account",
+    accountHolder: "블랭크하키",
+    updatedAt: new Date("2026-09-29T01:00:00.000Z"),
+  };
+
   const setupTransaction = () => {
     mockPrisma.$transaction.mockImplementation(
       (cb: (tx: typeof mockPrisma) => Promise<unknown>) => cb(mockPrisma),
@@ -71,6 +85,7 @@ describe("SettlementsService", () => {
         SettlementsService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: ResourceAccessService, useValue: mockResourceAccess },
+        { provide: TeamSettlementAccountService, useValue: mockAccountService },
       ],
     }).compile();
 
@@ -81,6 +96,10 @@ describe("SettlementsService", () => {
     // approve/reject/payout 가 advisory lock 을 얻기 위해 조회하는 teamId 기본값.
     //   개별 테스트가 findUnique 를 재정의하면 이 기본값은 그 테스트에서 덮인다.
     mockPrisma.settlement.findUnique.mockResolvedValue({ teamId: "team-1" });
+    mockAccountService.loadBankNames.mockResolvedValue(
+      new Map([["004", "KB국민은행"]]),
+    );
+    mockAccountService.getPayoutAccount.mockResolvedValue(registeredAccount);
   });
 
   it("should be defined", () => {
@@ -90,6 +109,30 @@ describe("SettlementsService", () => {
   // ==================== getSettlements (스코프) ====================
 
   describe("getSettlements", () => {
+    it("계좌 상태는 team 객체가 아니라 행 최상위 accountStatus 로 내려준다", async () => {
+      mockPrisma.settlement.findMany.mockResolvedValue([
+        {
+          id: "s-1",
+          team: {
+            id: "team-1",
+            name: "팀1",
+            settlementAccount: { status: "REGISTERED" },
+          },
+        },
+        {
+          id: "s-2",
+          team: { id: "team-2", name: "팀2", settlementAccount: null },
+        },
+      ]);
+      mockPrisma.settlement.count.mockResolvedValue(2);
+
+      const result = await service.getSettlements({}, admin);
+
+      expect(result.data[0].team).toEqual({ id: "team-1", name: "팀1" });
+      expect(result.data[0].accountStatus).toBe("REGISTERED");
+      expect(result.data[1].accountStatus).toBeNull();
+    });
+
     it("목록 select 는 계좌 관련 필드(bankName·bankAccount·accountHolder)를 조회하지 않는다", async () => {
       mockPrisma.settlement.findMany.mockResolvedValue([]);
       mockPrisma.settlement.count.mockResolvedValue(0);
@@ -205,8 +248,49 @@ describe("SettlementsService", () => {
       bankAccount: null,
       transactions: [],
       manager: null,
-      team: { id: "team-1", name: "Test Team" },
+      team: { id: "team-1", name: "Test Team", settlementAccount: null },
     };
+
+    const withTeamAccount = () => ({
+      ...baseSettlement,
+      team: {
+        id: "team-1",
+        name: "Test Team",
+        settlementAccount: {
+          status: "SUBMITTED",
+          bankCode: "004",
+          bankAccount: encryptField("110222333444"),
+          accountHolder: "블랭크하키",
+        },
+      },
+    });
+
+    it("현재 팀 계좌는 관리자 평문·감독 마스킹·코치 상태만, team 응답에는 계좌를 싣지 않는다", async () => {
+      mockResourceAccess.resolveTeamScope.mockResolvedValue(["team-1"]);
+
+      mockPrisma.settlement.findUnique.mockResolvedValue(withTeamAccount());
+      const asAdmin = await service.getSettlementById("s-1", admin);
+      expect(asAdmin.teamSettlementAccount).toEqual({
+        status: "SUBMITTED",
+        bankName: "KB국민은행",
+        bankAccount: "110222333444",
+        accountHolder: "블랭크하키",
+      });
+      expect(asAdmin.team).toEqual({ id: "team-1", name: "Test Team" });
+
+      mockPrisma.settlement.findUnique.mockResolvedValue(withTeamAccount());
+      const asDirector = await service.getSettlementById("s-1", director);
+      expect(asDirector.teamSettlementAccount?.bankAccount).toBe("****3444");
+
+      mockPrisma.settlement.findUnique.mockResolvedValue(withTeamAccount());
+      const asCoach = await service.getSettlementById("s-1", coach);
+      expect(asCoach.teamSettlementAccount).toEqual({
+        status: "SUBMITTED",
+        bankName: null,
+        bankAccount: null,
+        accountHolder: null,
+      });
+    });
 
     it("스코프 통과 + 관리자급이면 계좌 평문을 반환한다", async () => {
       const encrypted = encryptField("110-222-333444");
@@ -671,7 +755,16 @@ describe("SettlementsService", () => {
   // ==================== payout ====================
 
   describe("payout", () => {
-    it("approved → paid 전이 성공 시 SettlementTransaction(payout) 1건을 생성한다", async () => {
+    const approvedTarget = (netAmount: number) => ({
+      teamId: "team-1",
+      status: "approved",
+      netAmount,
+    });
+
+    it("approved → paid 전이 성공 시 계좌를 스냅샷하고 SettlementTransaction(payout) 1건을 생성한다", async () => {
+      mockPrisma.settlement.findUnique.mockResolvedValue(
+        approvedTarget(500000),
+      );
       mockPrisma.settlement.updateMany.mockResolvedValue({ count: 1 });
       mockPrisma.settlement.findUniqueOrThrow.mockResolvedValue({
         id: "s-1",
@@ -684,6 +777,28 @@ describe("SettlementsService", () => {
       const result = await service.payout("s-1", "admin-1");
 
       expect(result.status).toBe("paid");
+      const updateArgs = mockPrisma.settlement.updateMany.mock.calls[0][0];
+      expect(updateArgs.data).toEqual(
+        expect.objectContaining({
+          status: "paid",
+          bankName: "KB국민은행",
+          bankAccount: "enc:account",
+          accountHolder: "블랭크하키",
+        }),
+      );
+      expect(updateArgs.where).toEqual(
+        expect.objectContaining({
+          netAmount: { gt: 0 },
+          team: {
+            settlementAccount: {
+              is: {
+                status: "REGISTERED",
+                updatedAt: registeredAccount.updatedAt,
+              },
+            },
+          },
+        }),
+      );
       expect(mockPrisma.settlementTransaction.create).toHaveBeenCalledTimes(1);
       const txArgs = mockPrisma.settlementTransaction.create.mock.calls[0][0];
       expect(txArgs.data.transactionType).toBe("payout");
@@ -694,23 +809,123 @@ describe("SettlementsService", () => {
       });
     });
 
-    it("approved 가 아니면 400 이고 거래 행이 생성되지 않는다(이중 요청 방지)", async () => {
-      mockPrisma.settlement.updateMany.mockResolvedValue({ count: 0 });
-      mockPrisma.settlement.findUnique.mockResolvedValue({
+    it("확인 화면에서 본 계좌 버전과 다르면 409 SETTLEMENT_ACCOUNT_CHANGED, 상태 변경 없음", async () => {
+      mockPrisma.settlement.findUnique.mockResolvedValue(approvedTarget(5000));
+
+      await expect(
+        service.payout("s-1", "admin-1", undefined, "2026-09-28T00:00:00.000Z"),
+      ).rejects.toMatchObject({
+        status: 409,
+        response: expect.objectContaining({
+          errorCode: "SETTLEMENT_ACCOUNT_CHANGED",
+        }),
+      });
+      expect(mockPrisma.settlement.updateMany).not.toHaveBeenCalled();
+    });
+
+    it("확인 화면에서 본 계좌 버전과 같으면 지급한다", async () => {
+      mockPrisma.settlement.findUnique.mockResolvedValue(approvedTarget(5000));
+      mockPrisma.settlement.updateMany.mockResolvedValue({ count: 1 });
+      mockPrisma.settlement.findUniqueOrThrow.mockResolvedValue({
         id: "s-1",
         status: "paid",
+        completedAt: new Date(),
+        netAmount: 5000,
       });
 
-      await expect(service.payout("s-1", "admin-1")).rejects.toThrow(
-        BadRequestException,
+      await service.payout(
+        "s-1",
+        "admin-1",
+        undefined,
+        registeredAccount.updatedAt.toISOString(),
       );
+
+      expect(mockPrisma.settlement.updateMany).toHaveBeenCalledTimes(1);
+    });
+
+    it("순지급액 0원은 계좌 없이 완료 처리하고 스냅샷을 남기지 않는다", async () => {
+      mockPrisma.settlement.findUnique.mockResolvedValue(approvedTarget(0));
+      mockPrisma.settlement.updateMany.mockResolvedValue({ count: 1 });
+      mockPrisma.settlement.findUniqueOrThrow.mockResolvedValue({
+        id: "s-1",
+        status: "paid",
+        completedAt: new Date(),
+        netAmount: 0,
+      });
+
+      await service.payout("s-1", "admin-1");
+
+      expect(mockAccountService.getPayoutAccount).not.toHaveBeenCalled();
+      const updateArgs = mockPrisma.settlement.updateMany.mock.calls[0][0];
+      expect(updateArgs.where).toEqual(
+        expect.objectContaining({ netAmount: 0 }),
+      );
+      expect(updateArgs.data.bankAccount).toBeUndefined();
+    });
+
+    it("approved 가 아니면 계좌를 보지 않고 상태 오류 400, 거래 행 없음(이중 요청 방지)", async () => {
+      mockPrisma.settlement.findUnique.mockResolvedValue({
+        teamId: "team-1",
+        status: "paid",
+        netAmount: 500000,
+      });
+      mockPrisma.settlement.updateMany.mockResolvedValue({ count: 0 });
+      mockAccountService.getPayoutAccount.mockResolvedValue(null);
+
+      await expect(service.payout("s-1", "admin-1")).rejects.toThrow(
+        "현재 상태(paid)에서는 지급할 수 없습니다.",
+      );
+      expect(mockAccountService.getPayoutAccount).not.toHaveBeenCalled();
+      expect(mockPrisma.settlementTransaction.create).not.toHaveBeenCalled();
+    });
+
+    it("없는 정산이면 404", async () => {
+      mockPrisma.settlement.findUnique.mockResolvedValue(null);
+      await expect(service.payout("x", "admin-1")).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it.each([
+      ["계좌 없음", null],
+      ["나이스 등록 전", { ...registeredAccount, status: "SUBMITTED" }],
+    ])(
+      "팀 계좌가 %s 이면 409 이고 상태를 바꾸지 않는다",
+      async (_label, account) => {
+        mockPrisma.settlement.findUnique.mockResolvedValue(
+          approvedTarget(5000),
+        );
+        mockAccountService.getPayoutAccount.mockResolvedValue(account);
+
+        await expect(service.payout("s-1", "admin-1")).rejects.toMatchObject({
+          status: 409,
+          response: expect.objectContaining({
+            errorCode: "SETTLEMENT_ACCOUNT_NOT_REGISTERED",
+          }),
+        });
+        expect(mockPrisma.settlement.updateMany).not.toHaveBeenCalled();
+      },
+    );
+
+    it("지급 직전에 계좌가 바뀌면(조건부 갱신 0건·approved·순지급액 양수) 409 SETTLEMENT_ACCOUNT_CHANGED", async () => {
+      mockPrisma.settlement.updateMany.mockResolvedValue({ count: 0 });
+      mockPrisma.settlement.findUnique
+        .mockResolvedValueOnce(approvedTarget(5000))
+        .mockResolvedValueOnce({ status: "approved", netAmount: 5000 });
+
+      await expect(service.payout("s-1", "admin-1")).rejects.toMatchObject({
+        status: 409,
+        response: expect.objectContaining({
+          errorCode: "SETTLEMENT_ACCOUNT_CHANGED",
+        }),
+      });
       expect(mockPrisma.settlementTransaction.create).not.toHaveBeenCalled();
     });
 
     it("순지급액이 음수면 상태가 approved 여도 지급할 수 없다(방어 가드, 전용 메시지)", async () => {
       mockPrisma.settlement.updateMany.mockResolvedValue({ count: 0 });
       mockPrisma.settlement.findUnique.mockResolvedValue({
-        id: "s-1",
+        teamId: "team-1",
         status: "approved",
         netAmount: -1000,
       });
@@ -718,53 +933,9 @@ describe("SettlementsService", () => {
       await expect(service.payout("s-1", "admin-1")).rejects.toThrow(
         "순지급액이 음수인 정산은 지급할 수 없습니다. 다음 달 정산에서 처리하세요.",
       );
+      expect(mockAccountService.getPayoutAccount).not.toHaveBeenCalled();
       expect(mockPrisma.settlementTransaction.create).not.toHaveBeenCalled();
       expect(mockPrisma.settlementDetail.updateMany).not.toHaveBeenCalled();
-    });
-  });
-
-  // ==================== updateBankInfo ====================
-
-  describe("updateBankInfo", () => {
-    const dto = {
-      bankName: "국민은행",
-      bankAccount: "110-222-333444",
-      accountHolder: "홍길동",
-    };
-
-    it("계좌번호를 암호화하여 저장하고 마스킹된 값을 응답한다", async () => {
-      mockPrisma.settlement.updateMany.mockResolvedValue({ count: 1 });
-      mockPrisma.settlement.findUniqueOrThrow.mockResolvedValue({
-        id: "s-1",
-        bankName: "국민은행",
-        accountHolder: "홍길동",
-      });
-
-      const result = await service.updateBankInfo("s-1", "admin-1", dto);
-
-      const updateArgs = mockPrisma.settlement.updateMany.mock.calls[0][0];
-      expect(updateArgs.where).toEqual({ id: "s-1", status: { not: "paid" } });
-      expect(updateArgs.data.bankAccount).not.toBe(dto.bankAccount);
-      expect(result.bankAccount).toBe("****3444");
-    });
-
-    it("status가 paid 면 400 (조건부 updateMany 0건)", async () => {
-      mockPrisma.settlement.updateMany.mockResolvedValue({ count: 0 });
-      mockPrisma.settlement.findUnique.mockResolvedValue({ id: "s-1" });
-
-      await expect(
-        service.updateBankInfo("s-1", "admin-1", dto),
-      ).rejects.toThrow(BadRequestException);
-      expect(mockPrisma.settlement.findUniqueOrThrow).not.toHaveBeenCalled();
-    });
-
-    it("존재하지 않는 정산이면 NotFoundException", async () => {
-      mockPrisma.settlement.updateMany.mockResolvedValue({ count: 0 });
-      mockPrisma.settlement.findUnique.mockResolvedValue(null);
-
-      await expect(
-        service.updateBankInfo("not-exist", "admin-1", dto),
-      ).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -882,15 +1053,29 @@ describe("SettlementsService", () => {
   // ==================== getPayoutExport ====================
 
   describe("getPayoutExport", () => {
-    it("approved 상태만 조회하고 계좌를 복호화 평문으로 포함한다", async () => {
+    it("approved 상태만 조회하고 팀 계좌를 복호화 평문으로 포함한다", async () => {
       mockPrisma.settlement.findMany.mockResolvedValue([
         {
           netAmount: 92000,
-          status: "approved",
-          bankName: "국민은행",
-          bankAccount: encryptField("110-222-333444"),
-          accountHolder: "홍길동",
-          team: { name: "Test Team", teamCode: "TP001" },
+          team: {
+            name: "Test Team",
+            teamCode: "TP001",
+            settlementAccount: {
+              status: "REGISTERED",
+              businessNumber: encryptField("1234567890"),
+              bankCode: "004",
+              bankAccount: encryptField("110222333444"),
+              accountHolder: "홍길동",
+            },
+          },
+        },
+        {
+          netAmount: 1000,
+          team: {
+            name: "No Account",
+            teamCode: "TP002",
+            settlementAccount: null,
+          },
         },
       ]);
 
@@ -904,21 +1089,23 @@ describe("SettlementsService", () => {
       });
       expect(csv.charCodeAt(0)).toBe(0xfeff);
       expect(csv).toContain(
-        "팀명,팀코드,정산월,순지급액,상태,은행명,계좌번호,예금주",
+        "팀명,팀코드,정산월,사업자등록번호,은행코드,은행명,계좌번호,예금주,순지급액,계좌상태",
       );
-      expect(csv).toContain("110-222-333444");
-      expect(csv).toContain("TP001");
+      expect(csv).toContain(
+        "Test Team,TP001,2026-07,123-45-67890,004,KB국민은행,110222333444,홍길동,92000,등록완료",
+      );
+      expect(csv).toContain("No Account,TP002,2026-07,,,,,,1000,미등록");
     });
 
     it("팀명이 수식으로 시작하면 앞에 작은따옴표를 붙여 무해화한다(CSV 수식 주입 방지)", async () => {
       mockPrisma.settlement.findMany.mockResolvedValue([
         {
           netAmount: 1000,
-          status: "approved",
-          bankName: null,
-          bankAccount: null,
-          accountHolder: null,
-          team: { name: "=SUM(A1:A10)", teamCode: "@evil" },
+          team: {
+            name: "=SUM(A1:A10)",
+            teamCode: "@evil",
+            settlementAccount: null,
+          },
         },
       ]);
 

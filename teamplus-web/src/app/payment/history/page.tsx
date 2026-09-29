@@ -672,7 +672,7 @@ function PaymentHistoryContent() {
       {/* 스크롤 영역 — MobileContainer 직계 자식(overflow-y-auto)만 momentum 스크롤 대상.
           PageAppBar 는 영역 밖(고정 헤더)에 유지하고, 본문 전체를 이 컨테이너가 스크롤. */}
       <div className="flex-1 min-h-0 overflow-y-auto bg-it-canvas dark:bg-puck [&>*]:shrink-0">
-        {/* 탭 — 결제 내역 / 결제 대기 (정산 센터와 동일 패턴). 결제 대기 탭은 건수 배지 표기 */}
+        {/* 탭 — 결제 내역 / 결제 대기 (결제 관리와 동일 패턴). 결제 대기 탭은 건수 배지 표기 */}
         <div
           role="tablist"
           aria-label={MESSAGES.payment2.tabsAria}

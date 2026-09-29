@@ -39,6 +39,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { api } from '@/services/api-client';
+import { getAccountStatusMeta, type AccountStatus } from './accountStatusMeta';
 
 export type SettlementStatus =
   | 'pending'
@@ -107,6 +108,13 @@ interface SettlementDetail {
   bankName?: string | null;
   bankAccount?: string | null;
   accountHolder?: string | null;
+  teamSettlementAccount?: {
+    status: AccountStatus;
+    bankName: string;
+    bankAccount: string;
+    accountHolder: string;
+    updatedAt: string;
+  } | null;
   scheduledAt?: string | null;
   completedAt?: string | null;
   createdAt: string;
@@ -235,6 +243,13 @@ function extractErrorMessage(error: unknown, fallback: string): string {
   if (Array.isArray(raw)) return raw.join(', ');
   if (typeof raw === 'string' && raw.length > 0) return raw;
   return fallback;
+}
+
+function extractErrorCode(error: unknown): string | undefined {
+  const data = (error as { response?: { data?: unknown } })?.response?.data as
+    | { errorCode?: string; code?: string }
+    | undefined;
+  return data?.errorCode ?? data?.code;
 }
 
 function linesKeyOf(settlementId: string, query: LinesQuery): string {
@@ -486,15 +501,28 @@ export function SettlementDetailDialog({
 
   const handlePayoutConfirmed = async () => {
     if (!settlementId || !detail) return;
+    const payoutBody =
+      detail.netAmount > 0 && detail.teamSettlementAccount
+        ? { expectedAccountUpdatedAt: detail.teamSettlementAccount.updatedAt }
+        : {};
     setIsProcessing(true);
     try {
-      await api.post(`/settlements/${settlementId}/payout`, {});
+      await api.post(`/settlements/${settlementId}/payout`, payoutBody);
       setIsPayoutConfirmOpen(false);
       onOpenChange(false);
       onActionSuccess(MESSAGES.settlementDynamic.paid(detail.netAmount));
     } catch (error) {
       setIsPayoutConfirmOpen(false);
-      onActionError(extractErrorMessage(error, MESSAGES.settlement.payError));
+      const errorCode = extractErrorCode(error);
+      if (errorCode === 'SETTLEMENT_ACCOUNT_CHANGED') {
+        onActionError(extractErrorMessage(error, MESSAGES.settlement.payoutAccountChanged));
+        void loadDetail(settlementId);
+      } else if (errorCode === 'SETTLEMENT_ACCOUNT_NOT_REGISTERED') {
+        onActionError(extractErrorMessage(error, MESSAGES.settlement.payoutAccountNotRegistered));
+        void loadDetail(settlementId);
+      } else {
+        onActionError(extractErrorMessage(error, MESSAGES.settlement.payError));
+      }
     } finally {
       setIsProcessing(false);
     }
@@ -506,6 +534,10 @@ export function SettlementDetailDialog({
     (t) => t.transactionType === 'reject',
   )?.description;
   const isNegative = (detail?.netAmount ?? 0) < 0;
+  const teamAccount = detail?.teamSettlementAccount ?? null;
+  const teamAccountMeta = getAccountStatusMeta(teamAccount?.status);
+  // 지급액이 0원이면 계좌 없이도 지급 처리할 수 있다.
+  const payoutAccountReady = (detail?.netAmount ?? 0) <= 0 || teamAccount?.status === 'REGISTERED';
   const totalFee = detail ? detail.platformFee + detail.paymentFee : 0;
   // 수수료율이 0 인 동안에는 명세의 수수료 열을 숨긴다 — 요율이 생기면 자동으로 다시 보인다.
   const showFeeColumn = totalFee !== 0 || lines.some((line) => line.feeAmount !== 0);
@@ -624,6 +656,24 @@ export function SettlementDetailDialog({
                     {MESSAGES.settlement.payoutDisabledNegative}
                   </p>
                 )}
+                {!payoutAccountReady && detail.status === 'approved' && (
+                  <p className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400" role="alert">
+                    <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" aria-hidden="true" />
+                    {MESSAGES.settlement.payoutDisabledAccount}
+                  </p>
+                )}
+                <p className="flex flex-wrap items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+                  <span>{MESSAGES.settlement.teamAccountLabel}:</span>
+                  <Badge className={`${teamAccountMeta.badge} px-1.5 py-0 text-[11px]`}>
+                    {teamAccountMeta.label}
+                  </Badge>
+                  {teamAccount && (
+                    <span className="text-slate-900 dark:text-white tabular-nums">
+                      {teamAccount.bankName} {teamAccount.bankAccount} · {MESSAGES.settlement.accountHolderSeparator}{' '}
+                      {teamAccount.accountHolder}
+                    </span>
+                  )}
+                </p>
                 {detail.bankName && (
                   <p className="text-xs text-slate-500 dark:text-slate-400">
                     {MESSAGES.settlement.bankAccountLabel}:{' '}
@@ -1102,9 +1152,15 @@ export function SettlementDetailDialog({
                 <Button
                   type="button"
                   onClick={() => setIsPayoutConfirmOpen(true)}
-                  disabled={isProcessing || detail.netAmount < 0}
+                  disabled={isProcessing || detail.netAmount < 0 || !payoutAccountReady}
                   variant="success"
-                  title={detail.netAmount < 0 ? MESSAGES.settlement.payoutDisabledNegative : undefined}
+                  title={
+                    detail.netAmount < 0
+                      ? MESSAGES.settlement.payoutDisabledNegative
+                      : !payoutAccountReady
+                        ? MESSAGES.settlement.payoutDisabledAccount
+                        : undefined
+                  }
                 >
                   {MESSAGES.settlement.payoutButton}
                 </Button>
@@ -1135,25 +1191,38 @@ export function SettlementDetailDialog({
             <div className="py-2 space-y-3">
               <div className="bg-slate-50 dark:bg-slate-700/50 rounded-lg p-4 space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-slate-500 dark:text-slate-400">팀명</span>
+                  <span className="text-slate-500 dark:text-slate-400">{MESSAGES.settlement.payoutConfirmTeam}</span>
                   <span className="font-medium text-slate-900 dark:text-white">{detail.team?.name}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-500 dark:text-slate-400">정산월</span>
+                  <span className="text-slate-500 dark:text-slate-400">{MESSAGES.settlement.payoutConfirmMonth}</span>
                   <span className="text-slate-900 dark:text-white tabular-nums">{detail.settlementMonth}</span>
                 </div>
                 <div className="flex justify-between items-baseline border-t border-slate-200 dark:border-slate-600 pt-2 mt-2">
-                  <span className="text-slate-700 dark:text-slate-200 font-medium">지급 금액</span>
+                  <span className="text-slate-700 dark:text-slate-200 font-medium">{MESSAGES.settlement.payoutConfirmAmount}</span>
                   <span className="font-bold text-green-600 dark:text-green-400 text-base tabular-nums">
                     {formatAmount(detail.netAmount)}
                   </span>
                 </div>
               </div>
-              {detail.bankName && (
-                <div className="text-sm text-primary bg-primary/5 dark:bg-primary/10 rounded-lg p-3">
-                  입금 계좌: <span className="tabular-nums">{detail.bankName} {detail.bankAccount}</span>
+              {teamAccount && detail.netAmount > 0 ? (
+                <div className="text-sm text-primary bg-primary/5 dark:bg-primary/10 rounded-lg p-3 space-y-1">
+                  <p>
+                    {MESSAGES.settlement.payoutConfirmAccount}:{' '}
+                    <span className="tabular-nums">
+                      {teamAccount.bankName} {teamAccount.bankAccount}
+                    </span>{' '}
+                    · {MESSAGES.settlement.accountHolderSeparator} {teamAccount.accountHolder}
+                  </p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {MESSAGES.settlement.payoutConfirmSnapshotNote}
+                  </p>
                 </div>
-              )}
+              ) : detail.netAmount <= 0 ? (
+                <div className="text-sm text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-700/50 rounded-lg p-3">
+                  {MESSAGES.settlement.payoutConfirmAccountNone}
+                </div>
+              ) : null}
               <p className="text-xs text-amber-600 dark:text-amber-400 flex items-start gap-1.5">
                 <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" aria-hidden="true" />
                 {MESSAGES.settlement.payoutConfirmNote}
