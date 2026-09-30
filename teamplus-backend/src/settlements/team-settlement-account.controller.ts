@@ -50,18 +50,43 @@ export class TeamSettlementAccountController {
     return { success: true, data: account };
   }
 
+  @Get("policy")
+  @Roles("ADMIN", "DIRECTOR")
+  @ApiOperation({
+    summary: "팀 정산 계좌 저장 정책",
+    description:
+      "registrationMode(manual=운영자가 나이스에 직접 등록 / api=저장 시 나이스 자동 등록)와 " +
+      "saveBlockedReason(지금 저장할 수 없는 이유, 없으면 null). 조회 권한은 계좌 조회와 같습니다.",
+  })
+  @ApiParam({ name: "teamId", description: "팀 ID" })
+  @ApiResponse({ status: 200, description: "조회 성공" })
+  @ApiResponse({ status: 403, description: "팀 소유 감독 또는 관리자만 조회" })
+  @ApiResponse({ status: 404, description: "팀을 찾을 수 없습니다." })
+  async getPolicy(
+    @Param("teamId") teamId: string,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    return this.accountService.getRegistrationPolicyForTeam(teamId, req.user);
+  }
+
   @Put()
   @Roles("DIRECTOR")
   @ApiOperation({
     summary: "팀 정산 계좌 저장",
     description:
       "팀 소유 감독만 저장합니다(관리자 포함 그 외 403). 사업자등록번호는 첫 저장에만 필수이고 이후 변경할 수 없습니다. " +
-      "내용이 바뀌면 상태가 SUBMITTED 로 돌아가 운영자가 나이스에 다시 등록해야 합니다.",
+      "수동 운영이면 내용이 바뀔 때 SUBMITTED 로 돌아가 운영자가 나이스에 다시 등록합니다. " +
+      "지급대행 live 모드면 저장 직후 나이스 서브몰 등록을 호출해 REGISTERED(성공)·FAILED(거절, lastResultMessage)·SUBMITTED(결과 확인 중)로 정합니다.",
   })
   @ApiParam({ name: "teamId", description: "팀 ID" })
   @ApiResponse({ status: 200, description: "저장 성공(마스킹 응답)" })
   @ApiResponse({ status: 400, description: "입력 오류 · 사업자번호 변경 시도" })
   @ApiResponse({ status: 403, description: "팀 소유 감독만 저장" })
+  @ApiResponse({
+    status: 409,
+    description:
+      "23:00~01:00 등록 불가(SUBMALL_WINDOW_CLOSED) · 등록 진행 중 · 동시 수정",
+  })
   @AuditAction({
     action: "team.settlement-account.upsert",
     resource: "TeamSettlementAccount",

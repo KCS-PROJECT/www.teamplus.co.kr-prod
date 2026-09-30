@@ -1,13 +1,18 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import {
+  BadGatewayException,
   BadRequestException,
+  ConflictException,
   NotFoundException,
   ForbiddenException,
 } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
 import { SettlementsService, escapeLikePattern } from "./settlements.service";
 import { TeamSettlementAccountService } from "./team-settlement-account.service";
 import { PrismaService } from "@/prisma/prisma.service";
 import { ResourceAccessService } from "@/common/access/resource-access.service";
+import { RedisService } from "@/redis/redis.service";
+import { NicePayoutApiService } from "./nice-payout-api.service";
 import { JwtUserPayload } from "@/common/interfaces/authenticated-request.interface";
 import { encryptField } from "@/common/utils/field-encryption.util";
 import { randomBytes } from "crypto";
@@ -41,9 +46,15 @@ describe("SettlementsService", () => {
     team: {
       findMany: jest.fn(),
     },
+    appSettings: { findFirst: jest.fn() },
     $queryRaw: jest.fn(),
     $transaction: jest.fn(),
   };
+
+  const mockPayoutApi = { getBalance: jest.fn() };
+  const mockRedis = { get: jest.fn(), set: jest.fn() };
+  const configValues: Record<string, string | undefined> = {};
+  const mockConfig = { get: jest.fn((key: string) => configValues[key]) };
 
   const mockResourceAccess = {
     resolveTeamScope: jest.fn(),
@@ -86,6 +97,9 @@ describe("SettlementsService", () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: ResourceAccessService, useValue: mockResourceAccess },
         { provide: TeamSettlementAccountService, useValue: mockAccountService },
+        { provide: NicePayoutApiService, useValue: mockPayoutApi },
+        { provide: RedisService, useValue: mockRedis },
+        { provide: ConfigService, useValue: mockConfig },
       ],
     }).compile();
 
@@ -1129,6 +1143,105 @@ describe("SettlementsService", () => {
 
       const where = mockPrisma.settlement.findMany.mock.calls[0][0].where;
       expect(where.netAmount).toEqual({ gt: 0 });
+    });
+  });
+
+  describe("지급대행 잔액·모드", () => {
+    const meta = {
+      sid: "0101001",
+      resCode: "0000",
+      resMsg: "성공",
+      httpStatus: 200,
+      durationMs: 10,
+      error: null,
+    };
+
+    beforeEach(() => {
+      mockRedis.get.mockResolvedValue(null);
+      for (const key of Object.keys(configValues)) delete configValues[key];
+    });
+
+    it("off 면 나이스를 부르지 않고 409 PAYOUT_API_OFF", async () => {
+      mockPrisma.appSettings.findFirst.mockResolvedValue({
+        payoutApiMode: "off",
+      });
+      await expect(service.getPayoutBalance("admin-1")).rejects.toThrow(
+        ConflictException,
+      );
+      expect(mockPayoutApi.getBalance).not.toHaveBeenCalled();
+    });
+
+    it("설정 조회가 실패하면 off 로 보고 나이스를 부르지 않는다", async () => {
+      mockPrisma.appSettings.findFirst.mockRejectedValue(new Error("db down"));
+      await expect(service.getPayoutBalance("admin-1")).rejects.toThrow(
+        ConflictException,
+      );
+      expect(mockPayoutApi.getBalance).not.toHaveBeenCalled();
+    });
+
+    it("readonly 면 잔액을 돌려주고 요청자를 기록 문맥으로 넘긴다", async () => {
+      mockPrisma.appSettings.findFirst.mockResolvedValue({
+        payoutApiMode: "readonly",
+      });
+      mockPayoutApi.getBalance.mockResolvedValue({
+        outcome: "SUCCESS",
+        meta,
+        remainAmt: 1500000,
+      });
+      const result = await service.getPayoutBalance("admin-1");
+      expect(result.remainAmt).toBe(1500000);
+      expect(mockPayoutApi.getBalance).toHaveBeenCalledWith({
+        requestedBy: "admin-1",
+      });
+    });
+
+    it("나이스 실패면 502 NICE_PAYOUT_API_FAILED", async () => {
+      mockPrisma.appSettings.findFirst.mockResolvedValue({
+        payoutApiMode: "live",
+      });
+      mockPayoutApi.getBalance.mockResolvedValue({
+        outcome: "AMBIGUOUS",
+        meta: { ...meta, resCode: null, error: "timeout" },
+        remainAmt: null,
+      });
+      await expect(service.getPayoutBalance("admin-1")).rejects.toThrow(
+        BadGatewayException,
+      );
+    });
+
+    it("키가 없으면 readonly·live 는 선택할 수 없고 off 는 항상 선택 가능", () => {
+      const modes = service.getPayoutModes();
+      expect(modes.map((m) => [m.code, m.selectable])).toEqual([
+        ["off", true],
+        ["readonly", false],
+        ["live", false],
+      ]);
+    });
+
+    it("운영 환경에서는 가짜 게이트웨이 지정만으로 선택 가능해지지 않는다", () => {
+      configValues.NICE_PAYOUT_GATEWAY = "fake";
+      configValues.NODE_ENV = "production";
+      expect(
+        service.getPayoutModes().find((m) => m.code === "live")?.selectable,
+      ).toBe(false);
+      configValues.NODE_ENV = "development";
+      expect(
+        service.getPayoutModes().find((m) => m.code === "live")?.selectable,
+      ).toBe(true);
+    });
+
+    it("선택 가능 판정은 게이트웨이와 같은 규칙 — 공백·대소문자 무시, 공백뿐인 키는 미설정", () => {
+      configValues.NODE_ENV = "development";
+      configValues.NICE_PAYOUT_GATEWAY = " Fake ";
+      expect(
+        service.getPayoutModes().find((m) => m.code === "live")?.selectable,
+      ).toBe(true);
+      configValues.NICE_PAYOUT_GATEWAY = "nice";
+      configValues.NICE_PAYOUT_MID = "   ";
+      configValues.NICE_PAYOUT_MERCHANT_KEY = "key";
+      expect(
+        service.getPayoutModes().find((m) => m.code === "live")?.selectable,
+      ).toBe(false);
     });
   });
 });

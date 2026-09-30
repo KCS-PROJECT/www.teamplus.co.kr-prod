@@ -14,15 +14,17 @@ import { useNavigation } from "@/hooks/useNavigation";
 import { usePageReady } from "@/hooks/usePageReady";
 import { MESSAGES } from "@/lib/messages";
 import { emitRefresh, REFRESH_KEYS } from "@/lib/refresh-bus";
-import { settlementAccountStatusView } from "@/lib/settlement-account-status";
+import { settlementAccountStatusViewForMode } from "@/lib/settlement-account-status";
 import { cn } from "@/lib/utils";
 import {
   getBankCodes,
   getTeam,
   getTeamSettlementAccount,
+  getTeamSettlementAccountPolicy,
   upsertTeamSettlementAccount,
   type BankCodeOption,
   type TeamSettlementAccount,
+  type TeamSettlementAccountPolicy,
 } from "@/services/team.service";
 
 const M = MESSAGES.settlementAccount;
@@ -57,6 +59,7 @@ export default function TeamSettlementAccountPage() {
   const [notOwner, setNotOwner] = useState(false);
   const [account, setAccount] = useState<TeamSettlementAccount | null>(null);
   const [banks, setBanks] = useState<BankCodeOption[]>([]);
+  const [policy, setPolicy] = useState<TeamSettlementAccountPolicy | null>(null);
 
   const [businessNumber, setBusinessNumber] = useState("");
   const [bankCode, setBankCode] = useState("");
@@ -101,7 +104,10 @@ export default function TeamSettlementAccountPage() {
           setNotOwner(true);
           return;
         }
-        const accountRes = await getTeamSettlementAccount(teamId);
+        const [accountRes, policyRes] = await Promise.all([
+          getTeamSettlementAccount(teamId),
+          getTeamSettlementAccountPolicy(teamId),
+        ]);
         if (accountRes.error?.statusCode === 403) {
           setNotOwner(true);
           return;
@@ -112,6 +118,8 @@ export default function TeamSettlementAccountPage() {
         }
         setNotOwner(false);
         setBanks(bankRes.data ?? []);
+        // 정책 조회가 실패해도 화면은 연다 — 등록 불가 시간 저장은 서버가 막는다.
+        setPolicy(policyRes.success ? (policyRes.data ?? null) : null);
         applyAccount(accountRes.data ?? null, silent);
       } catch {
         setLoadError(MESSAGES.error.network);
@@ -140,8 +148,11 @@ export default function TeamSettlementAccountPage() {
       ? M.accountInvalid
       : null;
 
+  const saveBlockedReason = policy?.saveBlockedReason ?? null;
+
   const canSubmit =
     !submitting &&
+    !saveBlockedReason &&
     (!isFirst || bnDigits.length === 10) &&
     bankCode !== "" &&
     accountDigits.length >= 6 &&
@@ -164,7 +175,11 @@ export default function TeamSettlementAccountPage() {
         });
         if (res.success && res.data) {
           applyAccount(res.data);
-          toast.success(M.saveSuccess);
+          // 등록 실패는 나이스 응답으로만 생기므로 정책 조회가 실패해 방식을 몰라도 실패로 안내한다.
+          if (res.data.status === "FAILED") toast.error(M.saveSuccessFailed);
+          else if (policy?.registrationMode !== "api") toast.success(M.saveSuccess);
+          else if (res.data.status === "REGISTERED") toast.success(M.saveSuccessRegistered);
+          else toast.success(M.saveSuccessChecking);
           emitRefresh([REFRESH_KEYS.TEAM, teamId]);
         } else {
           const message = res.error?.message || MESSAGES.error.general;
@@ -182,7 +197,7 @@ export default function TeamSettlementAccountPage() {
         setSubmitting(false);
       }
     },
-    [canSubmit, teamId, isFirst, bnDigits, bankCode, accountDigits, holder, applyAccount, toast, load],
+    [canSubmit, teamId, isFirst, bnDigits, bankCode, accountDigits, holder, applyAccount, toast, load, policy],
   );
 
   const goTeam = useCallback(() => navigate(`/team/${teamId}`), [navigate, teamId]);
@@ -195,7 +210,8 @@ export default function TeamSettlementAccountPage() {
 
   const selectedBankName =
     banks.find((b) => b.code === bankCode)?.name ?? account?.bankName ?? "";
-  const statusView = settlementAccountStatusView(account?.status);
+  const statusView = settlementAccountStatusViewForMode(account?.status, policy?.registrationMode);
+  const resultMessage = account?.lastResultMessage ?? null;
 
   const shell = (children: React.ReactNode) => (
     <MobileContainer hasBottomNav>
@@ -244,6 +260,21 @@ export default function TeamSettlementAccountPage() {
         <p className="mt-2 text-[13px] font-semibold leading-relaxed text-it-ink-500 dark:text-it-ink-300">
           {statusView.hint}
         </p>
+        {resultMessage && (account?.status === "FAILED" || account?.status === "SUBMITTED") && (
+          <p className="mt-1.5 text-[13px] font-semibold leading-relaxed text-it-ink-800 dark:text-white">
+            {resultMessage}
+          </p>
+        )}
+        {account?.status === "FAILED" && (
+          <p className="mt-1.5 text-[13px] font-semibold leading-relaxed text-it-red-600 dark:text-it-red-300">
+            {M.failedRetryGuide}
+          </p>
+        )}
+        {account?.registrationInProgress && (
+          <p className="mt-1.5 text-[13px] font-semibold leading-relaxed text-it-blue-600 dark:text-it-ink-200">
+            {M.registrationInProgress}
+          </p>
+        )}
       </section>
 
       <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
@@ -334,6 +365,17 @@ export default function TeamSettlementAccountPage() {
             />
           </div>
         </Field>
+
+        {saveBlockedReason && (
+          <div
+            role="status"
+            className="mb-5 rounded-w-md border-[1.5px] border-it-line-strong bg-it-fill px-3.5 py-3 dark:border-it-blue-900 dark:bg-it-blue-900"
+          >
+            <p className="text-[13px] font-semibold text-it-ink-600 dark:text-it-ink-200">
+              {saveBlockedReason}
+            </p>
+          </div>
+        )}
 
         {serverError && (
           <div

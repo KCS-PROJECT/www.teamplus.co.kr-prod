@@ -48,6 +48,11 @@ interface TeamAccount {
   registeredAt: string | null;
   registeredBy: { id: string; name: string } | null;
   updatedAt: string;
+  subMallId: string | null;
+  lastResCode: string | null;
+  lastResMsg: string | null;
+  lastAttemptedAt: string | null;
+  registrationInProgress: boolean;
 }
 
 interface TeamAccountRow {
@@ -62,6 +67,7 @@ interface AccountsMeta {
   page: number;
   pageSize: number;
   totalPages: number;
+  payoutApiMode?: 'off' | 'readonly' | 'live';
 }
 
 type StatusFilter = 'all' | 'NONE' | AccountStatus;
@@ -76,6 +82,7 @@ const FILTER_OPTIONS: { value: StatusFilter; label: string }[] = [
   { value: 'NONE', label: getAccountStatusMeta(null).label },
   { value: 'SUBMITTED', label: getAccountStatusMeta('SUBMITTED').label },
   { value: 'REGISTERED', label: getAccountStatusMeta('REGISTERED').label },
+  { value: 'FAILED', label: getAccountStatusMeta('FAILED').label },
 ];
 
 const kstDateTimeFormat = new Intl.DateTimeFormat('ko-KR', {
@@ -125,13 +132,17 @@ export function TeamSettlementAccountsTab() {
   const [meta, setMeta] = useState<AccountsMeta | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [notice, setNotice] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
 
   const [dialogAction, setDialogAction] = useState<DialogAction | null>(null);
   const [dialogRow, setDialogRow] = useState<TeamAccountRow | null>(null);
   const [resetStep, setResetStep] = useState<1 | 2>(1);
   const [registrationChecked, setRegistrationChecked] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [niceRegisteringTeamId, setNiceRegisteringTeamId] = useState<string | null>(null);
 
   // 필터를 빠르게 바꿀 때 먼저 보낸 요청이 늦게 도착해 최신 화면을 덮는 경쟁을 막는다.
   const requestSeqRef = useRef(0);
@@ -141,7 +152,10 @@ export function TeamSettlementAccountsTab() {
     setIsLoading(true);
     setLoadError(null);
     try {
-      const params: Record<string, string | number> = { page, pageSize: PAGE_SIZE };
+      const params: Record<string, string | number> = {
+        page,
+        pageSize: PAGE_SIZE,
+      };
       if (statusFilter !== 'all') params.status = statusFilter;
       if (q) params.q = q;
       const res = await api.get<{ data: TeamAccountRow[]; meta: AccountsMeta }>(
@@ -214,7 +228,10 @@ export function TeamSettlementAccountsTab() {
     try {
       if (dialogAction === 'reset') {
         await api.delete(`/settlements/accounts/${teamId}`);
-        setNotice({ type: 'success', text: MESSAGES.settlement.accountResetSuccess });
+        setNotice({
+          type: 'success',
+          text: MESSAGES.settlement.accountResetSuccess,
+        });
       } else {
         const nextStatus: AccountStatus = dialogAction === 'register' ? 'REGISTERED' : 'SUBMITTED';
         await api.patch(`/settlements/accounts/${teamId}/registration`, {
@@ -256,16 +273,63 @@ export function TeamSettlementAccountsTab() {
     }
   };
 
+  const handleNiceRegister = async (row: TeamAccountRow) => {
+    if (niceRegisteringTeamId) return;
+    setNiceRegisteringTeamId(row.teamId);
+    try {
+      const result = await api.post<TeamAccount>(`/settlements/accounts/${row.teamId}/register`);
+      if (result?.status === 'REGISTERED') {
+        setNotice({
+          type: 'success',
+          text: MESSAGES.settlement.accountNiceRegisterSuccess,
+        });
+      } else if (result?.status === 'FAILED') {
+        setNotice({
+          type: 'error',
+          text: MESSAGES.settlementDynamic.accountNiceRegisterFailed(
+            result.lastResMsg || MESSAGES.settlement.accountNiceRegisterFailedFallback,
+          ),
+        });
+      } else {
+        setNotice({
+          type: 'success',
+          text: MESSAGES.settlement.accountNiceRegisterChecking,
+        });
+      }
+      void loadAccounts();
+    } catch (error) {
+      const status = getErrorStatus(error);
+      setNotice({
+        type: 'error',
+        text: extractErrorMessage(error, MESSAGES.settlement.accountNiceRegisterError),
+      });
+      if (status === 409 || status === 404) void loadAccounts();
+    } finally {
+      setNiceRegisteringTeamId(null);
+    }
+  };
+
+  const isLiveMode = meta?.payoutApiMode === 'live';
+
   const dialogAccount = dialogRow?.account ?? null;
   const dialogFields = dialogAccount
     ? [
-        { label: MESSAGES.settlement.accountColBusinessNumber, value: dialogAccount.businessNumber },
+        {
+          label: MESSAGES.settlement.accountColBusinessNumber,
+          value: dialogAccount.businessNumber,
+        },
         {
           label: MESSAGES.settlement.accountColBank,
           value: `${dialogAccount.bankName} (${dialogAccount.bankCode})`,
         },
-        { label: MESSAGES.settlement.accountColAccountNumber, value: dialogAccount.bankAccount },
-        { label: MESSAGES.settlement.accountColHolder, value: dialogAccount.accountHolder },
+        {
+          label: MESSAGES.settlement.accountColAccountNumber,
+          value: dialogAccount.bankAccount,
+        },
+        {
+          label: MESSAGES.settlement.accountColHolder,
+          value: dialogAccount.accountHolder,
+        },
       ]
     : [];
 
@@ -324,11 +388,6 @@ export function TeamSettlementAccountsTab() {
       )}
 
       <div className="w-0 min-w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
-        {meta && (
-          <p className="px-4 pt-3 text-xs text-slate-500 dark:text-slate-400 tabular-nums">
-            {MESSAGES.settlementDynamic.accountsCount(meta.total)}
-          </p>
-        )}
         <Table>
           <TableHeader>
             <TableRow>
@@ -367,22 +426,34 @@ export function TeamSettlementAccountsTab() {
                       <p className="text-xs text-slate-400 dark:text-slate-500 tabular-nums">{row.teamCode}</p>
                     </TableCell>
                     <TableCell>
-                      <Badge className={`${statusMeta.badge} whitespace-nowrap`}>{statusMeta.label}</Badge>
+                      {/* 서브몰 ID 는 대부분 팀 ID 와 같아 목록에 적지 않고, 문의·대조할 때만 마우스를 올려 본다. */}
+                      <span
+                        title={
+                          account?.subMallId
+                            ? MESSAGES.settlementDynamic.accountSubMallId(account.subMallId)
+                            : undefined
+                        }
+                      >
+                        <Badge className={`${statusMeta.badge} whitespace-nowrap`}>{statusMeta.label}</Badge>
+                      </span>
+                      {account?.registrationInProgress && (
+                        <p className="mt-1 text-xs text-amber-700 dark:text-amber-400 whitespace-nowrap">
+                          {MESSAGES.settlement.accountNiceInProgress}
+                        </p>
+                      )}
+                      {account &&
+                        (account.status === 'FAILED' || account.status === 'SUBMITTED') &&
+                        account.lastResMsg && (
+                          <p className="mt-1 max-w-[16rem] whitespace-normal break-words text-xs text-slate-500 dark:text-slate-400">
+                            {account.lastResMsg}
+                          </p>
+                        )}
                     </TableCell>
                     <TableCell className="tabular-nums whitespace-nowrap text-slate-900 dark:text-white">
                       {account?.businessNumber ?? '-'}
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-slate-900 dark:text-white">
-                      {account ? (
-                        <>
-                          {account.bankName}
-                          <span className="ml-1 text-xs text-slate-400 dark:text-slate-500 tabular-nums">
-                            ({account.bankCode})
-                          </span>
-                        </>
-                      ) : (
-                        '-'
-                      )}
+                      {account ? account.bankName : '-'}
                     </TableCell>
                     <TableCell className="tabular-nums whitespace-nowrap text-slate-900 dark:text-white">
                       {account?.bankAccount ?? '-'}
@@ -408,12 +479,25 @@ export function TeamSettlementAccountsTab() {
                     <TableCell className="sticky right-0 shadow-[-8px_0_8px_-8px_rgba(15,23,42,0.15)] dark:shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.5)] bg-white text-right group-hover:bg-slate-50 dark:bg-slate-800 dark:group-hover:bg-slate-700">
                       {account && (
                         <div className="flex flex-wrap items-center justify-end gap-1.5">
-                          {account.status === 'SUBMITTED' && (
+                          {/* 수동 운영 때 등록 완료로 표시된 계좌는 서브몰 ID 가 없어 live 에서 재등록이 필요하다. */}
+                          {isLiveMode && (account.status !== 'REGISTERED' || !account.subMallId) && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={() => void handleNiceRegister(row)}
+                              disabled={account.registrationInProgress || niceRegisteringTeamId !== null}
+                            >
+                              {niceRegisteringTeamId === row.teamId
+                                ? MESSAGES.settlement.accountNiceRegistering
+                                : MESSAGES.settlement.accountNiceRegisterButton}
+                            </Button>
+                          )}
+                          {!isLiveMode && (account.status === 'SUBMITTED' || account.status === 'FAILED') && (
                             <Button type="button" size="sm" onClick={() => openDialog('register', row)}>
                               {MESSAGES.settlement.accountRegisterButton}
                             </Button>
                           )}
-                          {account.status === 'REGISTERED' && (
+                          {!isLiveMode && account.status === 'REGISTERED' && (
                             <Button
                               type="button"
                               size="sm"
@@ -443,31 +527,42 @@ export function TeamSettlementAccountsTab() {
         </Table>
       </div>
 
-      {meta && meta.totalPages > 1 && (
-        <div className="flex items-center justify-center gap-3">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page <= 1}
-            aria-label={MESSAGES.settlement.prevPage}
-          >
-            <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-          </Button>
-          <span className="text-sm text-slate-500 dark:text-slate-400 tabular-nums">
-            {page} / {meta.totalPages}
+      {meta && (
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
+            {MESSAGES.settlementDynamic.accountsCount(
+              meta.total,
+              meta.total === 0 ? 0 : (meta.page - 1) * meta.pageSize + 1,
+              Math.min(meta.page * meta.pageSize, meta.total),
+            )}
           </span>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            onClick={() => setPage((p) => Math.min(meta.totalPages, p + 1))}
-            disabled={page >= meta.totalPages}
-            aria-label={MESSAGES.settlement.nextPage}
-          >
-            <ChevronRight className="h-4 w-4" aria-hidden="true" />
-          </Button>
+          {meta.totalPages > 1 && (
+            <div className="flex items-center gap-3">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
+                aria-label={MESSAGES.settlement.prevPage}
+              >
+                <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+              </Button>
+              <span className="text-sm text-slate-500 dark:text-slate-400 tabular-nums">
+                {page} / {meta.totalPages}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setPage((p) => Math.min(meta.totalPages, p + 1))}
+                disabled={page >= meta.totalPages}
+                aria-label={MESSAGES.settlement.nextPage}
+              >
+                <ChevronRight className="h-4 w-4" aria-hidden="true" />
+              </Button>
+            </div>
+          )}
         </div>
       )}
 

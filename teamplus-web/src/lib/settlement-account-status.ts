@@ -25,6 +25,11 @@ const VIEWS: Record<TeamSettlementAccountStatus | "NONE", SettlementAccountStatu
     hint: M.statusRegisteredHint,
     badge: "bg-mint-100 text-mint-700 dark:bg-mint-500/15 dark:text-mint-500",
   },
+  FAILED: {
+    label: M.statusFailed,
+    hint: M.statusFailedHint,
+    badge: "bg-flame-100 text-flame-700 dark:bg-flame-500/15 dark:text-flame-500",
+  },
 };
 
 /** status 가 null 이면 미등록. */
@@ -32,4 +37,19 @@ export function settlementAccountStatusView(
   status: TeamSettlementAccountStatus | null | undefined,
 ): SettlementAccountStatusView {
   return VIEWS[status ?? "NONE"];
+}
+
+/** 나이스 자동 등록 방식에서 결과 확인 중일 때의 표시. 다른 상태는 기본 표시 그대로. */
+export function settlementAccountStatusViewForMode(
+  status: TeamSettlementAccountStatus | null | undefined,
+  mode: "manual" | "api" | undefined,
+): SettlementAccountStatusView {
+  const base = settlementAccountStatusView(status);
+  if (status === "SUBMITTED" && mode === "api") {
+    return { ...base, label: M.statusChecking, hint: M.statusCheckingHint };
+  }
+  if (status === "REGISTERED" && mode === "api") {
+    return { ...base, hint: M.statusRegisteredApiHint };
+  }
+  return base;
 }

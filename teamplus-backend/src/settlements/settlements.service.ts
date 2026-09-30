@@ -1,4 +1,5 @@
 import {
+  BadGatewayException,
   Injectable,
   NotFoundException,
   BadRequestException,
@@ -12,7 +13,9 @@ import {
   SettlementEntryType,
   SettlementSourceType,
 } from "@prisma/client";
+import { ConfigService } from "@nestjs/config";
 import { PrismaService } from "@/prisma/prisma.service";
+import { RedisService } from "@/redis/redis.service";
 import { ResourceAccessService } from "@/common/access/resource-access.service";
 import { JwtUserPayload } from "@/common/interfaces/authenticated-request.interface";
 import { isAdminRole } from "@/auth/constants/chldiv.constants";
@@ -36,6 +39,10 @@ import {
   maskBankAccount,
 } from "./utils/account-mask.util";
 import { TeamSettlementAccountService } from "./team-settlement-account.service";
+import { NicePayoutApiService } from "./nice-payout-api.service";
+import { resolvePayoutApiMode } from "./payout-mode.util";
+import { describePayoutApiModes } from "./constants/payout-mode.constant";
+import { describePayoutResCode } from "./gateway/payout-res-code.util";
 
 /** LIKE 패턴 리터럴화 — 이스케이프 문자 `\` 기준으로 `\`·`%`·`_` 앞에 `\` 를 붙인다. */
 export function escapeLikePattern(value: string): string {
@@ -45,6 +52,7 @@ export function escapeLikePattern(value: string): string {
 const ACCOUNT_STATUS_LABEL: Record<string, string> = {
   REGISTERED: "등록완료",
   SUBMITTED: "등록확인중",
+  FAILED: "등록실패",
   NONE: "미등록",
 };
 
@@ -168,7 +176,34 @@ export class SettlementsService {
     private readonly prisma: PrismaService,
     private readonly resourceAccess: ResourceAccessService,
     private readonly accountService: TeamSettlementAccountService,
+    private readonly payoutApi: NicePayoutApiService,
+    private readonly redis: RedisService,
+    private readonly config: ConfigService,
   ) {}
+
+  getPayoutModes() {
+    return describePayoutApiModes(this.config);
+  }
+
+  /** 나이스 지급대행 잔액 — 지급 전 확인·어드민 표시용. 조회도 호출 기록에 남는다. */
+  async getPayoutBalance(adminId: string) {
+    const mode = await resolvePayoutApiMode(this.prisma, this.redis);
+    if (mode === "off") {
+      throw new ConflictException({
+        message:
+          "지급대행 API 를 사용하지 않는 상태입니다. 앱 설정에서 지급대행 모드를 확인해주세요.",
+        errorCode: "PAYOUT_API_OFF",
+      });
+    }
+    const result = await this.payoutApi.getBalance({ requestedBy: adminId });
+    if (result.outcome !== "SUCCESS" || result.remainAmt === null) {
+      throw new BadGatewayException({
+        message: describePayoutResCode(result.meta.resCode),
+        errorCode: "NICE_PAYOUT_API_FAILED",
+      });
+    }
+    return { remainAmt: result.remainAmt, checkedAt: new Date() };
+  }
 
   /**
    * 정산 목록 조회 — 팀 스코프는 ResourceAccessService.resolveTeamScope 단일 SoT.

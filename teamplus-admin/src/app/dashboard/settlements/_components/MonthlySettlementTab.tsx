@@ -11,6 +11,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { MESSAGES } from '@/lib/messages';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -232,6 +233,70 @@ function extractErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+interface NiceBalance {
+  remainAmt: number;
+  checkedAt: string;
+}
+
+const balanceTimeFormat = new Intl.DateTimeFormat('ko-KR', {
+  timeZone: 'Asia/Seoul',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+});
+
+function isPayoutApiOff(error: unknown): boolean {
+  const res = (error as { response?: { status?: number; data?: { errorCode?: string } } })?.response;
+  return res?.status === 409 && res.data?.errorCode === 'PAYOUT_API_OFF';
+}
+
+/** 나이스 지급대행 잔액 — 지급대행 모드가 꺼져 있으면(409) 카드 자체를 숨긴다. */
+function NiceBalanceCard() {
+  const { data, error, isLoading, isFetching, refetch } = useQuery({
+    queryKey: ['settlements', 'nice-balance'],
+    queryFn: () => api.get<NiceBalance>('/settlements/balance'),
+    retry: false,
+    refetchOnWindowFocus: false,
+    staleTime: 60 * 1000,
+  });
+
+  if (isLoading || isPayoutApiOff(error)) return null;
+
+  const checkedDate = data ? new Date(data.checkedAt) : null;
+  const checkedText =
+    checkedDate && !Number.isNaN(checkedDate.getTime()) ? balanceTimeFormat.format(checkedDate) : null;
+
+  return (
+    <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-5 space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="font-bold text-slate-900 dark:text-white">{MESSAGES.settlement.balanceTitle}</h3>
+        <Button type="button" variant="outline" size="sm" onClick={() => void refetch()} disabled={isFetching}>
+          {MESSAGES.settlement.balanceRetry}
+        </Button>
+      </div>
+      {error ? (
+        <p role="alert" className="text-sm text-red-700 dark:text-red-400">
+          {extractErrorMessage(error, MESSAGES.settlement.balanceLoadError)}
+        </p>
+      ) : data ? (
+        <div>
+          <p className="text-2xl font-bold text-slate-900 dark:text-white tabular-nums">
+            {formatAmount(data.remainAmt)}
+          </p>
+          {checkedText && (
+            <p className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
+              {MESSAGES.settlementDynamic.balanceCheckedAt(checkedText)}
+            </p>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function MonthlySettlementTab() {
   const [month, setMonth] = useState(getDefaultMonth());
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -366,6 +431,8 @@ export function MonthlySettlementTab() {
   return (
     <div className="space-y-6">
       <ActionNotice notice={actionMsg} />
+
+      <NiceBalanceCard />
 
       {/* 월 선택 + 마감 */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between">

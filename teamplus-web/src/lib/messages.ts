@@ -4217,12 +4217,22 @@ export const MESSAGES = {
     statusNone: "미등록",
     statusSubmitted: "등록 확인 중",
     statusRegistered: "등록 완료",
+    statusFailed: "등록 실패",
+    statusChecking: "확인 중",
     statusNoneHint:
       "정산금을 받을 계좌를 등록해주세요. 등록한 계좌는 운영자 확인 후 지급에 사용됩니다.",
     statusSubmittedHint:
       "운영자가 계좌를 확인하고 있어요. 확인이 끝나면 등록 완료로 바뀝니다.",
     statusRegisteredHint:
       "계좌 등록이 완료되었어요. 은행·계좌번호·예금주를 바꾸면 운영자가 다시 확인합니다.",
+    statusFailedHint: "나이스 등록에 실패했어요.",
+    statusRegisteredApiHint:
+      "계좌 등록이 완료되었어요. 은행·계좌번호·예금주를 바꾸면 저장할 때 나이스에 다시 등록합니다.",
+    statusCheckingHint: "나이스에서 등록 결과를 확인하고 있어요.",
+    registrationInProgress: "나이스에 등록하고 있습니다.",
+    failedRetryGuide: "계좌 정보를 확인한 뒤 다시 저장해주세요.",
+    rowFailedHint: "정산 계좌 확인이 필요해요",
+    homeTodoFailed: "정산 계좌 확인이 필요해요",
     businessNumberLabel: "사업자등록번호",
     businessNumberPlaceholder: "숫자 10자리",
     businessNumberLockedHint: "사업자번호 변경은 운영자에게 문의해주세요.",
@@ -4241,6 +4251,10 @@ export const MESSAGES = {
     backToTeam: "팀으로 돌아가기",
     loadError: "정산 계좌 정보를 불러오지 못했습니다.",
     saveSuccess: "정산 계좌가 저장되었습니다.",
+    saveSuccessRegistered: "정산 계좌가 저장되고 나이스 등록이 완료되었습니다.",
+    saveSuccessFailed: "정산 계좌는 저장되었지만 나이스 등록에 실패했습니다.",
+    saveSuccessChecking:
+      "정산 계좌가 저장되었습니다. 나이스 등록 결과를 확인하고 있어요.",
   },
 
   // ─── Q. 정산 (팀 정산 조회 — /settlements, director·coach 전용) ────

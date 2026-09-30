@@ -107,6 +107,8 @@ export function MyTeamHome({ team, onLoaded }: MyTeamHomeProps) {
   const [brokenLogo, setBrokenLogo] = useState<string | null>(null);
   // 정산 계좌 미등록 여부 — 팀 오너 감독만 조회하고, 실패는 미노출(fail-closed)
   const [settlementAccountMissing, setSettlementAccountMissing] = useState(false);
+  // 나이스 등록 실패 — 감독이 계좌를 확인해 다시 저장해야 하는 상태
+  const [settlementAccountFailed, setSettlementAccountFailed] = useState(false);
   const user = useContext(AuthContext)?.user;
   const userId = user?.id;
   const isDirector = user?.userType === "director";
@@ -131,12 +133,18 @@ export function MyTeamHome({ team, onLoaded }: MyTeamHomeProps) {
       const isOwner =
         isDirector && !!userId && detailRes?.data?.club?.coachId === userId;
       if (!isOwner) {
-        if (seq === accountSeq.current) setSettlementAccountMissing(false);
+        if (seq === accountSeq.current) {
+          setSettlementAccountMissing(false);
+          setSettlementAccountFailed(false);
+        }
         return;
       }
       const accountRes = await getTeamSettlementAccount(teamId).catch(() => null);
       if (seq !== accountSeq.current) return;
       setSettlementAccountMissing(!!accountRes?.success && !accountRes.data);
+      setSettlementAccountFailed(
+        !!accountRes?.success && accountRes.data?.status === "FAILED",
+      );
     });
     const [detailRes, memberCounts, unpaidRes] = await Promise.all([
       detailPromise,
@@ -201,6 +209,14 @@ export function MyTeamHome({ team, onLoaded }: MyTeamHomeProps) {
           key: "settlementAccount",
           text: MESSAGES.settlementAccount.homeTodo,
           aria: MESSAGES.settlementAccount.homeTodo,
+          href: `/team/${teamId}/settlement-account`,
+        }]
+      : []),
+    ...(settlementAccountFailed
+      ? [{
+          key: "settlementAccountFailed",
+          text: MESSAGES.settlementAccount.homeTodoFailed,
+          aria: MESSAGES.settlementAccount.homeTodoFailed,
           href: `/team/${teamId}/settlement-account`,
         }]
       : []),

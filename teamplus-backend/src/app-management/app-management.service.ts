@@ -13,6 +13,8 @@ import { RedisService } from "@/redis/redis.service";
 import { UpdateAppSettingsDto } from "./dto/update-app-settings.dto";
 import { describeProviders } from "@/payments/constants/payment-provider.constant";
 import { ACTIVE_PAYMENT_PROVIDER_CACHE_KEY } from "@/payments/payment-provider.util";
+import { describePayoutApiModes } from "@/settlements/constants/payout-mode.constant";
+import { PAYOUT_API_MODE_CACHE_KEY } from "@/settlements/payout-mode.util";
 import {
   APP_SETTINGS_CACHE_KEY,
   APP_SETTINGS_CACHE_TTL,
@@ -1251,6 +1253,17 @@ export class AppManagementService implements OnModuleInit {
       }
     }
 
+    if (dto.payoutApiMode) {
+      const status = describePayoutApiModes(this.config).find(
+        (m) => m.code === dto.payoutApiMode,
+      );
+      if (!status?.selectable) {
+        throw new BadRequestException(
+          `선택할 수 없는 지급대행 모드입니다 (${status?.reason ?? "미지원"})`,
+        );
+      }
+    }
+
     const existing = await this.ensureAppSettings();
     const updated = await this.prisma.appSettings.update({
       where: { id: existing.id },
@@ -1262,6 +1275,7 @@ export class AppManagementService implements OnModuleInit {
       await this.redis.del([
         APP_SETTINGS_CACHE_KEY,
         ACTIVE_PAYMENT_PROVIDER_CACHE_KEY,
+        PAYOUT_API_MODE_CACHE_KEY,
       ]);
     } catch {
       /* Redis 장애 시 무시 (TTL 5분 내 자연 만료) */
