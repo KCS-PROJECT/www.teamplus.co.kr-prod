@@ -424,6 +424,9 @@ export const MESSAGES = {
     accountRegisterTeam: (teamName: string) => `${teamName} 지급 계좌`,
     accountSubMallId: (id: string) => `서브몰 ID ${id}`,
     accountNiceRegisterFailed: (reason: string) => `나이스 등록에 실패했습니다. 사유: ${reason}`,
+    accountNiceRegisterCheckingWithReason: (reason: string) =>
+      `나이스 등록 결과를 확인하지 못했습니다. 원인: ${reason}`,
+    accountNiceLastCall: (detail: string) => `마지막 나이스 호출: ${detail}`,
     balanceCheckedAt: (time: string) => `${time} 조회`,
   },
   systemImport: {

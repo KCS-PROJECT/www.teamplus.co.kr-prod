@@ -55,11 +55,20 @@ interface TeamAccount {
   registrationInProgress: boolean;
 }
 
+/** 마지막 나이스 서브몰 등록 호출 — 운영자용 원인 설명(통신 원인·코드·나이스 원문). */
+interface LastNiceCall {
+  outcome: 'SUCCESS' | 'TERMINAL' | 'AMBIGUOUS' | 'CONFIG';
+  resCode: string | null;
+  detail: string;
+  at: string;
+}
+
 interface TeamAccountRow {
   teamId: string;
   teamName: string;
   teamCode: string;
   account: TeamAccount | null;
+  lastNiceCall?: LastNiceCall | null;
 }
 
 interface AccountsMeta {
@@ -277,7 +286,10 @@ export function TeamSettlementAccountsTab() {
     if (niceRegisteringTeamId) return;
     setNiceRegisteringTeamId(row.teamId);
     try {
-      const result = await api.post<TeamAccount>(`/settlements/accounts/${row.teamId}/register`);
+      const result = await api.post<TeamAccount & { lastNiceCall?: LastNiceCall | null }>(
+        `/settlements/accounts/${row.teamId}/register`,
+      );
+      const detail = result?.lastNiceCall?.outcome !== 'SUCCESS' ? result?.lastNiceCall?.detail : undefined;
       if (result?.status === 'REGISTERED') {
         setNotice({
           type: 'success',
@@ -287,13 +299,15 @@ export function TeamSettlementAccountsTab() {
         setNotice({
           type: 'error',
           text: MESSAGES.settlementDynamic.accountNiceRegisterFailed(
-            result.lastResMsg || MESSAGES.settlement.accountNiceRegisterFailedFallback,
+            detail || result.lastResMsg || MESSAGES.settlement.accountNiceRegisterFailedFallback,
           ),
         });
       } else {
         setNotice({
           type: 'success',
-          text: MESSAGES.settlement.accountNiceRegisterChecking,
+          text: detail
+            ? MESSAGES.settlementDynamic.accountNiceRegisterCheckingWithReason(detail)
+            : MESSAGES.settlement.accountNiceRegisterChecking,
         });
       }
       void loadAccounts();
@@ -441,13 +455,23 @@ export function TeamSettlementAccountsTab() {
                           {MESSAGES.settlement.accountNiceInProgress}
                         </p>
                       )}
-                      {account &&
+                      {/* 감독용 문구(lastResMsg) 대신 운영자용 원인을 보여준다 — 등록 완료 계좌의 거절된 변경 시도도 여기서 보인다. */}
+                      {account && row.lastNiceCall && row.lastNiceCall.outcome !== 'SUCCESS' ? (
+                        <div className="mt-1 max-w-[18rem] whitespace-normal break-words text-xs text-slate-500 dark:text-slate-400">
+                          <p>{MESSAGES.settlementDynamic.accountNiceLastCall(row.lastNiceCall.detail)}</p>
+                          <p className="tabular-nums text-slate-400 dark:text-slate-500">
+                            {formatKst(row.lastNiceCall.at)}
+                          </p>
+                        </div>
+                      ) : (
+                        account &&
                         (account.status === 'FAILED' || account.status === 'SUBMITTED') &&
                         account.lastResMsg && (
                           <p className="mt-1 max-w-[16rem] whitespace-normal break-words text-xs text-slate-500 dark:text-slate-400">
                             {account.lastResMsg}
                           </p>
-                        )}
+                        )
+                      )}
                     </TableCell>
                     <TableCell className="tabular-nums whitespace-nowrap text-slate-900 dark:text-white">
                       {account?.businessNumber ?? '-'}

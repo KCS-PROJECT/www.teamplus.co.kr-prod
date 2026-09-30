@@ -39,7 +39,10 @@ export function settlementAccountStatusView(
   return VIEWS[status ?? "NONE"];
 }
 
-/** 나이스 자동 등록 방식에서 결과 확인 중일 때의 표시. 다른 상태는 기본 표시 그대로. */
+/**
+ * 나이스 자동 등록 방식의 안내 — 결과를 감독이 저장 직후 직접 확인하므로 "운영자 확인" 문구를 쓰지 않는다
+ * (미등록·확인 중·등록 완료). 수동 운영이면 기본 표시 그대로.
+ */
 export function settlementAccountStatusViewForMode(
   status: TeamSettlementAccountStatus | null | undefined,
   mode: "manual" | "api" | undefined,
@@ -47,6 +50,9 @@ export function settlementAccountStatusViewForMode(
   const base = settlementAccountStatusView(status);
   if (status === "SUBMITTED" && mode === "api") {
     return { ...base, label: M.statusChecking, hint: M.statusCheckingHint };
+  }
+  if (!status && mode === "api") {
+    return { ...base, hint: M.statusNoneApiHint };
   }
   if (status === "REGISTERED" && mode === "api") {
     return { ...base, hint: M.statusRegisteredApiHint };

@@ -30,7 +30,10 @@ import type {
   NiceSubMallRequest,
   NiceSubMallResult,
 } from "./gateway/nice-payout.types";
-import { describePayoutResCode } from "./gateway/payout-res-code.util";
+import {
+  describePayoutCallForOperator,
+  describePayoutResCode,
+} from "./gateway/payout-res-code.util";
 
 export const BANK_CODE_GROUP = "BANK_CODE";
 
@@ -116,6 +119,15 @@ interface RegistrationOutcome {
   /** 나이스가 확정 거절해 감독 저장을 되돌렸다 */
   rejected: boolean;
   message: string | null;
+}
+
+/** 운영자 화면용 마지막 나이스 서브몰 등록 호출. */
+export interface LastNiceCall {
+  outcome: string;
+  resCode: string | null;
+  /** 운영자용 원인 설명(통신 원인·코드 설명·나이스 원문) */
+  detail: string;
+  at: Date;
 }
 
 /** 감독 화면이 저장 가능 여부·결과 문구를 정하는 데 쓰는 현재 운영 방식. */
@@ -363,15 +375,55 @@ export class TeamSettlementAccountService {
     );
     await this.registerWithNice(teamId, claimAt, adminId);
 
-    const [account, bankNames] = await Promise.all([
+    const [account, bankNames, lastCalls] = await Promise.all([
       this.prisma.teamSettlementAccount.findUnique({
         where: { teamId },
         select: ACCOUNT_SELECT,
       }),
       this.loadBankNames(),
+      this.loadLastSubMallCalls([teamId]),
     ]);
     if (!account) throw new ConflictException(ACCOUNT_CHANGED_MESSAGE);
-    return this.toAdminView(account, bankNames);
+    return {
+      ...this.toAdminView(account, bankNames),
+      lastNiceCall: lastCalls.get(teamId) ?? null,
+    };
+  }
+
+  /**
+   * 팀별 마지막 서브몰 등록 호출 — 운영자가 실패 원인(통신·키·코드·나이스 원문)을 보도록 호출 기록에서 읽는다.
+   * 감독 화면은 계좌 행의 사용자용 문구(last_res_msg)만 쓴다.
+   */
+  private async loadLastSubMallCalls(
+    teamIds: string[],
+  ): Promise<Map<string, LastNiceCall>> {
+    if (teamIds.length === 0) return new Map();
+    const logs = await this.prisma.nicePayoutApiLog.findMany({
+      where: { teamId: { in: teamIds }, sid: SUBMALL_SID },
+      orderBy: { createdAt: "desc" },
+      distinct: ["teamId"],
+      select: {
+        teamId: true,
+        resCode: true,
+        resMsg: true,
+        error: true,
+        outcome: true,
+        createdAt: true,
+      },
+    });
+    return new Map(
+      logs
+        .filter((log) => log.teamId)
+        .map((log) => [
+          log.teamId as string,
+          {
+            outcome: log.outcome,
+            resCode: log.resCode,
+            detail: describePayoutCallForOperator(log),
+            at: log.createdAt,
+          },
+        ]),
+    );
   }
 
   /**
@@ -717,6 +769,7 @@ export class TeamSettlementAccountService {
       this.loadBankNames(),
       this.currentMode(),
     ]);
+    const lastCalls = await this.loadLastSubMallCalls(teams.map((t) => t.id));
 
     return {
       data: teams.map((t) => ({
@@ -726,6 +779,7 @@ export class TeamSettlementAccountService {
         account: t.settlementAccount
           ? this.toAdminView(t.settlementAccount, bankNames)
           : null,
+        lastNiceCall: lastCalls.get(t.id) ?? null,
       })),
       meta: {
         total,

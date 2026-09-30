@@ -4221,6 +4221,8 @@ export const MESSAGES = {
     statusChecking: "확인 중",
     statusNoneHint:
       "정산금을 받을 계좌를 등록해주세요. 등록한 계좌는 운영자 확인 후 지급에 사용됩니다.",
+    statusNoneApiHint:
+      "정산금을 받을 계좌를 등록해주세요. 저장하면 나이스에서 예금주를 바로 확인해 등록합니다. 통장에 적힌 그대로 정확히 입력해주세요.",
     statusSubmittedHint:
       "운영자가 계좌를 확인하고 있어요. 확인이 끝나면 등록 완료로 바뀝니다.",
     statusRegisteredHint:
@@ -4247,6 +4249,8 @@ export const MESSAGES = {
     accountInvalid: "계좌번호는 숫자 6~30자리로 입력해주세요.",
     holderLabel: "예금주",
     holderPlaceholder: "예금주명",
+    holderLimitHint: "한글 10자(영문·숫자 30자) 이내로 통장에 적힌 예금주명 그대로 입력해주세요.",
+    holderTooLong: "예금주는 한글 10자(영문·숫자 30자) 이내로 입력해주세요.",
     notOwner: "팀 오너 감독만 정산 계좌를 관리할 수 있어요.",
     backToTeam: "팀으로 돌아가기",
     loadError: "정산 계좌 정보를 불러오지 못했습니다.",

@@ -42,7 +42,7 @@ import { TeamSettlementAccountService } from "./team-settlement-account.service"
 import { NicePayoutApiService } from "./nice-payout-api.service";
 import { resolvePayoutApiMode } from "./payout-mode.util";
 import { describePayoutApiModes } from "./constants/payout-mode.constant";
-import { describePayoutResCode } from "./gateway/payout-res-code.util";
+import { describePayoutCallForOperator } from "./gateway/payout-res-code.util";
 
 /** LIKE 패턴 리터럴화 — 이스케이프 문자 `\` 기준으로 `\`·`%`·`_` 앞에 `\` 를 붙인다. */
 export function escapeLikePattern(value: string): string {
@@ -198,7 +198,8 @@ export class SettlementsService {
     const result = await this.payoutApi.getBalance({ requestedBy: adminId });
     if (result.outcome !== "SUCCESS" || result.remainAmt === null) {
       throw new BadGatewayException({
-        message: describePayoutResCode(result.meta.resCode),
+        // 운영자 전용 API — 원인(통신·키·코드·나이스 원문)을 그대로 보여준다.
+        message: describePayoutCallForOperator(result.meta),
         errorCode: "NICE_PAYOUT_API_FAILED",
       });
     }

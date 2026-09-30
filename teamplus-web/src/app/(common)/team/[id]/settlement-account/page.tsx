@@ -28,6 +28,7 @@ import {
 } from "@/services/team.service";
 
 const M = MESSAGES.settlementAccount;
+const HOLDER_MAX_BYTES = 30;
 
 const INPUT_WRAP =
   "h-12 rounded-w-md bg-it-fill dark:bg-it-blue-950 px-4 flex items-center border-[1.5px] border-it-line-strong dark:border-it-blue-900 transition-[border-color,box-shadow] duration-150 motion-reduce:transition-none focus-within:border-it-blue-500 focus-within:ring-2 focus-within:ring-it-blue-500/20";
@@ -138,6 +139,8 @@ export default function TeamSettlementAccountPage() {
   const bnDigits = digitsOnly(businessNumber);
   const accountDigits = digitsOnly(bankAccount);
   const holder = accountHolder.trim();
+  // 나이스 계좌주명 규격이 UTF-8 30바이트라 글자 수가 아니라 바이트로 센다(한글 1자 = 3바이트).
+  const holderTooLong = new TextEncoder().encode(holder).length > HOLDER_MAX_BYTES;
 
   const bnError =
     isFirst && businessNumber !== "" && bnDigits.length !== 10
@@ -158,7 +161,7 @@ export default function TeamSettlementAccountPage() {
     accountDigits.length >= 6 &&
     accountDigits.length <= 30 &&
     holder.length >= 1 &&
-    holder.length <= 30;
+    !holderTooLong;
 
   const handleSubmit = useCallback(
     async (e?: React.FormEvent) => {
@@ -362,8 +365,10 @@ export default function TeamSettlementAccountPage() {
               className={INPUT}
               maxLength={30}
               autoComplete="off"
+              aria-invalid={holderTooLong}
             />
           </div>
+          {holderTooLong ? <FieldError message={M.holderTooLong} /> : <Hint text={M.holderLimitHint} />}
         </Field>
 
         {saveBlockedReason && (

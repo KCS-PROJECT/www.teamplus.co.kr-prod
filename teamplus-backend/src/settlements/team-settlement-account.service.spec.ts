@@ -988,4 +988,40 @@ describe("TeamSettlementAccountService", () => {
       mockPrisma.teamSettlementAccount.updateMany.mock.calls[0][0].data,
     ).toMatchObject({ lastResCode: null, lastResMsg: null });
   });
+
+  it("운영자 목록은 팀별 마지막 서브몰 등록 호출의 원인 설명을 함께 내려준다", async () => {
+    mockPrisma.team.findMany.mockResolvedValue([
+      { id: "team-1", name: "팀1", teamCode: null, settlementAccount: null },
+      { id: "team-2", name: "팀2", teamCode: null, settlementAccount: null },
+    ]);
+    mockPrisma.team.count.mockResolvedValue(2);
+    const at = new Date("2026-09-30T01:00:00Z");
+    mockPrisma.nicePayoutApiLog.findMany.mockResolvedValue([
+      {
+        teamId: "team-1",
+        resCode: null,
+        resMsg: null,
+        error: "network",
+        outcome: "AMBIGUOUS",
+        createdAt: at,
+      },
+    ]);
+
+    const result = await service.listForAdmin({});
+
+    const query = mockPrisma.nicePayoutApiLog.findMany.mock.calls[0][0];
+    expect(query.where).toEqual({
+      teamId: { in: ["team-1", "team-2"] },
+      sid: "0105001",
+    });
+    expect(query.distinct).toEqual(["teamId"]);
+    expect(result.data[0].lastNiceCall).toEqual({
+      outcome: "AMBIGUOUS",
+      resCode: null,
+      detail:
+        "나이스 서버 연결 실패 — 방화벽(121.133.126.34:443)·네트워크 확인",
+      at,
+    });
+    expect(result.data[1].lastNiceCall).toBeNull();
+  });
 });
