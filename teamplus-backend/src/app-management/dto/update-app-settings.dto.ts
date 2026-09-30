@@ -82,8 +82,6 @@ export class UpdateAppSettingsDto {
   @IsIn(PAYMENT_PROVIDER_CODES)
   paymentProvider?: string;
 
-  // 서버 설정 (어드민 UI)
-  @ApiPropertyOptional({
   @ApiPropertyOptional({
     description:
       "나이스 지급대행 API 사용 단계 — off(수동 운영)·readonly(조회만)·live(서브몰 등록·지급 요청). " +
@@ -94,6 +92,8 @@ export class UpdateAppSettingsDto {
   @IsIn(PAYOUT_API_MODES)
   payoutApiMode?: string;
 
+  // 서버 설정 (어드민 UI)
+  @ApiPropertyOptional({
     description: "최대 업로드 크기 (MB, 1-500)",
     minimum: 1,
     maximum: 500,
