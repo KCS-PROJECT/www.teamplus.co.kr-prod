@@ -4264,7 +4264,7 @@ export const MESSAGES = {
   // ─── Q. 정산 (팀 정산 조회 — /settlements, director·coach 전용) ────
   settlements: {
     pageTitle: "지급 정산",
-    detailTitle: (period: string) => `${period} 정산 상세`,
+    detailTitle: "정산 상세",
     yearMonthLabel: (year: string, month: string) => `${year}년 ${month}월`,
     teamFallback: "우리 팀",
     emptyList: "아직 지급 정산 내역이 없어요.",
@@ -4274,7 +4274,9 @@ export const MESSAGES = {
     refundLabel: "환불",
     platformFeeLabel: "플랫폼 수수료",
     pgFeeLabel: "결제 수수료",
-    netAmountLabel: "순 지급액",
+    receivableLabel: "받을 금액",
+    paidAmountLabel: "지급 금액",
+    breakdownTitle: "계산 내역",
     statusPending: "정산 대기",
     statusApproved: "지급 예정",
     statusProcessing: "처리 중",
@@ -4284,17 +4286,9 @@ export const MESSAGES = {
     rejectReasonLabel: "반려 사유",
     bankInfoTitle: "지급 계좌",
     accountHolderLabel: "예금주",
-    payoutHistoryTitle: "지급 기록",
-    emptyPayout: "지급 기록이 없습니다.",
-    detailsEmpty: "결제 명세가 없습니다.",
-    detailsLoadMore: "결제 명세 더보기",
-    paymentAmountLabel: "결제 금액",
-    actualAmountLabel: "실지급액",
+    // 서버가 메모 없는 지급에 채우는 기본 문구 — 화면에서는 이 값이면 메모로 보여주지 않는다.
+    payoutDefaultNote: "정산 지급 완료",
     memoLabel: "메모",
-    // 결제 명세 행 — 결제/환불 구분 + 귀속월(해당 결제가 속한 월)
-    entryTypePayment: "결제",
-    entryTypeRefund: "환불",
-    attributionMonthLabel: (month: number) => `${month}월분`,
     // 순지급액 마이너스 — 환불이 매출을 초과해 이번 달 지급이 보류되는 경우
     negativeNetAmountNotice: "이번 달은 환불이 더 많아 지급이 보류됩니다.",
     // 정산 기준 안내 — 목록/상세 공통 1줄
@@ -4307,19 +4301,15 @@ export const MESSAGES = {
     loadError: "일시적인 오류로 정산 정보를 불러오지 못했어요.",
     backToList: "목록으로",
     retry: "다시 시도",
-    detailsLoadError: "결제 명세를 불러오지 못했어요.",
-    // 수업·대회별 명세 요약
-    groupsTitle: "수업·대회별 명세",
-    groupsEmpty: "수업·대회별 명세가 없습니다.",
-    groupsLoadError: "수업·대회별 명세를 불러오지 못했어요.",
-    groupSourceClass: "수업",
+    // 훈련·대회별 명세 요약
+    groupsTitle: "훈련·대회별 명세",
+    groupsEmpty: "훈련·대회별 명세가 없습니다.",
+    groupsLoadError: "훈련·대회별 명세를 불러오지 못했어요.",
+    groupSourceClass: "훈련",
     groupSourceTournament: "대회",
     groupSourceOther: "기타",
-    groupPaymentSummary: (count: number, amount: string) => `결제 ${count}건 · ${amount}`,
-    groupRefundSummary: (count: number, amount: string) => `환불 ${count}건 · ${amount}`,
-    groupNetLabel: "지급액",
-    groupsTotalLabel: "합계",
-    groupsTotalPayoutLabel: "총 지급액",
+    groupPaymentRowLabel: (count: number) => `결제 ${count}건`,
+    groupRefundRowLabel: (count: number) => `환불 ${count}건`,
   },
 
   // ─── R. 차단 / 신고 ────────────────────────────────

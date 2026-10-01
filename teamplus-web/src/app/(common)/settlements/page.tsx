@@ -273,7 +273,9 @@ function SettlementRow({
       </div>
       <div className="shrink-0 text-right">
         <p className="mb-0.5 text-card-meta font-medium text-it-ink-400 dark:text-rink-300">
-          {MESSAGES.settlements.netAmountLabel}
+          {item.status === 'paid'
+            ? MESSAGES.settlements.paidAmountLabel
+            : MESSAGES.settlements.receivableLabel}
         </p>
         <p
           className={`text-card-body font-bold tabular-nums ${
