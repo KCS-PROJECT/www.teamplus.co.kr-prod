@@ -23,6 +23,12 @@ import {
   maskBankAccount,
   maskBusinessNumber,
 } from "./utils/account-mask.util";
+import {
+  buildNiceXlsx,
+  digitsOnly,
+  truncateUtf8Bytes,
+} from "./utils/nice-xlsx.util";
+import { resolveNiceAction } from "./utils/nice-account-state.util";
 import { NicePayoutApiService } from "./nice-payout-api.service";
 import { resolvePayoutApiMode } from "./payout-mode.util";
 import type { PayoutApiMode } from "./constants/payout-mode.constant";
@@ -45,11 +51,34 @@ export const SUBMALL_WINDOW_CLOSED_MESSAGE =
 
 const SUBMALL_SID = "0105001";
 
+/** 초기화로 물러난 서브몰 ID 기록 — 나이스 호출이 아니라 "이 ID 는 이미 썼다"는 장부 한 줄이다. */
+const SUBMALL_RETIRE_SID = "RETIRE";
+
+/** 나이스 관리자 서브ID 다량등록 양식 — 상호 40바이트, 한 번에 500건. */
+const NICE_REGISTRATION_HEADER = [
+  "ID",
+  "상호",
+  "사업자번호",
+  "예금주",
+  "은행",
+  "계좌번호",
+] as const;
+const NICE_REGISTRATION_NAME_BYTES = 40;
+const NICE_REGISTRATION_MAX_ROWS = 500;
+
 /**
  * 등록 호출 진행 표시가 이보다 오래되면 서버가 도중에 멈춘 것으로 보고 다시 잡을 수 있다.
  * 게이트웨이 타임아웃(10초) × 교차 재요청 1회보다 충분히 길다.
  */
 const REGISTRATION_STALE_MS = 60_000;
+
+export function isSubMallRegistrationInProgress(
+  startedAt: Date | null,
+): boolean {
+  return (
+    !!startedAt && Date.now() - startedAt.getTime() < REGISTRATION_STALE_MS
+  );
+}
 
 const ACCOUNT_SELECT = {
   teamId: true,
@@ -60,6 +89,7 @@ const ACCOUNT_SELECT = {
   status: true,
   submittedAt: true,
   registeredAt: true,
+  createdAt: true,
   updatedAt: true,
   subMallId: true,
   lastResCode: true,
@@ -136,18 +166,6 @@ export interface AccountRegistrationPolicy {
   registrationMode: "manual" | "api";
   /** 지금 저장할 수 없는 이유(없으면 null) */
   saveBlockedReason: string | null;
-}
-
-/** UTF-8 바이트 기준 자르기 — 나이스 길이 제한이 바이트인지 글자인지 문서에 없어 더 엄격한 쪽을 따른다. */
-function truncateUtf8Bytes(value: string, maxBytes: number): string {
-  let bytes = 0;
-  let out = "";
-  for (const ch of value) {
-    bytes += Buffer.byteLength(ch, "utf8");
-    if (bytes > maxBytes) break;
-    out += ch;
-  }
-  return out;
 }
 
 /** 23:00~01:00(KST)은 나이스가 서브몰 등록을 받지 않는다. */
@@ -675,22 +693,47 @@ export class TeamSettlementAccountService {
     teamId: string,
     accountCreatedAt: Date,
   ): Promise<string> {
+    const ids = await this.resolveNextSubMallIds([
+      { teamId, createdAt: accountCreatedAt },
+    ]);
+    return ids.get(teamId) as string;
+  }
+
+  /** nextSubMallId 의 여러 팀 버전 — 초기화로 물러난 ID(RETIRE)도 이미 쓴 것으로 친다. */
+  private async resolveNextSubMallIds(
+    accounts: { teamId: string; createdAt: Date }[],
+  ): Promise<Map<string, string>> {
+    if (accounts.length === 0) return new Map();
     const used = await this.prisma.nicePayoutApiLog.findMany({
       where: {
-        teamId,
-        sid: SUBMALL_SID,
-        outcome: { in: ["SUCCESS", "AMBIGUOUS"] },
+        teamId: { in: accounts.map((a) => a.teamId) },
         subId: { not: null },
-        createdAt: { lt: accountCreatedAt },
+        OR: [
+          { sid: SUBMALL_SID, outcome: { in: ["SUCCESS", "AMBIGUOUS"] } },
+          { sid: SUBMALL_RETIRE_SID },
+        ],
       },
-      select: { subId: true },
-      distinct: ["subId"],
+      select: { teamId: true, subId: true, createdAt: true },
     });
-    const usedIds = new Set(used.map((u) => u.subId));
-    for (let n = 1; ; n++) {
-      const candidate = n === 1 ? teamId : `${teamId}-${n}`;
-      if (!usedIds.has(candidate)) return candidate;
+    const result = new Map<string, string>();
+    for (const account of accounts) {
+      const usedIds = new Set(
+        used
+          .filter(
+            (u) =>
+              u.teamId === account.teamId && u.createdAt < account.createdAt,
+          )
+          .map((u) => u.subId),
+      );
+      let n = 1;
+      let candidate = account.teamId;
+      while (usedIds.has(candidate)) {
+        n += 1;
+        candidate = `${account.teamId}-${n}`;
+      }
+      result.set(account.teamId, candidate);
     }
+    return result;
   }
 
   private windowClosed() {
@@ -769,7 +812,16 @@ export class TeamSettlementAccountService {
       this.loadBankNames(),
       this.currentMode(),
     ]);
-    const lastCalls = await this.loadLastSubMallCalls(teams.map((t) => t.id));
+    const [lastCalls, nextSubIds] = await Promise.all([
+      this.loadLastSubMallCalls(teams.map((t) => t.id)),
+      this.resolveNextSubMallIds(
+        teams.flatMap((t) =>
+          t.settlementAccount && !t.settlementAccount.subMallId
+            ? [{ teamId: t.id, createdAt: t.settlementAccount.createdAt }]
+            : [],
+        ),
+      ),
+    ]);
 
     return {
       data: teams.map((t) => ({
@@ -780,6 +832,12 @@ export class TeamSettlementAccountService {
           ? this.toAdminView(t.settlementAccount, bankNames)
           : null,
         lastNiceCall: lastCalls.get(t.id) ?? null,
+        niceAction: t.settlementAccount
+          ? resolveNiceAction(t.settlementAccount)
+          : null,
+        niceSubId: t.settlementAccount
+          ? (t.settlementAccount.subMallId ?? nextSubIds.get(t.id) ?? null)
+          : null,
       })),
       meta: {
         total,
@@ -791,7 +849,10 @@ export class TeamSettlementAccountService {
     };
   }
 
-  /** 운영자 — 나이스 서브몰 등록 완료 표시/해제(수동 운영 전용). 화면에서 본 버전과 다르면 409. */
+  /**
+   * 운영자 — 나이스 서브몰 등록 완료 표시/해제(수동 운영 전용). 화면에서 본 버전과 다르면 409.
+   * 등록 완료는 나이스에 올린 서브몰 ID 를 함께 남기고(지급 엑셀이 이 값을 쓴다), 해제는 그 기록을 지운다.
+   */
   async updateRegistration(
     teamId: string,
     dto: UpdateAccountRegistrationDto,
@@ -807,16 +868,44 @@ export class TeamSettlementAccountService {
     }
 
     const registered = dto.status === TeamSettlementAccountStatus.REGISTERED;
-    const result = await this.prisma.teamSettlementAccount.updateMany({
-      where: { teamId, updatedAt: new Date(dto.expectedUpdatedAt) },
-      data: {
-        status: dto.status,
-        registeredById: registered ? adminId : null,
-        registeredAt: registered ? new Date() : null,
-        lastResCode: null,
-        lastResMsg: null,
-      },
+    const current = await this.prisma.teamSettlementAccount.findUnique({
+      where: { teamId },
+      select: { subMallId: true, createdAt: true },
     });
+    if (!current) {
+      throw new NotFoundException("정산 계좌가 등록되지 않은 팀입니다.");
+    }
+    const subMallId = registered
+      ? (current.subMallId ??
+        (await this.nextSubMallId(teamId, current.createdAt)))
+      : null;
+
+    let result: Prisma.BatchPayload;
+    try {
+      result = await this.prisma.teamSettlementAccount.updateMany({
+        where: { teamId, updatedAt: new Date(dto.expectedUpdatedAt) },
+        data: {
+          status: dto.status,
+          registeredById: registered ? adminId : null,
+          registeredAt: registered ? new Date() : null,
+          lastResCode: null,
+          lastResMsg: null,
+          subMallId,
+        },
+      });
+    } catch (error) {
+      // sub_mall_id 유니크 위반 — 같은 서브몰 ID 를 다른 계좌가 이미 갖고 있다(계좌 변경과는 다른 원인).
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        throw new ConflictException({
+          message: `서브ID(${subMallId})가 다른 팀 계좌와 겹칩니다. 개발팀에 확인을 요청해주세요.`,
+          errorCode: "SUB_MALL_ID_CONFLICT",
+        });
+      }
+      throw error;
+    }
 
     if (result.count === 0) {
       const exists = await this.prisma.teamSettlementAccount.findUnique({
@@ -844,20 +933,99 @@ export class TeamSettlementAccountService {
 
   /**
    * 운영자 — 계좌 초기화(행 삭제). 사업자번호가 바뀐 팀은 운영자가 확인 후 초기화하고 감독이 새로 입력한다.
-   * 지급 완료 정산은 계좌를 스냅샷으로 갖고 있어 영향이 없다. 나이스 서브몰은 삭제 API 가 없어 남고,
-   * 다음 등록은 새 서브몰 ID 로 한다.
+   * 지급 완료 정산은 계좌를 스냅샷으로 갖고 있어 영향이 없다. 나이스 서브몰은 사업자번호를 바꿀 수 없어 남고,
+   * 다음 등록은 새 서브몰 ID 로 한다 — 그래서 이 계좌가 쓰던(또는 등록 엑셀에 실렸을) ID 를 물러난 ID 로 남긴다.
    */
   async reset(teamId: string, adminId: string) {
-    const result = await this.prisma.teamSettlementAccount.deleteMany({
+    const current = await this.prisma.teamSettlementAccount.findUnique({
       where: { teamId },
+      select: { subMallId: true, createdAt: true },
     });
-    if (result.count === 0) {
+    if (!current) {
+      throw new NotFoundException("정산 계좌가 등록되지 않은 팀입니다.");
+    }
+    const retiredSubId =
+      current.subMallId ??
+      (await this.nextSubMallId(teamId, current.createdAt));
+
+    const deleted = await this.prisma.$transaction(async (tx) => {
+      const result = await tx.teamSettlementAccount.deleteMany({
+        where: { teamId, createdAt: current.createdAt },
+      });
+      if (result.count > 0) {
+        await tx.nicePayoutApiLog.create({
+          data: {
+            sid: SUBMALL_RETIRE_SID,
+            teamId,
+            subId: retiredSubId,
+            outcome: "RETIRED",
+            durationMs: 0,
+            requestedBy: adminId,
+          },
+        });
+      }
+      return result.count;
+    });
+    if (deleted === 0) {
       throw new NotFoundException("정산 계좌가 등록되지 않은 팀입니다.");
     }
     this.logger.warn(
       `팀 정산 계좌 초기화: teamId=${teamId}, adminId=${adminId}`,
     );
     return { teamId, reset: true };
+  }
+
+  /**
+   * 운영자 — 나이스 관리자 "서브ID등록 > 다량등록"에 그대로 올리는 xlsx.
+   * 나이스에 등록한 적 없는(서브몰 ID 기록이 없는) 활성 팀 계좌만 담는다. 이미 등록된 팀의 계좌 변경은 나이스 화면에서 직접 고친다.
+   */
+  async buildNiceRegistrationFile(adminId: string): Promise<Buffer> {
+    const targets = await this.prisma.teamSettlementAccount.findMany({
+      where: {
+        subMallId: null,
+        team: { isActive: true },
+        OR: [
+          { registrationStartedAt: null },
+          {
+            registrationStartedAt: {
+              lt: new Date(Date.now() - REGISTRATION_STALE_MS),
+            },
+          },
+        ],
+      },
+      select: {
+        teamId: true,
+        businessNumber: true,
+        bankCode: true,
+        bankAccount: true,
+        accountHolder: true,
+        createdAt: true,
+        registrationStartedAt: true,
+        team: { select: { name: true } },
+      },
+      orderBy: { team: { name: "asc" } },
+      take: NICE_REGISTRATION_MAX_ROWS,
+    });
+    if (targets.length === 0) {
+      throw new ConflictException({
+        message: "나이스에 새로 등록할 팀이 없습니다.",
+        errorCode: "NICE_REGISTRATION_EMPTY",
+      });
+    }
+
+    const subIds = await this.resolveNextSubMallIds(targets);
+    const rows = targets.map((a) => [
+      subIds.get(a.teamId) as string,
+      truncateUtf8Bytes(a.team.name ?? "", NICE_REGISTRATION_NAME_BYTES),
+      digitsOnly(this.decryptStored(a.teamId, a.businessNumber)),
+      a.accountHolder,
+      a.bankCode,
+      digitsOnly(this.decryptStored(a.teamId, a.bankAccount)),
+    ]);
+    this.logger.log(
+      `나이스 서브ID 등록 엑셀 생성: count=${rows.length}, adminId=${adminId}`,
+    );
+    return buildNiceXlsx(NICE_REGISTRATION_HEADER, rows);
   }
 
   /** 지급 게이트·스냅샷용 — 없으면 null. */
@@ -901,11 +1069,7 @@ export class TeamSettlementAccountService {
   }
 
   private isRegistrationInProgress(account: AccountRow): boolean {
-    return (
-      !!account.registrationStartedAt &&
-      Date.now() - account.registrationStartedAt.getTime() <
-        REGISTRATION_STALE_MS
-    );
+    return isSubMallRegistrationInProgress(account.registrationStartedAt);
   }
 
   private toDirectorView(account: AccountRow, bankNames: Map<string, string>) {

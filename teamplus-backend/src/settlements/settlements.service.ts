@@ -14,6 +14,7 @@ import {
   SettlementSourceType,
 } from "@prisma/client";
 import { ConfigService } from "@nestjs/config";
+import { createHash } from "crypto";
 import { PrismaService } from "@/prisma/prisma.service";
 import { RedisService } from "@/redis/redis.service";
 import { ResourceAccessService } from "@/common/access/resource-access.service";
@@ -38,7 +39,17 @@ import {
   formatBusinessNumber,
   maskBankAccount,
 } from "./utils/account-mask.util";
-import { TeamSettlementAccountService } from "./team-settlement-account.service";
+import {
+  TeamSettlementAccountService,
+  isSubMallRegistrationInProgress,
+} from "./team-settlement-account.service";
+import { assertNicePayDate } from "./utils/nice-pay-date.util";
+import { buildNiceXlsx } from "./utils/nice-xlsx.util";
+import {
+  PAYOUT_FILE_EXCLUSION_REASON,
+  classifyPayoutFileAccount,
+  type PayoutFileExclusion,
+} from "./utils/nice-account-state.util";
 import { NicePayoutApiService } from "./nice-payout-api.service";
 import { PG_FEE_RATE } from "./constants/pg-fee.constant";
 import { resolvePayoutApiMode } from "./payout-mode.util";
@@ -911,6 +922,178 @@ export class SettlementsService {
     });
 
     return toCsvBuffer(headers, rows);
+  }
+
+  /**
+   * 나이스 지급 엑셀에 들어갈 정산과 빠지는 정산 — 미리보기와 파일이 같은 계산을 쓴다.
+   * 지급 예정(approved)·금액 양수 정산 중 계좌가 등록 완료이고 서브몰 ID 가 있는 팀만 넣는다.
+   * fingerprint 는 이 결과의 지문 — 미리보기 뒤 정산·계좌가 바뀌면 값이 달라져 파일 요청이 거절된다.
+   */
+  private async resolvePayoutFile(month: string, payDate: string) {
+    this.assertValidMonthFormat(month);
+    const payDateCompact = assertNicePayDate(payDate);
+
+    const settlements = await this.prisma.settlement.findMany({
+      where: {
+        settlementMonth: month,
+        status: SETTLEMENT_STATUS.APPROVED,
+        netAmount: { gt: 0 },
+      },
+      select: {
+        id: true,
+        netAmount: true,
+        updatedAt: true,
+        team: {
+          select: {
+            id: true,
+            name: true,
+            settlementAccount: {
+              select: {
+                status: true,
+                subMallId: true,
+                updatedAt: true,
+                registrationStartedAt: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: [{ team: { name: "asc" } }, { id: "asc" }],
+    });
+
+    const included: {
+      settlementId: string;
+      teamId: string;
+      teamName: string;
+      subMallId: string;
+      netAmount: number;
+    }[] = [];
+    const excluded: {
+      settlementId: string;
+      teamId: string;
+      teamName: string;
+      netAmount: number;
+      reasonCode: PayoutFileExclusion;
+      reason: string;
+    }[] = [];
+    const marks: unknown[] = [];
+
+    for (const s of settlements) {
+      const account = s.team.settlementAccount;
+      const classified = classifyPayoutFileAccount(
+        account
+          ? {
+              status: account.status,
+              subMallId: account.subMallId,
+              registrationInProgress: isSubMallRegistrationInProgress(
+                account.registrationStartedAt,
+              ),
+            }
+          : null,
+      );
+      const base = {
+        settlementId: s.id,
+        teamId: s.team.id,
+        teamName: s.team.name ?? "",
+        netAmount: s.netAmount,
+      };
+      if (classified.exclusion !== null || !account) {
+        const reasonCode = classified.exclusion ?? "ACCOUNT_NONE";
+        excluded.push({
+          ...base,
+          reasonCode,
+          reason: PAYOUT_FILE_EXCLUSION_REASON[reasonCode],
+        });
+        marks.push([s.id, reasonCode]);
+        continue;
+      }
+      included.push({ ...base, subMallId: classified.subMallId });
+      marks.push([
+        s.id,
+        s.netAmount,
+        s.updatedAt.toISOString(),
+        classified.subMallId,
+        account.updatedAt.toISOString(),
+      ]);
+    }
+
+    const fingerprint = createHash("sha256")
+      .update(JSON.stringify([month, payDateCompact, marks]))
+      .digest("hex");
+    return { payDateCompact, included, excluded, fingerprint };
+  }
+
+  /** 나이스 지급 엑셀 미리보기(ADMIN) — 계좌번호·사업자번호는 싣지 않는다. */
+  async getPayoutFilePreview(month: string, payDate: string) {
+    const { included, excluded, fingerprint } = await this.resolvePayoutFile(
+      month,
+      payDate,
+    );
+    const paid = await this.prisma.settlement.aggregate({
+      where: { settlementMonth: month, status: SETTLEMENT_STATUS.PAID },
+      _count: { _all: true },
+      _sum: { netAmount: true },
+    });
+    const total = (rows: { netAmount: number }[]) =>
+      rows.reduce((sum, row) => sum + row.netAmount, 0);
+
+    return {
+      month,
+      payDate,
+      included,
+      excluded,
+      includedCount: included.length,
+      includedTotal: total(included),
+      excludedCount: excluded.length,
+      excludedTotal: total(excluded),
+      paidThisMonth: {
+        count: paid._count._all,
+        netAmount: paid._sum.netAmount ?? 0,
+      },
+      fingerprint,
+    };
+  }
+
+  /**
+   * 나이스 관리자 "지급내역 등록 > 다량등록"에 그대로 올리는 xlsx(ADMIN) — 서브ID·지급일·지급액.
+   * 운영자가 미리보기에서 본 내용과 지금 내용이 다르면(fingerprint 불일치) 만들지 않는다.
+   */
+  async getPayoutFile(
+    month: string,
+    payDate: string,
+    fingerprint: string,
+    adminId: string,
+  ): Promise<{ buffer: Buffer; payDateCompact: string }> {
+    const resolved = await this.resolvePayoutFile(month, payDate);
+    if (resolved.fingerprint !== fingerprint) {
+      throw new ConflictException({
+        message:
+          "미리보기 이후 정산 또는 계좌 정보가 바뀌었습니다. 내용을 다시 확인해주세요.",
+        errorCode: "PAYOUT_FILE_CHANGED",
+      });
+    }
+    if (resolved.included.length === 0) {
+      throw new ConflictException({
+        message: "지급 엑셀에 넣을 정산이 없습니다.",
+        errorCode: "PAYOUT_FILE_EMPTY",
+      });
+    }
+
+    const total = resolved.included.reduce((sum, r) => sum + r.netAmount, 0);
+    this.logger.log(
+      `나이스 지급 엑셀 생성: month=${month}, payDate=${resolved.payDateCompact}, count=${resolved.included.length}, total=${total}, adminId=${adminId}`,
+    );
+    return {
+      buffer: buildNiceXlsx(
+        ["서브ID", "지급일", "지급액"],
+        resolved.included.map((r) => [
+          r.subMallId,
+          Number(resolved.payDateCompact),
+          r.netAmount,
+        ]),
+      ),
+      payDateCompact: resolved.payDateCompact,
+    };
   }
 
   /**

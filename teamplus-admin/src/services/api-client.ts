@@ -620,10 +620,24 @@ export const downloadFile = async (
   filename: string,
   config?: AxiosRequestConfig,
 ): Promise<void> => {
-  const response = await apiClient.get(url, {
-    ...config,
-    responseType: "blob",
-  });
+  let response;
+  try {
+    response = await apiClient.get(url, {
+      ...config,
+      responseType: "blob",
+    });
+  } catch (error) {
+    // blob 요청의 오류 본문(JSON)도 Blob 으로 오므로, 호출부가 message/errorCode 를 읽도록 풀어 둔다.
+    const errResponse = (error as AxiosError)?.response;
+    if (errResponse && errResponse.data instanceof Blob) {
+      try {
+        errResponse.data = JSON.parse(await errResponse.data.text());
+      } catch {
+        // JSON 이 아니면 원본 Blob 유지
+      }
+    }
+    throw error;
+  }
   const contentType = response.headers["content-type"];
   const blob = new Blob([response.data], {
     type: typeof contentType === "string" ? contentType : "application/octet-stream",

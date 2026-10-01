@@ -17,6 +17,7 @@ import { PG_FEE_RATE } from "./constants/pg-fee.constant";
 import { JwtUserPayload } from "@/common/interfaces/authenticated-request.interface";
 import { encryptField } from "@/common/utils/field-encryption.util";
 import { randomBytes } from "crypto";
+import * as XLSX from "xlsx";
 
 // 필드 암호화 유틸이 요구하는 서버 전용 키(64 hex) — 테스트 환경엔 없으므로 즉석 생성해 채운다.
 process.env.FIELD_ENCRYPTION_KEY =
@@ -35,6 +36,7 @@ describe("SettlementsService", () => {
       update: jest.fn(),
       count: jest.fn(),
       groupBy: jest.fn(),
+      aggregate: jest.fn(),
     },
     settlementDetail: {
       findMany: jest.fn(),
@@ -1153,6 +1155,190 @@ describe("SettlementsService", () => {
 
       const where = mockPrisma.settlement.findMany.mock.calls[0][0].where;
       expect(where.netAmount).toEqual({ gt: 0 });
+    });
+  });
+
+  describe("나이스 지급 엑셀", () => {
+    const MONTH = "2026-09";
+    const PAY_DATE = "2026-10-06";
+    const accountUpdatedAt = new Date("2026-09-29T01:00:00.000Z");
+
+    const settlementRow = (
+      id: string,
+      teamId: string,
+      netAmount: number,
+      account: { status: string; subMallId: string | null } | null,
+    ) => ({
+      id,
+      netAmount,
+      updatedAt: new Date("2026-10-01T00:00:00.000Z"),
+      team: {
+        id: teamId,
+        name: teamId,
+        settlementAccount: account
+          ? {
+              ...account,
+              updatedAt: accountUpdatedAt,
+              registrationStartedAt: null,
+            }
+          : null,
+      },
+    });
+
+    const mixedRows = () => [
+      settlementRow("s-1", "team-a", 300000, {
+        status: "REGISTERED",
+        subMallId: "team-a",
+      }),
+      settlementRow("s-2", "team-b", 200000, {
+        status: "SUBMITTED",
+        subMallId: "team-b",
+      }),
+      settlementRow("s-3", "team-c", 150000, {
+        status: "REGISTERED",
+        subMallId: null,
+      }),
+      settlementRow("s-4", "team-d", 100000, {
+        status: "SUBMITTED",
+        subMallId: null,
+      }),
+      settlementRow("s-5", "team-e", 50000, null),
+    ];
+
+    beforeEach(() => {
+      // KST 2026-10-05(월) 09:00
+      jest.spyOn(Date, "now").mockReturnValue(Date.UTC(2026, 9, 5, 0, 0));
+      mockPrisma.settlement.findMany.mockResolvedValue(mixedRows());
+      mockPrisma.settlement.aggregate.mockResolvedValue({
+        _count: { _all: 2 },
+        _sum: { netAmount: 500000 },
+      });
+    });
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it("미리보기는 등록 완료·서브ID 있는 팀만 넣고 나머지는 사유와 함께 뺀다", async () => {
+      const preview = await service.getPayoutFilePreview(MONTH, PAY_DATE);
+
+      expect(mockPrisma.settlement.findMany.mock.calls[0][0].where).toEqual({
+        settlementMonth: MONTH,
+        status: "approved",
+        netAmount: { gt: 0 },
+      });
+      expect(preview.included).toEqual([
+        {
+          settlementId: "s-1",
+          teamId: "team-a",
+          teamName: "team-a",
+          subMallId: "team-a",
+          netAmount: 300000,
+        },
+      ]);
+      expect(preview.excluded.map((e) => [e.teamId, e.reasonCode])).toEqual([
+        ["team-b", "ACCOUNT_CHANGED"],
+        ["team-c", "SUB_ID_MISSING"],
+        ["team-d", "NOT_REGISTERED"],
+        ["team-e", "ACCOUNT_NONE"],
+      ]);
+      expect(preview.excluded.every((e) => e.reason.length > 0)).toBe(true);
+      expect(preview).toMatchObject({
+        includedCount: 1,
+        includedTotal: 300000,
+        excludedCount: 4,
+        excludedTotal: 500000,
+        paidThisMonth: { count: 2, netAmount: 500000 },
+      });
+      expect(preview.fingerprint).toMatch(/^[0-9a-f]{64}$/);
+      // 미리보기 응답에는 계좌번호·사업자번호가 없다.
+      expect(JSON.stringify(preview)).not.toMatch(/bankAccount|businessNumber/);
+    });
+
+    it("파일은 미리보기의 포함 목록 그대로 서브ID·지급일·지급액을 쓴다", async () => {
+      const { fingerprint } = await service.getPayoutFilePreview(
+        MONTH,
+        PAY_DATE,
+      );
+
+      const { buffer, payDateCompact } = await service.getPayoutFile(
+        MONTH,
+        PAY_DATE,
+        fingerprint,
+        "admin-1",
+      );
+
+      expect(payDateCompact).toBe("20261006");
+      const sheet = XLSX.read(buffer, { type: "buffer" }).Sheets.Sheet1;
+      expect(XLSX.utils.sheet_to_json(sheet, { header: 1 })).toEqual([
+        ["서브ID", "지급일", "지급액"],
+        ["team-a", 20261006, 300000],
+      ]);
+      expect(sheet.A2.t).toBe("s");
+      expect(sheet.B2.t).toBe("n");
+      expect(sheet.C2.t).toBe("n");
+    });
+
+    it("미리보기 뒤 계좌가 바뀌거나 정산이 빠지면 409 PAYOUT_FILE_CHANGED", async () => {
+      const { fingerprint } = await service.getPayoutFilePreview(
+        MONTH,
+        PAY_DATE,
+      );
+
+      const changed = mixedRows();
+      changed[0].team.settlementAccount = {
+        status: "REGISTERED",
+        subMallId: "team-a",
+        updatedAt: new Date("2026-10-05T00:00:00.000Z"),
+        registrationStartedAt: null,
+      };
+      mockPrisma.settlement.findMany.mockResolvedValue(changed);
+      await expect(
+        service.getPayoutFile(MONTH, PAY_DATE, fingerprint, "admin-1"),
+      ).rejects.toMatchObject({
+        response: { errorCode: "PAYOUT_FILE_CHANGED" },
+      });
+
+      // 다른 운영자가 지급 완료 처리해 목록에서 빠진 경우
+      mockPrisma.settlement.findMany.mockResolvedValue(mixedRows().slice(1));
+      await expect(
+        service.getPayoutFile(MONTH, PAY_DATE, fingerprint, "admin-1"),
+      ).rejects.toMatchObject({
+        response: { errorCode: "PAYOUT_FILE_CHANGED" },
+      });
+    });
+
+    it("지급일이 달라지면 같은 정산이어도 지문이 달라진다", async () => {
+      const first = await service.getPayoutFilePreview(MONTH, PAY_DATE);
+      const second = await service.getPayoutFilePreview(MONTH, "2026-10-07");
+      expect(first.fingerprint).not.toBe(second.fingerprint);
+    });
+
+    it("넣을 정산이 없으면 409 PAYOUT_FILE_EMPTY", async () => {
+      mockPrisma.settlement.findMany.mockResolvedValue(mixedRows().slice(1));
+      const { fingerprint } = await service.getPayoutFilePreview(
+        MONTH,
+        PAY_DATE,
+      );
+
+      await expect(
+        service.getPayoutFile(MONTH, PAY_DATE, fingerprint, "admin-1"),
+      ).rejects.toMatchObject({ response: { errorCode: "PAYOUT_FILE_EMPTY" } });
+    });
+
+    it("지급일이 주말이거나 지났으면 400, 정산월 형식이 틀리면 400", async () => {
+      await expect(
+        service.getPayoutFilePreview(MONTH, "2026-10-10"),
+      ).rejects.toMatchObject({
+        response: { errorCode: "PAYOUT_DATE_INVALID" },
+      });
+      await expect(
+        service.getPayoutFilePreview(MONTH, "2026-10-02"),
+      ).rejects.toThrow(BadRequestException);
+      await expect(
+        service.getPayoutFilePreview("bad-month", PAY_DATE),
+      ).rejects.toThrow(BadRequestException);
+      expect(mockPrisma.settlement.findMany).not.toHaveBeenCalled();
     });
   });
 

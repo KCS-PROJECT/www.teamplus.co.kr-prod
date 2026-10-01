@@ -31,8 +31,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { AlertCircle, AlertTriangle, ChevronLeft, ChevronRight, Search } from 'lucide-react';
+import { AlertCircle, AlertTriangle, ChevronLeft, ChevronRight, Download, Search } from 'lucide-react';
 import { api } from '@/services/api-client';
+import { isoToDateInput } from '@/lib/kst-date';
 import { getAccountStatusMeta, type AccountStatus } from './accountStatusMeta';
 import { ActionNotice } from './ActionNotice';
 
@@ -69,6 +70,8 @@ interface TeamAccountRow {
   teamCode: string;
   account: TeamAccount | null;
   lastNiceCall?: LastNiceCall | null;
+  niceAction?: 'REGISTER' | 'UPDATE' | 'NONE' | null;
+  niceSubId?: string | null;
 }
 
 interface AccountsMeta {
@@ -152,6 +155,7 @@ export function TeamSettlementAccountsTab() {
   const [registrationChecked, setRegistrationChecked] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [niceRegisteringTeamId, setNiceRegisteringTeamId] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
 
   // 필터를 빠르게 바꿀 때 먼저 보낸 요청이 늦게 도착해 최신 화면을 덮는 경쟁을 막는다.
   const requestSeqRef = useRef(0);
@@ -323,6 +327,26 @@ export function TeamSettlementAccountsTab() {
     }
   };
 
+  const handleNiceExport = async () => {
+    if (isExporting) return;
+    setIsExporting(true);
+    try {
+      await api.downloadFile(
+        '/settlements/accounts/nice-registration-export',
+        MESSAGES.settlementDynamic.niceRegistrationFileName(
+          isoToDateInput(new Date().toISOString()).replace(/-/g, ''),
+        ),
+      );
+    } catch (error) {
+      setNotice({
+        type: 'error',
+        text: extractErrorMessage(error, MESSAGES.settlement.niceExportError),
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const isLiveMode = meta?.payoutApiMode === 'live';
 
   const dialogAccount = dialogRow?.account ?? null;
@@ -350,6 +374,22 @@ export function TeamSettlementAccountsTab() {
   return (
     <div className="min-w-0 max-w-full space-y-6">
       <ActionNotice notice={notice} />
+
+      {!isLiveMode && (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => void handleNiceExport()}
+            disabled={isExporting}
+            className="h-11 shrink-0"
+          >
+            <Download className="h-4 w-4 mr-2" aria-hidden="true" />
+            {isExporting ? MESSAGES.settlement.niceExportDownloading : MESSAGES.settlement.niceExportButton}
+          </Button>
+          <p className="text-xs text-slate-500 dark:text-slate-400">{MESSAGES.settlement.niceExportGuide}</p>
+        </div>
+      )}
 
       <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
         <div
@@ -450,6 +490,25 @@ export function TeamSettlementAccountsTab() {
                       >
                         <Badge className={`${statusMeta.badge} whitespace-nowrap`}>{statusMeta.label}</Badge>
                       </span>
+                      {!isLiveMode && account && row.niceAction === 'REGISTER' && account.status !== 'REGISTERED' && (
+                        <div className="mt-1">
+                          <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 whitespace-nowrap">
+                            {MESSAGES.settlement.niceActionRegister}
+                          </Badge>
+                        </div>
+                      )}
+                      {!isLiveMode && account && row.niceAction === 'UPDATE' && (
+                        <div className="mt-1">
+                          <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 whitespace-nowrap">
+                            {MESSAGES.settlement.niceActionUpdate}
+                          </Badge>
+                        </div>
+                      )}
+                      {!isLiveMode && account?.status === 'REGISTERED' && !account.subMallId && (
+                        <p className="mt-1 max-w-[16rem] text-xs text-amber-700 dark:text-amber-400">
+                          {MESSAGES.settlement.accountSubIdMissing}
+                        </p>
+                      )}
                       {account?.registrationInProgress && (
                         <p className="mt-1 text-xs text-amber-700 dark:text-amber-400 whitespace-nowrap">
                           {MESSAGES.settlement.accountNiceInProgress}
@@ -503,7 +562,7 @@ export function TeamSettlementAccountsTab() {
                     <TableCell className="sticky right-0 shadow-[-8px_0_8px_-8px_rgba(15,23,42,0.15)] dark:shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.5)] bg-white text-right group-hover:bg-slate-50 dark:bg-slate-800 dark:group-hover:bg-slate-700">
                       {account && (
                         <div className="flex flex-wrap items-center justify-end gap-1.5">
-                          {/* 수동 운영 때 등록 완료로 표시된 계좌는 서브몰 ID 가 없어 live 에서 재등록이 필요하다. */}
+                          {/* 서브몰 ID 기록이 없는 등록 완료 계좌(이전 수동 처리분)는 live 에서 재등록이 필요하다. */}
                           {isLiveMode && (account.status !== 'REGISTERED' || !account.subMallId) && (
                             <Button
                               type="button"
@@ -516,7 +575,10 @@ export function TeamSettlementAccountsTab() {
                                 : MESSAGES.settlement.accountNiceRegisterButton}
                             </Button>
                           )}
-                          {!isLiveMode && (account.status === 'SUBMITTED' || account.status === 'FAILED') && (
+                          {!isLiveMode &&
+                            (account.status === 'SUBMITTED' ||
+                              account.status === 'FAILED' ||
+                              (account.status === 'REGISTERED' && !account.subMallId)) && (
                             <Button type="button" size="sm" onClick={() => openDialog('register', row)}>
                               {MESSAGES.settlement.accountRegisterButton}
                             </Button>
@@ -623,6 +685,26 @@ export function TeamSettlementAccountsTab() {
                     </div>
                   ))}
                 </dl>
+
+                {dialogAction === 'register' && (dialogRow.niceSubId ?? dialogAccount?.subMallId) && (
+                  <div className="rounded-lg border border-slate-200 dark:border-slate-600 px-4 py-3">
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      {MESSAGES.settlement.accountSubIdLabel}
+                    </p>
+                    <p className="text-lg font-bold text-slate-900 dark:text-white tabular-nums break-all">
+                      {dialogRow.niceSubId ?? dialogAccount?.subMallId}
+                    </p>
+                    <p className="mt-1 text-sm text-slate-700 dark:text-slate-300">
+                      {MESSAGES.settlement.accountRegisterSubIdNotice}
+                    </p>
+                  </div>
+                )}
+
+                {dialogAction === 'unregister' && (
+                  <p className="text-sm text-slate-700 dark:text-slate-300">
+                    {MESSAGES.settlement.accountUnregisterSubIdNotice}
+                  </p>
+                )}
 
                 {dialogAction === 'register' && (
                   <label className="flex items-start gap-2 cursor-pointer">

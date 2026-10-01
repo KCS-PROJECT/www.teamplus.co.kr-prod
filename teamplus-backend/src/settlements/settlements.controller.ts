@@ -42,6 +42,12 @@ import { TeamSettlementAccountService } from "./team-settlement-account.service"
 import { QuerySettlementAccountsDto } from "./dto/query-settlement-accounts.dto";
 import { UpdateAccountRegistrationDto } from "./dto/update-account-registration.dto";
 import { CloseSettlementDto } from "./dto/close-settlement.dto";
+import {
+  QueryPayoutFileDto,
+  QueryPayoutFilePreviewDto,
+} from "./dto/query-payout-file.dto";
+import { NICE_XLSX_CONTENT_TYPE } from "./utils/nice-xlsx.util";
+import { nowKstParts } from "@/common/utils/kst-date.util";
 
 @ApiTags("Settlements")
 @Controller("api/v1/settlements")
@@ -166,9 +172,98 @@ export class SettlementsController {
     res.send(csvBuffer);
   }
 
+  @Get("payout-file/preview")
+  @Roles("ADMIN")
+  @ApiOperation({
+    summary: "나이스 지급 엑셀 미리보기",
+    description:
+      "지급 예정(approved) 정산 중 나이스 지급 엑셀에 들어갈 팀과 빠지는 팀·사유. 계좌번호는 포함하지 않습니다. 지급일은 KST 기준 오늘 이후(오늘이면 10:30 전)·평일·31일 이내.",
+  })
+  @ApiResponse({ status: 200, description: "미리보기 조회 성공" })
+  @ApiResponse({ status: 400, description: "지급일 오류(PAYOUT_DATE_INVALID)" })
+  async getPayoutFilePreview(@Query() query: QueryPayoutFilePreviewDto) {
+    return this.settlementsService.getPayoutFilePreview(
+      query.month,
+      query.payDate,
+    );
+  }
+
+  @Get("payout-file")
+  @Roles("ADMIN")
+  @ApiOperation({
+    summary: "나이스 지급 엑셀 다운로드",
+    description:
+      "나이스 관리자 지급내역 다량등록 양식(서브ID·지급일·지급액). 미리보기의 fingerprint 와 지금 내용이 다르면 409 PAYOUT_FILE_CHANGED.",
+  })
+  @ApiProduces(NICE_XLSX_CONTENT_TYPE)
+  @ApiResponse({ status: 200, description: "xlsx 파일 다운로드" })
+  @ApiResponse({ status: 400, description: "지급일 오류(PAYOUT_DATE_INVALID)" })
+  @ApiResponse({
+    status: 409,
+    description:
+      "내용 변경(PAYOUT_FILE_CHANGED) · 대상 없음(PAYOUT_FILE_EMPTY)",
+  })
+  @AuditAction({
+    action: "settlement.payout-file",
+    resource: "Settlement",
+    includeKeys: ["month", "payDate"],
+  })
+  async getPayoutFile(
+    @Query() query: QueryPayoutFileDto,
+    @Request() req: AuthenticatedRequest,
+    @Res() res: Response,
+  ) {
+    const { buffer, payDateCompact } =
+      await this.settlementsService.getPayoutFile(
+        query.month,
+        query.payDate,
+        query.fingerprint,
+        req.user.id,
+      );
+    res.setHeader("Content-Type", NICE_XLSX_CONTENT_TYPE);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="nice_payout_${payDateCompact}_${query.month}.xlsx"`,
+    );
+    res.send(buffer);
+  }
+
   /**
    * static path — `:id` 보다 반드시 위에 선언해야 "accounts" 가 :id 로 매칭되지 않는다.
    */
+  @Get("accounts/nice-registration-export")
+  @Roles("ADMIN")
+  @ApiOperation({
+    summary: "나이스 서브ID 등록 엑셀 다운로드",
+    description:
+      "나이스 관리자 서브ID 다량등록 양식. 나이스에 등록한 적 없는 활성 팀 계좌만 담습니다(최대 500건). 사업자번호·계좌번호는 복호화된 평문입니다.",
+  })
+  @ApiProduces(NICE_XLSX_CONTENT_TYPE)
+  @ApiResponse({ status: 200, description: "xlsx 파일 다운로드" })
+  @ApiResponse({
+    status: 409,
+    description: "등록할 팀 없음(NICE_REGISTRATION_EMPTY)",
+  })
+  @AuditAction({
+    action: "settlement-account.nice-registration-export",
+    resource: "TeamSettlementAccount",
+  })
+  async getNiceRegistrationExport(
+    @Request() req: AuthenticatedRequest,
+    @Res() res: Response,
+  ) {
+    const buffer = await this.accountService.buildNiceRegistrationFile(
+      req.user.id,
+    );
+    const { year, month, day } = nowKstParts();
+    res.setHeader("Content-Type", NICE_XLSX_CONTENT_TYPE);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="nice_subid_${year}${month}${day}.xlsx"`,
+    );
+    res.send(buffer);
+  }
+
   @Get("accounts")
   @Roles("ADMIN")
   @ApiOperation({

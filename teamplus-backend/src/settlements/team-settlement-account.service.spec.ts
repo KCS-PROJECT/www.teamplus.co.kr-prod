@@ -9,6 +9,7 @@ import {
 } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { randomBytes } from "crypto";
+import * as XLSX from "xlsx";
 import { TeamSettlementAccountService } from "./team-settlement-account.service";
 import { PrismaService } from "@/prisma/prisma.service";
 import { RedisService } from "@/redis/redis.service";
@@ -29,6 +30,7 @@ describe("TeamSettlementAccountService", () => {
     teamSettlementAccount: {
       findUnique: jest.fn(),
       findUniqueOrThrow: jest.fn(),
+      findMany: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
       updateMany: jest.fn(),
@@ -36,7 +38,8 @@ describe("TeamSettlementAccountService", () => {
     },
     commonCode: { findMany: jest.fn() },
     appSettings: { findFirst: jest.fn() },
-    nicePayoutApiLog: { findMany: jest.fn() },
+    nicePayoutApiLog: { findMany: jest.fn(), create: jest.fn() },
+    $transaction: jest.fn(),
   };
   const mockRedis = { get: jest.fn(), set: jest.fn() };
   const mockPayoutApi = { upsertSubMall: jest.fn(), getBalance: jest.fn() };
@@ -107,6 +110,9 @@ describe("TeamSettlementAccountService", () => {
       payoutApiMode: "off",
     });
     mockPrisma.nicePayoutApiLog.findMany.mockResolvedValue([]);
+    mockPrisma.$transaction.mockImplementation(
+      (cb: (tx: typeof mockPrisma) => Promise<unknown>) => cb(mockPrisma),
+    );
   });
 
   describe("권한", () => {
@@ -320,8 +326,16 @@ describe("TeamSettlementAccountService", () => {
 
   describe("운영자 등록 상태·초기화", () => {
     const expectedUpdatedAt = "2026-09-29T00:00:00.000Z";
+    const createdAt = new Date("2026-09-29T00:00:00Z");
+    const currentRow = (subMallId: string | null = null) => ({
+      subMallId,
+      createdAt,
+    });
 
     it("본 버전과 같으면 REGISTERED 와 처리자를 기록한다", async () => {
+      mockPrisma.teamSettlementAccount.findUnique.mockResolvedValueOnce(
+        currentRow(),
+      );
       mockPrisma.teamSettlementAccount.updateMany.mockResolvedValue({
         count: 1,
       });
@@ -345,9 +359,9 @@ describe("TeamSettlementAccountService", () => {
       mockPrisma.teamSettlementAccount.updateMany.mockResolvedValue({
         count: 0,
       });
-      mockPrisma.teamSettlementAccount.findUnique.mockResolvedValueOnce({
-        id: "a-1",
-      });
+      mockPrisma.teamSettlementAccount.findUnique
+        .mockResolvedValueOnce(currentRow())
+        .mockResolvedValueOnce({ id: "a-1" });
       await expect(
         service.updateRegistration(
           "team-1",
@@ -366,7 +380,85 @@ describe("TeamSettlementAccountService", () => {
       ).rejects.toThrow(NotFoundException);
     });
 
-    it("초기화는 행을 지우고, 없으면 404", async () => {
+    it("등록 완료 처리는 서브몰 ID(팀 ID)를 함께 저장하고, 이미 있으면 그대로 둔다", async () => {
+      mockPrisma.teamSettlementAccount.updateMany.mockResolvedValue({
+        count: 1,
+      });
+      const lastData = () => {
+        const calls = mockPrisma.teamSettlementAccount.updateMany.mock.calls;
+        return calls[calls.length - 1][0].data;
+      };
+
+      mockPrisma.teamSettlementAccount.findUnique.mockResolvedValueOnce(
+        currentRow(),
+      );
+      await service.updateRegistration(
+        "team-1",
+        { status: "REGISTERED", expectedUpdatedAt },
+        "admin-1",
+      );
+      expect(lastData().subMallId).toBe("team-1");
+
+      mockPrisma.teamSettlementAccount.findUnique.mockResolvedValueOnce(
+        currentRow("team-1-2"),
+      );
+      await service.updateRegistration(
+        "team-1",
+        { status: "REGISTERED", expectedUpdatedAt },
+        "admin-1",
+      );
+      expect(lastData().subMallId).toBe("team-1-2");
+    });
+
+    it("서브몰 ID 가 다른 계좌와 겹치면(P2002) 계좌 변경이 아니라 409 SUB_MALL_ID_CONFLICT", async () => {
+      mockPrisma.teamSettlementAccount.findUnique.mockResolvedValueOnce(
+        currentRow(),
+      );
+      mockPrisma.teamSettlementAccount.updateMany.mockRejectedValueOnce(
+        new Prisma.PrismaClientKnownRequestError("unique", {
+          code: "P2002",
+          clientVersion: "5.7.0",
+        }),
+      );
+
+      await expect(
+        service.updateRegistration(
+          "team-1",
+          { status: "REGISTERED", expectedUpdatedAt },
+          "admin-1",
+        ),
+      ).rejects.toMatchObject({
+        response: { errorCode: "SUB_MALL_ID_CONFLICT" },
+      });
+    });
+
+    it("해제하면 서브몰 ID 기록도 지운다", async () => {
+      mockPrisma.teamSettlementAccount.findUnique.mockResolvedValueOnce(
+        currentRow("team-1"),
+      );
+      mockPrisma.teamSettlementAccount.updateMany.mockResolvedValue({
+        count: 1,
+      });
+
+      await service.updateRegistration(
+        "team-1",
+        { status: "SUBMITTED", expectedUpdatedAt },
+        "admin-1",
+      );
+
+      expect(
+        mockPrisma.teamSettlementAccount.updateMany.mock.calls[0][0].data,
+      ).toMatchObject({
+        status: "SUBMITTED",
+        subMallId: null,
+        registeredById: null,
+      });
+    });
+
+    it("초기화는 쓰던 서브몰 ID 를 물러난 ID 로 남기고 행을 지운다 — 없으면 404", async () => {
+      mockPrisma.teamSettlementAccount.findUnique.mockResolvedValueOnce(
+        currentRow("team-1"),
+      );
       mockPrisma.teamSettlementAccount.deleteMany.mockResolvedValueOnce({
         count: 1,
       });
@@ -374,13 +466,85 @@ describe("TeamSettlementAccountService", () => {
         teamId: "team-1",
         reset: true,
       });
-
-      mockPrisma.teamSettlementAccount.deleteMany.mockResolvedValueOnce({
-        count: 0,
+      expect(mockPrisma.nicePayoutApiLog.create).toHaveBeenCalledWith({
+        data: {
+          sid: "RETIRE",
+          teamId: "team-1",
+          subId: "team-1",
+          outcome: "RETIRED",
+          durationMs: 0,
+          requestedBy: "admin-1",
+        },
       });
+
+      mockPrisma.teamSettlementAccount.findUnique.mockResolvedValueOnce(null);
       await expect(service.reset("team-1", "admin-1")).rejects.toThrow(
         NotFoundException,
       );
+    });
+
+    it("등록 완료 처리 전에 초기화해도 등록 엑셀에 실렸을 ID 를 물러난 ID 로 남긴다", async () => {
+      mockPrisma.teamSettlementAccount.findUnique.mockResolvedValueOnce(
+        currentRow(),
+      );
+      mockPrisma.teamSettlementAccount.deleteMany.mockResolvedValueOnce({
+        count: 1,
+      });
+
+      await service.reset("team-1", "admin-1");
+
+      expect(
+        mockPrisma.nicePayoutApiLog.create.mock.calls[0][0].data,
+      ).toMatchObject({ sid: "RETIRE", subId: "team-1" });
+    });
+
+    it("초기화한 뒤 다시 만든 계좌는 물러난 ID 다음 번호(-2)로 등록 완료 처리된다", async () => {
+      mockPrisma.nicePayoutApiLog.findMany.mockResolvedValue([
+        {
+          teamId: "team-1",
+          subId: "team-1",
+          createdAt: new Date("2026-09-28T00:00:00Z"),
+        },
+      ]);
+      mockPrisma.teamSettlementAccount.findUnique.mockResolvedValueOnce(
+        currentRow(),
+      );
+      mockPrisma.teamSettlementAccount.updateMany.mockResolvedValue({
+        count: 1,
+      });
+
+      await service.updateRegistration(
+        "team-1",
+        { status: "REGISTERED", expectedUpdatedAt },
+        "admin-1",
+      );
+
+      expect(
+        mockPrisma.teamSettlementAccount.updateMany.mock.calls[0][0].data
+          .subMallId,
+      ).toBe("team-1-2");
+      expect(
+        mockPrisma.nicePayoutApiLog.findMany.mock.calls[0][0].where,
+      ).toMatchObject({
+        OR: [
+          { sid: "0105001", outcome: { in: ["SUCCESS", "AMBIGUOUS"] } },
+          { sid: "RETIRE" },
+        ],
+      });
+    });
+
+    it("초기화 중 행이 먼저 사라지면 물러난 ID 를 남기지 않고 404", async () => {
+      mockPrisma.teamSettlementAccount.findUnique.mockResolvedValueOnce(
+        currentRow("team-1"),
+      );
+      mockPrisma.teamSettlementAccount.deleteMany.mockResolvedValueOnce({
+        count: 0,
+      });
+
+      await expect(service.reset("team-1", "admin-1")).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(mockPrisma.nicePayoutApiLog.create).not.toHaveBeenCalled();
     });
 
     it("목록 NONE 필터는 계좌 없는 활성 팀만 고른다", async () => {
@@ -798,7 +962,11 @@ describe("TeamSettlementAccountService", () => {
 
     it("초기화 뒤 새로 등록하면 이미 쓴 서브몰 ID 다음 번호(-2)를 쓴다", async () => {
       mockPrisma.nicePayoutApiLog.findMany.mockResolvedValue([
-        { subId: "team-1" },
+        {
+          teamId: "team-1",
+          subId: "team-1",
+          createdAt: new Date("2026-09-28T00:00:00Z"),
+        },
       ]);
       mockPayoutApi.upsertSubMall.mockResolvedValue(result("SUCCESS", "0000"));
 
@@ -808,13 +976,24 @@ describe("TeamSettlementAccountService", () => {
         "team-1-2",
       );
       expect(finalWrite().data.subMallId).toBe("team-1-2");
-      // 지금 계좌 이전의 성공·결과 불명 호출만 쓴 ID 로 본다.
       expect(
         mockPrisma.nicePayoutApiLog.findMany.mock.calls[0][0].where,
-      ).toMatchObject({
-        outcome: { in: ["SUCCESS", "AMBIGUOUS"] },
-        createdAt: { lt: new Date("2026-09-29T00:00:00Z") },
-      });
+      ).toMatchObject({ teamId: { in: ["team-1"] }, subId: { not: null } });
+    });
+
+    it("지금 계좌가 만들어진 뒤의 결과 불명 호출은 쓴 ID 로 보지 않아 같은 ID 로 다시 요청한다", async () => {
+      mockPrisma.nicePayoutApiLog.findMany.mockResolvedValue([
+        {
+          teamId: "team-1",
+          subId: "team-1",
+          createdAt: new Date("2026-09-29T00:05:00Z"),
+        },
+      ]);
+      mockPayoutApi.upsertSubMall.mockResolvedValue(result("SUCCESS", "0000"));
+
+      await service.upsert("team-1", dto, owner);
+
+      expect(mockPayoutApi.upsertSubMall.mock.calls[0][0].subId).toBe("team-1");
     });
 
     it("이미 나이스에 등록된 계좌를 운영자가 다시 맞추다 거절되면 등록 완료를 유지하고 사유만 남긴다", async () => {
@@ -974,6 +1153,10 @@ describe("TeamSettlementAccountService", () => {
   });
 
   it("운영자 수동 등록 상태 변경은 이전 나이스 응답 사유를 지운다", async () => {
+    mockPrisma.teamSettlementAccount.findUnique.mockResolvedValueOnce({
+      subMallId: null,
+      createdAt: new Date("2026-09-29T00:00:00Z"),
+    });
     mockPrisma.teamSettlementAccount.updateMany.mockResolvedValueOnce({
       count: 1,
     });
@@ -1023,5 +1206,132 @@ describe("TeamSettlementAccountService", () => {
       at,
     });
     expect(result.data[1].lastNiceCall).toBeNull();
+  });
+
+  it("운영자 목록은 나이스에서 할 일과 서브ID 를 함께 내려준다", async () => {
+    const createdAt = new Date("2026-09-29T00:00:00Z");
+    const account = (
+      teamId: string,
+      status: string,
+      subMallId: string | null,
+    ) => ({ ...storedRow(), teamId, status, subMallId, createdAt });
+    mockPrisma.team.findMany.mockResolvedValue([
+      {
+        id: "team-1",
+        name: "팀1",
+        teamCode: null,
+        settlementAccount: account("team-1", "SUBMITTED", null),
+      },
+      {
+        id: "team-2",
+        name: "팀2",
+        teamCode: null,
+        settlementAccount: account("team-2", "SUBMITTED", "team-2"),
+      },
+      {
+        id: "team-3",
+        name: "팀3",
+        teamCode: null,
+        settlementAccount: account("team-3", "REGISTERED", "team-3"),
+      },
+      { id: "team-4", name: "팀4", teamCode: null, settlementAccount: null },
+    ]);
+    mockPrisma.team.count.mockResolvedValue(4);
+
+    const result = await service.listForAdmin({});
+
+    expect(result.data.map((row) => [row.niceAction, row.niceSubId])).toEqual([
+      ["REGISTER", "team-1"],
+      ["UPDATE", "team-2"],
+      ["NONE", "team-3"],
+      [null, null],
+    ]);
+  });
+
+  describe("나이스 서브ID 등록 엑셀", () => {
+    const createdAt = new Date("2026-09-29T00:00:00Z");
+    const exportRow = (overrides: Record<string, unknown> = {}) => ({
+      teamId: "team-1",
+      businessNumber: encryptField("123-45-67890"),
+      bankCode: "004",
+      bankAccount: encryptField("0110-222-333444"),
+      accountHolder: "블랭크하키",
+      createdAt,
+      registrationStartedAt: null,
+      team: { name: "블랭크" },
+      ...overrides,
+    });
+
+    it("나이스에 등록한 적 없는 활성 팀 계좌를 나이스 양식으로 만들고, 숫자 칸도 글자 셀로 쓴다", async () => {
+      mockPrisma.teamSettlementAccount.findMany.mockResolvedValue([
+        exportRow({ team: { name: "가".repeat(20) } }),
+      ]);
+
+      const buffer = await service.buildNiceRegistrationFile("admin-1");
+
+      const query = mockPrisma.teamSettlementAccount.findMany.mock.calls[0][0];
+      expect(query.where).toMatchObject({
+        subMallId: null,
+        team: { isActive: true },
+      });
+      expect(query.take).toBe(500);
+
+      const sheet = XLSX.read(buffer, { type: "buffer" }).Sheets.Sheet1;
+      expect(XLSX.utils.sheet_to_json(sheet, { header: 1 })).toEqual([
+        ["ID", "상호", "사업자번호", "예금주", "은행", "계좌번호"],
+        [
+          "team-1",
+          // 상호는 40바이트(한글 13자)로 자른다.
+          "가".repeat(13),
+          "1234567890",
+          "블랭크하키",
+          "004",
+          "0110222333444",
+        ],
+      ]);
+      for (const cell of ["A2", "C2", "E2", "F2"]) {
+        expect(sheet[cell].t).toBe("s");
+      }
+    });
+
+    it("초기화했던 팀은 다음 번호의 서브ID 로 싣는다", async () => {
+      mockPrisma.teamSettlementAccount.findMany.mockResolvedValue([
+        exportRow(),
+      ]);
+      mockPrisma.nicePayoutApiLog.findMany.mockResolvedValue([
+        {
+          teamId: "team-1",
+          subId: "team-1",
+          createdAt: new Date("2026-09-28T00:00:00Z"),
+        },
+      ]);
+
+      const buffer = await service.buildNiceRegistrationFile("admin-1");
+
+      const sheet = XLSX.read(buffer, { type: "buffer" }).Sheets.Sheet1;
+      expect(sheet.A2.v).toBe("team-1-2");
+    });
+
+    it("등록 호출이 진행 중인 계좌는 조회 단계에서 빼고(500건 상한 전), 남는 팀이 없으면 409 NICE_REGISTRATION_EMPTY", async () => {
+      jest.spyOn(Date, "now").mockReturnValue(Date.UTC(2026, 9, 1, 0, 0));
+      mockPrisma.teamSettlementAccount.findMany.mockResolvedValue([]);
+
+      await expect(
+        service.buildNiceRegistrationFile("admin-1"),
+      ).rejects.toMatchObject({
+        response: { errorCode: "NICE_REGISTRATION_EMPTY" },
+      });
+      expect(
+        mockPrisma.teamSettlementAccount.findMany.mock.calls[0][0].where.OR,
+      ).toEqual([
+        { registrationStartedAt: null },
+        {
+          registrationStartedAt: {
+            lt: new Date(Date.UTC(2026, 9, 1, 0, 0) - 60_000),
+          },
+        },
+      ]);
+      jest.restoreAllMocks();
+    });
   });
 });

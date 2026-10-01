@@ -371,7 +371,7 @@ export default function SettlementDetailPage() {
         : MESSAGES.settlements.loadError;
     return (
       <MobileContainer hasBottomNav={false}>
-        <PageAppBar title={MESSAGES.settlements.pageTitle} onBack={handleBack} />
+        <PageAppBar title={MESSAGES.settlements.detailTitle} onBack={handleBack} />
         <main className="flex-1 overflow-y-auto bg-it-canvas dark:bg-puck !pb-8">
           <div className="flex flex-col items-center gap-3 px-5 py-20 text-center">
             <p className="text-card-body text-it-ink-500 dark:text-rink-300">{message}</p>
