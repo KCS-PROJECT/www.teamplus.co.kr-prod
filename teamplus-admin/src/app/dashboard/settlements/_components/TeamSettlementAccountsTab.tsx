@@ -31,9 +31,11 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { AlertCircle, AlertTriangle, ChevronLeft, ChevronRight, Search } from 'lucide-react';
+import { AlertCircle, AlertTriangle, ChevronLeft, ChevronRight, Download, Search } from 'lucide-react';
 import { api } from '@/services/api-client';
+import { isoToDateInput } from '@/lib/kst-date';
 import { getAccountStatusMeta, type AccountStatus } from './accountStatusMeta';
+import { ActionNotice } from './ActionNotice';
 
 interface TeamAccount {
   teamId: string;
@@ -47,6 +49,19 @@ interface TeamAccount {
   registeredAt: string | null;
   registeredBy: { id: string; name: string } | null;
   updatedAt: string;
+  subMallId: string | null;
+  lastResCode: string | null;
+  lastResMsg: string | null;
+  lastAttemptedAt: string | null;
+  registrationInProgress: boolean;
+}
+
+/** 마지막 나이스 서브몰 등록 호출 — 운영자용 원인 설명(통신 원인·코드·나이스 원문). */
+interface LastNiceCall {
+  outcome: 'SUCCESS' | 'TERMINAL' | 'AMBIGUOUS' | 'CONFIG';
+  resCode: string | null;
+  detail: string;
+  at: string;
 }
 
 interface TeamAccountRow {
@@ -54,6 +69,9 @@ interface TeamAccountRow {
   teamName: string;
   teamCode: string;
   account: TeamAccount | null;
+  lastNiceCall?: LastNiceCall | null;
+  niceAction?: 'REGISTER' | 'UPDATE' | 'NONE' | null;
+  niceSubId?: string | null;
 }
 
 interface AccountsMeta {
@@ -61,6 +79,7 @@ interface AccountsMeta {
   page: number;
   pageSize: number;
   totalPages: number;
+  payoutApiMode?: 'off' | 'readonly' | 'live';
 }
 
 type StatusFilter = 'all' | 'NONE' | AccountStatus;
@@ -75,6 +94,7 @@ const FILTER_OPTIONS: { value: StatusFilter; label: string }[] = [
   { value: 'NONE', label: getAccountStatusMeta(null).label },
   { value: 'SUBMITTED', label: getAccountStatusMeta('SUBMITTED').label },
   { value: 'REGISTERED', label: getAccountStatusMeta('REGISTERED').label },
+  { value: 'FAILED', label: getAccountStatusMeta('FAILED').label },
 ];
 
 const kstDateTimeFormat = new Intl.DateTimeFormat('ko-KR', {
@@ -124,13 +144,18 @@ export function TeamSettlementAccountsTab() {
   const [meta, setMeta] = useState<AccountsMeta | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [notice, setNotice] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
 
   const [dialogAction, setDialogAction] = useState<DialogAction | null>(null);
   const [dialogRow, setDialogRow] = useState<TeamAccountRow | null>(null);
   const [resetStep, setResetStep] = useState<1 | 2>(1);
   const [registrationChecked, setRegistrationChecked] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [niceRegisteringTeamId, setNiceRegisteringTeamId] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
 
   // 필터를 빠르게 바꿀 때 먼저 보낸 요청이 늦게 도착해 최신 화면을 덮는 경쟁을 막는다.
   const requestSeqRef = useRef(0);
@@ -140,7 +165,10 @@ export function TeamSettlementAccountsTab() {
     setIsLoading(true);
     setLoadError(null);
     try {
-      const params: Record<string, string | number> = { page, pageSize: PAGE_SIZE };
+      const params: Record<string, string | number> = {
+        page,
+        pageSize: PAGE_SIZE,
+      };
       if (statusFilter !== 'all') params.status = statusFilter;
       if (q) params.q = q;
       const res = await api.get<{ data: TeamAccountRow[]; meta: AccountsMeta }>(
@@ -213,7 +241,10 @@ export function TeamSettlementAccountsTab() {
     try {
       if (dialogAction === 'reset') {
         await api.delete(`/settlements/accounts/${teamId}`);
-        setNotice({ type: 'success', text: MESSAGES.settlement.accountResetSuccess });
+        setNotice({
+          type: 'success',
+          text: MESSAGES.settlement.accountResetSuccess,
+        });
       } else {
         const nextStatus: AccountStatus = dialogAction === 'register' ? 'REGISTERED' : 'SUBMITTED';
         await api.patch(`/settlements/accounts/${teamId}/registration`, {
@@ -255,31 +286,108 @@ export function TeamSettlementAccountsTab() {
     }
   };
 
+  const handleNiceRegister = async (row: TeamAccountRow) => {
+    if (niceRegisteringTeamId) return;
+    setNiceRegisteringTeamId(row.teamId);
+    try {
+      const result = await api.post<TeamAccount & { lastNiceCall?: LastNiceCall | null }>(
+        `/settlements/accounts/${row.teamId}/register`,
+      );
+      const detail = result?.lastNiceCall?.outcome !== 'SUCCESS' ? result?.lastNiceCall?.detail : undefined;
+      if (result?.status === 'REGISTERED') {
+        setNotice({
+          type: 'success',
+          text: MESSAGES.settlement.accountNiceRegisterSuccess,
+        });
+      } else if (result?.status === 'FAILED') {
+        setNotice({
+          type: 'error',
+          text: MESSAGES.settlementDynamic.accountNiceRegisterFailed(
+            detail || result.lastResMsg || MESSAGES.settlement.accountNiceRegisterFailedFallback,
+          ),
+        });
+      } else {
+        setNotice({
+          type: 'success',
+          text: detail
+            ? MESSAGES.settlementDynamic.accountNiceRegisterCheckingWithReason(detail)
+            : MESSAGES.settlement.accountNiceRegisterChecking,
+        });
+      }
+      void loadAccounts();
+    } catch (error) {
+      const status = getErrorStatus(error);
+      setNotice({
+        type: 'error',
+        text: extractErrorMessage(error, MESSAGES.settlement.accountNiceRegisterError),
+      });
+      if (status === 409 || status === 404) void loadAccounts();
+    } finally {
+      setNiceRegisteringTeamId(null);
+    }
+  };
+
+  const handleNiceExport = async () => {
+    if (isExporting) return;
+    setIsExporting(true);
+    try {
+      await api.downloadFile(
+        '/settlements/accounts/nice-registration-export',
+        MESSAGES.settlementDynamic.niceRegistrationFileName(
+          isoToDateInput(new Date().toISOString()).replace(/-/g, ''),
+        ),
+      );
+    } catch (error) {
+      setNotice({
+        type: 'error',
+        text: extractErrorMessage(error, MESSAGES.settlement.niceExportError),
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const isLiveMode = meta?.payoutApiMode === 'live';
+
   const dialogAccount = dialogRow?.account ?? null;
   const dialogFields = dialogAccount
     ? [
-        { label: MESSAGES.settlement.accountColBusinessNumber, value: dialogAccount.businessNumber },
+        {
+          label: MESSAGES.settlement.accountColBusinessNumber,
+          value: dialogAccount.businessNumber,
+        },
         {
           label: MESSAGES.settlement.accountColBank,
           value: `${dialogAccount.bankName} (${dialogAccount.bankCode})`,
         },
-        { label: MESSAGES.settlement.accountColAccountNumber, value: dialogAccount.bankAccount },
-        { label: MESSAGES.settlement.accountColHolder, value: dialogAccount.accountHolder },
+        {
+          label: MESSAGES.settlement.accountColAccountNumber,
+          value: dialogAccount.bankAccount,
+        },
+        {
+          label: MESSAGES.settlement.accountColHolder,
+          value: dialogAccount.accountHolder,
+        },
       ]
     : [];
 
   return (
     <div className="min-w-0 max-w-full space-y-6">
-      {notice && (
-        <div
-          role="status"
-          className={`p-3 rounded-lg text-sm ${
-            notice.type === 'success'
-              ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400'
-              : 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400'
-          }`}
-        >
-          {notice.text}
+      <ActionNotice notice={notice} />
+
+      {!isLiveMode && (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => void handleNiceExport()}
+            disabled={isExporting}
+            className="h-11 shrink-0"
+          >
+            <Download className="h-4 w-4 mr-2" aria-hidden="true" />
+            {isExporting ? MESSAGES.settlement.niceExportDownloading : MESSAGES.settlement.niceExportButton}
+          </Button>
+          <p className="text-xs text-slate-500 dark:text-slate-400">{MESSAGES.settlement.niceExportGuide}</p>
         </div>
       )}
 
@@ -334,11 +442,6 @@ export function TeamSettlementAccountsTab() {
       )}
 
       <div className="w-0 min-w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
-        {meta && (
-          <p className="px-4 pt-3 text-xs text-slate-500 dark:text-slate-400 tabular-nums">
-            {MESSAGES.settlementDynamic.accountsCount(meta.total)}
-          </p>
-        )}
         <Table>
           <TableHeader>
             <TableRow>
@@ -377,22 +480,63 @@ export function TeamSettlementAccountsTab() {
                       <p className="text-xs text-slate-400 dark:text-slate-500 tabular-nums">{row.teamCode}</p>
                     </TableCell>
                     <TableCell>
-                      <Badge className={`${statusMeta.badge} whitespace-nowrap`}>{statusMeta.label}</Badge>
+                      {/* 서브몰 ID 는 대부분 팀 ID 와 같아 목록에 적지 않고, 문의·대조할 때만 마우스를 올려 본다. */}
+                      <span
+                        title={
+                          account?.subMallId
+                            ? MESSAGES.settlementDynamic.accountSubMallId(account.subMallId)
+                            : undefined
+                        }
+                      >
+                        <Badge className={`${statusMeta.badge} whitespace-nowrap`}>{statusMeta.label}</Badge>
+                      </span>
+                      {!isLiveMode && account && row.niceAction === 'REGISTER' && account.status !== 'REGISTERED' && (
+                        <div className="mt-1">
+                          <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 whitespace-nowrap">
+                            {MESSAGES.settlement.niceActionRegister}
+                          </Badge>
+                        </div>
+                      )}
+                      {!isLiveMode && account && row.niceAction === 'UPDATE' && (
+                        <div className="mt-1">
+                          <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 whitespace-nowrap">
+                            {MESSAGES.settlement.niceActionUpdate}
+                          </Badge>
+                        </div>
+                      )}
+                      {!isLiveMode && account?.status === 'REGISTERED' && !account.subMallId && (
+                        <p className="mt-1 max-w-[16rem] text-xs text-amber-700 dark:text-amber-400">
+                          {MESSAGES.settlement.accountSubIdMissing}
+                        </p>
+                      )}
+                      {account?.registrationInProgress && (
+                        <p className="mt-1 text-xs text-amber-700 dark:text-amber-400 whitespace-nowrap">
+                          {MESSAGES.settlement.accountNiceInProgress}
+                        </p>
+                      )}
+                      {/* 감독용 문구(lastResMsg) 대신 운영자용 원인을 보여준다 — 등록 완료 계좌의 거절된 변경 시도도 여기서 보인다. */}
+                      {account && row.lastNiceCall && row.lastNiceCall.outcome !== 'SUCCESS' ? (
+                        <div className="mt-1 max-w-[18rem] whitespace-normal break-words text-xs text-slate-500 dark:text-slate-400">
+                          <p>{MESSAGES.settlementDynamic.accountNiceLastCall(row.lastNiceCall.detail)}</p>
+                          <p className="tabular-nums text-slate-400 dark:text-slate-500">
+                            {formatKst(row.lastNiceCall.at)}
+                          </p>
+                        </div>
+                      ) : (
+                        account &&
+                        (account.status === 'FAILED' || account.status === 'SUBMITTED') &&
+                        account.lastResMsg && (
+                          <p className="mt-1 max-w-[16rem] whitespace-normal break-words text-xs text-slate-500 dark:text-slate-400">
+                            {account.lastResMsg}
+                          </p>
+                        )
+                      )}
                     </TableCell>
                     <TableCell className="tabular-nums whitespace-nowrap text-slate-900 dark:text-white">
                       {account?.businessNumber ?? '-'}
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-slate-900 dark:text-white">
-                      {account ? (
-                        <>
-                          {account.bankName}
-                          <span className="ml-1 text-xs text-slate-400 dark:text-slate-500 tabular-nums">
-                            ({account.bankCode})
-                          </span>
-                        </>
-                      ) : (
-                        '-'
-                      )}
+                      {account ? account.bankName : '-'}
                     </TableCell>
                     <TableCell className="tabular-nums whitespace-nowrap text-slate-900 dark:text-white">
                       {account?.bankAccount ?? '-'}
@@ -418,12 +562,28 @@ export function TeamSettlementAccountsTab() {
                     <TableCell className="sticky right-0 shadow-[-8px_0_8px_-8px_rgba(15,23,42,0.15)] dark:shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.5)] bg-white text-right group-hover:bg-slate-50 dark:bg-slate-800 dark:group-hover:bg-slate-700">
                       {account && (
                         <div className="flex flex-wrap items-center justify-end gap-1.5">
-                          {account.status === 'SUBMITTED' && (
+                          {/* 서브몰 ID 기록이 없는 등록 완료 계좌(이전 수동 처리분)는 live 에서 재등록이 필요하다. */}
+                          {isLiveMode && (account.status !== 'REGISTERED' || !account.subMallId) && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              onClick={() => void handleNiceRegister(row)}
+                              disabled={account.registrationInProgress || niceRegisteringTeamId !== null}
+                            >
+                              {niceRegisteringTeamId === row.teamId
+                                ? MESSAGES.settlement.accountNiceRegistering
+                                : MESSAGES.settlement.accountNiceRegisterButton}
+                            </Button>
+                          )}
+                          {!isLiveMode &&
+                            (account.status === 'SUBMITTED' ||
+                              account.status === 'FAILED' ||
+                              (account.status === 'REGISTERED' && !account.subMallId)) && (
                             <Button type="button" size="sm" onClick={() => openDialog('register', row)}>
                               {MESSAGES.settlement.accountRegisterButton}
                             </Button>
                           )}
-                          {account.status === 'REGISTERED' && (
+                          {!isLiveMode && account.status === 'REGISTERED' && (
                             <Button
                               type="button"
                               size="sm"
@@ -453,31 +613,42 @@ export function TeamSettlementAccountsTab() {
         </Table>
       </div>
 
-      {meta && meta.totalPages > 1 && (
-        <div className="flex items-center justify-center gap-3">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page <= 1}
-            aria-label={MESSAGES.settlement.prevPage}
-          >
-            <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-          </Button>
-          <span className="text-sm text-slate-500 dark:text-slate-400 tabular-nums">
-            {page} / {meta.totalPages}
+      {meta && (
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
+            {MESSAGES.settlementDynamic.accountsCount(
+              meta.total,
+              meta.total === 0 ? 0 : (meta.page - 1) * meta.pageSize + 1,
+              Math.min(meta.page * meta.pageSize, meta.total),
+            )}
           </span>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            onClick={() => setPage((p) => Math.min(meta.totalPages, p + 1))}
-            disabled={page >= meta.totalPages}
-            aria-label={MESSAGES.settlement.nextPage}
-          >
-            <ChevronRight className="h-4 w-4" aria-hidden="true" />
-          </Button>
+          {meta.totalPages > 1 && (
+            <div className="flex items-center gap-3">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page <= 1}
+                aria-label={MESSAGES.settlement.prevPage}
+              >
+                <ChevronLeft className="h-4 w-4" aria-hidden="true" />
+              </Button>
+              <span className="text-sm text-slate-500 dark:text-slate-400 tabular-nums">
+                {page} / {meta.totalPages}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setPage((p) => Math.min(meta.totalPages, p + 1))}
+                disabled={page >= meta.totalPages}
+                aria-label={MESSAGES.settlement.nextPage}
+              >
+                <ChevronRight className="h-4 w-4" aria-hidden="true" />
+              </Button>
+            </div>
+          )}
         </div>
       )}
 
@@ -514,6 +685,26 @@ export function TeamSettlementAccountsTab() {
                     </div>
                   ))}
                 </dl>
+
+                {dialogAction === 'register' && (dialogRow.niceSubId ?? dialogAccount?.subMallId) && (
+                  <div className="rounded-lg border border-slate-200 dark:border-slate-600 px-4 py-3">
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      {MESSAGES.settlement.accountSubIdLabel}
+                    </p>
+                    <p className="text-lg font-bold text-slate-900 dark:text-white tabular-nums break-all">
+                      {dialogRow.niceSubId ?? dialogAccount?.subMallId}
+                    </p>
+                    <p className="mt-1 text-sm text-slate-700 dark:text-slate-300">
+                      {MESSAGES.settlement.accountRegisterSubIdNotice}
+                    </p>
+                  </div>
+                )}
+
+                {dialogAction === 'unregister' && (
+                  <p className="text-sm text-slate-700 dark:text-slate-300">
+                    {MESSAGES.settlement.accountUnregisterSubIdNotice}
+                  </p>
+                )}
 
                 {dialogAction === 'register' && (
                   <label className="flex items-start gap-2 cursor-pointer">

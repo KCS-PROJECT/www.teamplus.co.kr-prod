@@ -1,6 +1,6 @@
 import { MESSAGES } from '@/lib/messages';
 
-export type AccountStatus = 'SUBMITTED' | 'REGISTERED';
+export type AccountStatus = 'SUBMITTED' | 'REGISTERED' | 'FAILED';
 
 export interface AccountStatusMeta {
   label: string;
@@ -20,6 +20,10 @@ const STATUS_META: Record<AccountStatus, AccountStatusMeta> = {
   REGISTERED: {
     label: MESSAGES.settlement.accountStatusRegistered,
     badge: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+  },
+  FAILED: {
+    label: MESSAGES.settlement.accountStatusFailed,
+    badge: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
   },
 };
 

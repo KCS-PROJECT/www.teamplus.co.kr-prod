@@ -2,7 +2,11 @@ import { IsIn, IsISO8601, Matches } from "class-validator";
 import { ApiProperty } from "@nestjs/swagger";
 import { TeamSettlementAccountStatus } from "@prisma/client";
 
-const STATUSES = Object.values(TeamSettlementAccountStatus);
+// FAILED 는 나이스 응답으로만 기록된다 — 운영자가 직접 표시하는 값이 아니다.
+const STATUSES = [
+  TeamSettlementAccountStatus.SUBMITTED,
+  TeamSettlementAccountStatus.REGISTERED,
+];
 
 /**
  * 운영자 — 나이스 서브몰 등록 완료 표시(REGISTERED) / 해제(SUBMITTED).

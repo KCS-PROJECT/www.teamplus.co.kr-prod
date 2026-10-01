@@ -42,6 +42,12 @@ import { TeamSettlementAccountService } from "./team-settlement-account.service"
 import { QuerySettlementAccountsDto } from "./dto/query-settlement-accounts.dto";
 import { UpdateAccountRegistrationDto } from "./dto/update-account-registration.dto";
 import { CloseSettlementDto } from "./dto/close-settlement.dto";
+import {
+  QueryPayoutFileDto,
+  QueryPayoutFilePreviewDto,
+} from "./dto/query-payout-file.dto";
+import { NICE_XLSX_CONTENT_TYPE } from "./utils/nice-xlsx.util";
+import { nowKstParts } from "@/common/utils/kst-date.util";
 
 @ApiTags("Settlements")
 @Controller("api/v1/settlements")
@@ -166,9 +172,98 @@ export class SettlementsController {
     res.send(csvBuffer);
   }
 
+  @Get("payout-file/preview")
+  @Roles("ADMIN")
+  @ApiOperation({
+    summary: "나이스 지급 엑셀 미리보기",
+    description:
+      "지급 예정(approved) 정산 중 나이스 지급 엑셀에 들어갈 팀과 빠지는 팀·사유. 계좌번호는 포함하지 않습니다. 지급일은 KST 기준 오늘 이후(오늘이면 10:30 전)·평일·31일 이내.",
+  })
+  @ApiResponse({ status: 200, description: "미리보기 조회 성공" })
+  @ApiResponse({ status: 400, description: "지급일 오류(PAYOUT_DATE_INVALID)" })
+  async getPayoutFilePreview(@Query() query: QueryPayoutFilePreviewDto) {
+    return this.settlementsService.getPayoutFilePreview(
+      query.month,
+      query.payDate,
+    );
+  }
+
+  @Get("payout-file")
+  @Roles("ADMIN")
+  @ApiOperation({
+    summary: "나이스 지급 엑셀 다운로드",
+    description:
+      "나이스 관리자 지급내역 다량등록 양식(서브ID·지급일·지급액). 미리보기의 fingerprint 와 지금 내용이 다르면 409 PAYOUT_FILE_CHANGED.",
+  })
+  @ApiProduces(NICE_XLSX_CONTENT_TYPE)
+  @ApiResponse({ status: 200, description: "xlsx 파일 다운로드" })
+  @ApiResponse({ status: 400, description: "지급일 오류(PAYOUT_DATE_INVALID)" })
+  @ApiResponse({
+    status: 409,
+    description:
+      "내용 변경(PAYOUT_FILE_CHANGED) · 대상 없음(PAYOUT_FILE_EMPTY)",
+  })
+  @AuditAction({
+    action: "settlement.payout-file",
+    resource: "Settlement",
+    includeKeys: ["month", "payDate"],
+  })
+  async getPayoutFile(
+    @Query() query: QueryPayoutFileDto,
+    @Request() req: AuthenticatedRequest,
+    @Res() res: Response,
+  ) {
+    const { buffer, payDateCompact } =
+      await this.settlementsService.getPayoutFile(
+        query.month,
+        query.payDate,
+        query.fingerprint,
+        req.user.id,
+      );
+    res.setHeader("Content-Type", NICE_XLSX_CONTENT_TYPE);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="nice_payout_${payDateCompact}_${query.month}.xlsx"`,
+    );
+    res.send(buffer);
+  }
+
   /**
    * static path — `:id` 보다 반드시 위에 선언해야 "accounts" 가 :id 로 매칭되지 않는다.
    */
+  @Get("accounts/nice-registration-export")
+  @Roles("ADMIN")
+  @ApiOperation({
+    summary: "나이스 서브ID 등록 엑셀 다운로드",
+    description:
+      "나이스 관리자 서브ID 다량등록 양식. 나이스에 등록한 적 없는 활성 팀 계좌만 담습니다(최대 500건). 사업자번호·계좌번호는 복호화된 평문입니다.",
+  })
+  @ApiProduces(NICE_XLSX_CONTENT_TYPE)
+  @ApiResponse({ status: 200, description: "xlsx 파일 다운로드" })
+  @ApiResponse({
+    status: 409,
+    description: "등록할 팀 없음(NICE_REGISTRATION_EMPTY)",
+  })
+  @AuditAction({
+    action: "settlement-account.nice-registration-export",
+    resource: "TeamSettlementAccount",
+  })
+  async getNiceRegistrationExport(
+    @Request() req: AuthenticatedRequest,
+    @Res() res: Response,
+  ) {
+    const buffer = await this.accountService.buildNiceRegistrationFile(
+      req.user.id,
+    );
+    const { year, month, day } = nowKstParts();
+    res.setHeader("Content-Type", NICE_XLSX_CONTENT_TYPE);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="nice_subid_${year}${month}${day}.xlsx"`,
+    );
+    res.send(buffer);
+  }
+
   @Get("accounts")
   @Roles("ADMIN")
   @ApiOperation({
@@ -181,18 +276,75 @@ export class SettlementsController {
     return this.accountService.listForAdmin(query);
   }
 
+  @Get("payout-modes")
+  @Roles("ADMIN")
+  @ApiOperation({
+    summary: "지급대행 API 사용 단계 선택지",
+    description:
+      "off·readonly·live 와 선택 가능 여부. 지급대행 키가 없으면 readonly·live 는 선택할 수 없습니다. 현재 값은 앱 설정 payoutApiMode.",
+  })
+  @ApiResponse({ status: 200, description: "선택지 조회 성공" })
+  getPayoutModes() {
+    return this.settlementsService.getPayoutModes();
+  }
+
+  @Get("balance")
+  @Roles("ADMIN")
+  @ApiOperation({
+    summary: "나이스 지급대행 잔액 조회",
+    description:
+      "지급대행 모드가 readonly·live 일 때만 호출합니다. off 면 409 PAYOUT_API_OFF, 나이스 오류면 502 NICE_PAYOUT_API_FAILED.",
+  })
+  @ApiResponse({ status: 200, description: "잔액 조회 성공" })
+  @ApiResponse({ status: 409, description: "지급대행 API 미사용(off)" })
+  @ApiResponse({ status: 502, description: "나이스 응답 오류" })
+  async getPayoutBalance(@Request() req: AuthenticatedRequest) {
+    return this.settlementsService.getPayoutBalance(req.user.id);
+  }
+
+  @Post("accounts/:teamId/register")
+  @Roles("ADMIN")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "팀 정산 계좌 나이스 재등록",
+    description:
+      "지급대행 모드 live 전용. 저장된 계좌로 나이스 서브몰 등록(없으면 신규, 있으면 수정)을 다시 호출하고 결과로 상태를 정합니다. " +
+      "23:00~01:00 은 409 SUBMALL_WINDOW_CLOSED, 진행 중이면 409 SUBMALL_REGISTRATION_IN_PROGRESS.",
+  })
+  @ApiParam({ name: "teamId", description: "팀 ID" })
+  @ApiResponse({
+    status: 200,
+    description: "호출 완료(결과는 status·lastResMsg)",
+  })
+  @ApiResponse({ status: 404, description: "정산 계좌가 등록되지 않은 팀" })
+  @ApiResponse({
+    status: 409,
+    description: "live 아님 · 등록 불가 시간 · 진행 중",
+  })
+  @AuditAction({
+    action: "settlement-account.nice-register",
+    resource: "TeamSettlementAccount",
+    includeKeys: ["teamId"],
+  })
+  async registerSettlementAccount(
+    @Param("teamId") teamId: string,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    return this.accountService.registerByAdmin(teamId, req.user.id);
+  }
+
   @Patch("accounts/:teamId/registration")
   @Roles("ADMIN")
   @ApiOperation({
     summary: "팀 정산 계좌 나이스 등록 상태 변경",
     description:
-      "운영자가 나이스 관리자에 서브몰 등록을 마친 뒤 REGISTERED 로 표시하거나, SUBMITTED 로 해제합니다. " +
-      "expectedUpdatedAt 이 현재 계좌와 다르면(그 사이 감독 수정) 409.",
+      "수동 운영(off·readonly) 전용. 운영자가 나이스 관리자에 서브몰 등록을 마친 뒤 REGISTERED 로 표시하거나, SUBMITTED 로 해제합니다. " +
+      "expectedUpdatedAt 이 현재 계좌와 다르면(그 사이 감독 수정) 409. live 모드에서는 409 PAYOUT_API_LIVE.",
   })
   @ApiParam({ name: "teamId", description: "팀 ID" })
   @ApiResponse({ status: 200, description: "상태 변경 성공" })
   @ApiResponse({ status: 404, description: "정산 계좌가 등록되지 않은 팀" })
-  @ApiResponse({ status: 409, description: "계좌 정보가 변경됨" })
+  @ApiResponse({ status: 409, description: "계좌 정보가 변경됨 · live 모드" })
   @AuditAction({
     action: "settlement-account.registration",
     resource: "TeamSettlementAccount",

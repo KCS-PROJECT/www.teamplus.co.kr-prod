@@ -657,9 +657,11 @@ export default function TeamDetailPage() {
                     ? MESSAGES.settlementAccount.rowLoading
                     : settlementRow.state === "error"
                       ? MESSAGES.settlementAccount.rowLoadError
-                      : settlementRow.account
-                        ? `${settlementRow.account.bankName} ${settlementRow.account.bankAccount}`
-                        : MESSAGES.settlementAccount.rowNoneHint}
+                      : settlementRow.account?.status === "FAILED"
+                        ? MESSAGES.settlementAccount.rowFailedHint
+                        : settlementRow.account
+                          ? `${settlementRow.account.bankName} ${settlementRow.account.bankAccount}`
+                          : MESSAGES.settlementAccount.rowNoneHint}
                 </span>
               </span>
               <Icon name="chevron_right" className="shrink-0 text-base text-it-ink-300" aria-hidden="true" />

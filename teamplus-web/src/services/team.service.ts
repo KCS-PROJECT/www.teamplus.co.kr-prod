@@ -764,7 +764,7 @@ export function getTeamMatches(
 // Settlement Account API (팀 정산 계좌 — 팀 오너 감독 전용)
 // ============================================
 
-export type TeamSettlementAccountStatus = 'SUBMITTED' | 'REGISTERED';
+export type TeamSettlementAccountStatus = 'SUBMITTED' | 'REGISTERED' | 'FAILED';
 
 /** 응답의 사업자번호·계좌번호는 서버가 마스킹한 값 — 원문은 내려오지 않는다. */
 export interface TeamSettlementAccount {
@@ -777,6 +777,19 @@ export interface TeamSettlementAccount {
   accountHolder: string;
   submittedAt: string;
   registeredAt: string | null;
+  /** 나이스가 거절했거나 결과 확인 중일 때의 사유·안내. */
+  lastResultMessage: string | null;
+  /** 나이스 등록이 진행 중이면 true. */
+  registrationInProgress: boolean;
+}
+
+/** manual = 운영자가 직접 등록 / api = 저장 시 나이스에 자동 등록. */
+export type TeamSettlementRegistrationMode = 'manual' | 'api';
+
+export interface TeamSettlementAccountPolicy {
+  registrationMode: TeamSettlementRegistrationMode;
+  /** 값이 있으면 지금은 저장할 수 없다(사유 그대로 화면에 표시). */
+  saveBlockedReason: string | null;
 }
 
 export interface UpsertTeamSettlementAccountPayload {
@@ -800,6 +813,16 @@ export function getTeamSettlementAccount(
   return apiRequest<TeamSettlementAccount | null>({
     method: 'GET',
     url: `${BASE}/${teamId}/settlement-account`,
+  });
+}
+
+/** 저장 방식(수동/자동 등록)과 지금 저장할 수 없는 이유. */
+export function getTeamSettlementAccountPolicy(
+  teamId: string,
+): Promise<ApiResponse<TeamSettlementAccountPolicy>> {
+  return apiRequest<TeamSettlementAccountPolicy>({
+    method: 'GET',
+    url: `${BASE}/${teamId}/settlement-account/policy`,
   });
 }
 

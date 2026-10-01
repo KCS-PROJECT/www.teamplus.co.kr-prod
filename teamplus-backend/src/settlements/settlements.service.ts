@@ -1,4 +1,5 @@
 import {
+  BadGatewayException,
   Injectable,
   NotFoundException,
   BadRequestException,
@@ -12,7 +13,10 @@ import {
   SettlementEntryType,
   SettlementSourceType,
 } from "@prisma/client";
+import { ConfigService } from "@nestjs/config";
+import { createHash } from "crypto";
 import { PrismaService } from "@/prisma/prisma.service";
+import { RedisService } from "@/redis/redis.service";
 import { ResourceAccessService } from "@/common/access/resource-access.service";
 import { JwtUserPayload } from "@/common/interfaces/authenticated-request.interface";
 import { isAdminRole } from "@/auth/constants/chldiv.constants";
@@ -35,7 +39,22 @@ import {
   formatBusinessNumber,
   maskBankAccount,
 } from "./utils/account-mask.util";
-import { TeamSettlementAccountService } from "./team-settlement-account.service";
+import {
+  TeamSettlementAccountService,
+  isSubMallRegistrationInProgress,
+} from "./team-settlement-account.service";
+import { assertNicePayDate } from "./utils/nice-pay-date.util";
+import { buildNiceXlsx } from "./utils/nice-xlsx.util";
+import {
+  PAYOUT_FILE_EXCLUSION_REASON,
+  classifyPayoutFileAccount,
+  type PayoutFileExclusion,
+} from "./utils/nice-account-state.util";
+import { NicePayoutApiService } from "./nice-payout-api.service";
+import { PG_FEE_RATE } from "./constants/pg-fee.constant";
+import { resolvePayoutApiMode } from "./payout-mode.util";
+import { describePayoutApiModes } from "./constants/payout-mode.constant";
+import { describePayoutCallForOperator } from "./gateway/payout-res-code.util";
 
 /** LIKE 패턴 리터럴화 — 이스케이프 문자 `\` 기준으로 `\`·`%`·`_` 앞에 `\` 를 붙인다. */
 export function escapeLikePattern(value: string): string {
@@ -45,6 +64,7 @@ export function escapeLikePattern(value: string): string {
 const ACCOUNT_STATUS_LABEL: Record<string, string> = {
   REGISTERED: "등록완료",
   SUBMITTED: "등록확인중",
+  FAILED: "등록실패",
   NONE: "미등록",
 };
 
@@ -77,6 +97,8 @@ const SETTLEMENT_DETAIL_ROW_SELECT = {
   paymentAmount: true,
   feeRate: true,
   feeAmount: true,
+  pgFeeRate: true,
+  pgFeeAmount: true,
   actualAmount: true,
   status: true,
   memo: true,
@@ -168,7 +190,35 @@ export class SettlementsService {
     private readonly prisma: PrismaService,
     private readonly resourceAccess: ResourceAccessService,
     private readonly accountService: TeamSettlementAccountService,
+    private readonly payoutApi: NicePayoutApiService,
+    private readonly redis: RedisService,
+    private readonly config: ConfigService,
   ) {}
+
+  getPayoutModes() {
+    return describePayoutApiModes(this.config);
+  }
+
+  /** 나이스 지급대행 잔액 — 지급 전 확인·어드민 표시용. 조회도 호출 기록에 남는다. */
+  async getPayoutBalance(adminId: string) {
+    const mode = await resolvePayoutApiMode(this.prisma, this.redis);
+    if (mode === "off") {
+      throw new ConflictException({
+        message:
+          "지급대행 API 를 사용하지 않는 상태입니다. 앱 설정에서 지급대행 모드를 확인해주세요.",
+        errorCode: "PAYOUT_API_OFF",
+      });
+    }
+    const result = await this.payoutApi.getBalance({ requestedBy: adminId });
+    if (result.outcome !== "SUCCESS" || result.remainAmt === null) {
+      throw new BadGatewayException({
+        // 운영자 전용 API — 원인(통신·키·코드·나이스 원문)을 그대로 보여준다.
+        message: describePayoutCallForOperator(result.meta),
+        errorCode: "NICE_PAYOUT_API_FAILED",
+      });
+    }
+    return { remainAmt: result.remainAmt, checkedAt: new Date() };
+  }
 
   /**
    * 정산 목록 조회 — 팀 스코프는 ResourceAccessService.resolveTeamScope 단일 SoT.
@@ -504,6 +554,7 @@ export class SettlementsService {
         productName: true,
         paymentAmount: true,
         feeAmount: true,
+        pgFeeAmount: true,
         actualAmount: true,
       },
       // 그룹 이름은 가장 최근 행의 productName — 월 중 이름이 바뀌면 최신 이름을 보여준다.
@@ -550,6 +601,8 @@ export class SettlementsService {
       "결제금액",
       "수수료율",
       "수수료",
+      "결제수수료율",
+      "결제수수료",
       "실지급액",
       "메모",
     ];
@@ -565,6 +618,8 @@ export class SettlementsService {
       String(d.paymentAmount),
       String(d.feeRate),
       String(d.feeAmount),
+      String(d.pgFeeRate),
+      String(d.pgFeeAmount),
       String(d.actualAmount),
       d.memo ?? "",
     ]);
@@ -784,10 +839,15 @@ export class SettlementsService {
     const byStatus = new Map(grouped.map((g) => [g.status, g]));
     const pick = (status: SettlementStatus) => {
       const g = byStatus.get(status);
-      return { count: g?._count._all ?? 0, netAmount: g?._sum.netAmount ?? 0 };
+      return {
+        count: g?._count._all ?? 0,
+        netAmount: g?._sum.netAmount ?? 0,
+      };
     };
 
     return {
+      // 새로 마감하는 정산에 적용되는 결제 수수료율(정책 고정값) — 화면 표시용.
+      pgFeeRate: PG_FEE_RATE,
       pending: pick(SETTLEMENT_STATUS.PENDING),
       approved: pick(SETTLEMENT_STATUS.APPROVED),
       paid: pick(SETTLEMENT_STATUS.PAID),
@@ -862,6 +922,178 @@ export class SettlementsService {
     });
 
     return toCsvBuffer(headers, rows);
+  }
+
+  /**
+   * 나이스 지급 엑셀에 들어갈 정산과 빠지는 정산 — 미리보기와 파일이 같은 계산을 쓴다.
+   * 지급 예정(approved)·금액 양수 정산 중 계좌가 등록 완료이고 서브몰 ID 가 있는 팀만 넣는다.
+   * fingerprint 는 이 결과의 지문 — 미리보기 뒤 정산·계좌가 바뀌면 값이 달라져 파일 요청이 거절된다.
+   */
+  private async resolvePayoutFile(month: string, payDate: string) {
+    this.assertValidMonthFormat(month);
+    const payDateCompact = assertNicePayDate(payDate);
+
+    const settlements = await this.prisma.settlement.findMany({
+      where: {
+        settlementMonth: month,
+        status: SETTLEMENT_STATUS.APPROVED,
+        netAmount: { gt: 0 },
+      },
+      select: {
+        id: true,
+        netAmount: true,
+        updatedAt: true,
+        team: {
+          select: {
+            id: true,
+            name: true,
+            settlementAccount: {
+              select: {
+                status: true,
+                subMallId: true,
+                updatedAt: true,
+                registrationStartedAt: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: [{ team: { name: "asc" } }, { id: "asc" }],
+    });
+
+    const included: {
+      settlementId: string;
+      teamId: string;
+      teamName: string;
+      subMallId: string;
+      netAmount: number;
+    }[] = [];
+    const excluded: {
+      settlementId: string;
+      teamId: string;
+      teamName: string;
+      netAmount: number;
+      reasonCode: PayoutFileExclusion;
+      reason: string;
+    }[] = [];
+    const marks: unknown[] = [];
+
+    for (const s of settlements) {
+      const account = s.team.settlementAccount;
+      const classified = classifyPayoutFileAccount(
+        account
+          ? {
+              status: account.status,
+              subMallId: account.subMallId,
+              registrationInProgress: isSubMallRegistrationInProgress(
+                account.registrationStartedAt,
+              ),
+            }
+          : null,
+      );
+      const base = {
+        settlementId: s.id,
+        teamId: s.team.id,
+        teamName: s.team.name ?? "",
+        netAmount: s.netAmount,
+      };
+      if (classified.exclusion !== null || !account) {
+        const reasonCode = classified.exclusion ?? "ACCOUNT_NONE";
+        excluded.push({
+          ...base,
+          reasonCode,
+          reason: PAYOUT_FILE_EXCLUSION_REASON[reasonCode],
+        });
+        marks.push([s.id, reasonCode]);
+        continue;
+      }
+      included.push({ ...base, subMallId: classified.subMallId });
+      marks.push([
+        s.id,
+        s.netAmount,
+        s.updatedAt.toISOString(),
+        classified.subMallId,
+        account.updatedAt.toISOString(),
+      ]);
+    }
+
+    const fingerprint = createHash("sha256")
+      .update(JSON.stringify([month, payDateCompact, marks]))
+      .digest("hex");
+    return { payDateCompact, included, excluded, fingerprint };
+  }
+
+  /** 나이스 지급 엑셀 미리보기(ADMIN) — 계좌번호·사업자번호는 싣지 않는다. */
+  async getPayoutFilePreview(month: string, payDate: string) {
+    const { included, excluded, fingerprint } = await this.resolvePayoutFile(
+      month,
+      payDate,
+    );
+    const paid = await this.prisma.settlement.aggregate({
+      where: { settlementMonth: month, status: SETTLEMENT_STATUS.PAID },
+      _count: { _all: true },
+      _sum: { netAmount: true },
+    });
+    const total = (rows: { netAmount: number }[]) =>
+      rows.reduce((sum, row) => sum + row.netAmount, 0);
+
+    return {
+      month,
+      payDate,
+      included,
+      excluded,
+      includedCount: included.length,
+      includedTotal: total(included),
+      excludedCount: excluded.length,
+      excludedTotal: total(excluded),
+      paidThisMonth: {
+        count: paid._count._all,
+        netAmount: paid._sum.netAmount ?? 0,
+      },
+      fingerprint,
+    };
+  }
+
+  /**
+   * 나이스 관리자 "지급내역 등록 > 다량등록"에 그대로 올리는 xlsx(ADMIN) — 서브ID·지급일·지급액.
+   * 운영자가 미리보기에서 본 내용과 지금 내용이 다르면(fingerprint 불일치) 만들지 않는다.
+   */
+  async getPayoutFile(
+    month: string,
+    payDate: string,
+    fingerprint: string,
+    adminId: string,
+  ): Promise<{ buffer: Buffer; payDateCompact: string }> {
+    const resolved = await this.resolvePayoutFile(month, payDate);
+    if (resolved.fingerprint !== fingerprint) {
+      throw new ConflictException({
+        message:
+          "미리보기 이후 정산 또는 계좌 정보가 바뀌었습니다. 내용을 다시 확인해주세요.",
+        errorCode: "PAYOUT_FILE_CHANGED",
+      });
+    }
+    if (resolved.included.length === 0) {
+      throw new ConflictException({
+        message: "지급 엑셀에 넣을 정산이 없습니다.",
+        errorCode: "PAYOUT_FILE_EMPTY",
+      });
+    }
+
+    const total = resolved.included.reduce((sum, r) => sum + r.netAmount, 0);
+    this.logger.log(
+      `나이스 지급 엑셀 생성: month=${month}, payDate=${resolved.payDateCompact}, count=${resolved.included.length}, total=${total}, adminId=${adminId}`,
+    );
+    return {
+      buffer: buildNiceXlsx(
+        ["서브ID", "지급일", "지급액"],
+        resolved.included.map((r) => [
+          r.subMallId,
+          Number(resolved.payDateCompact),
+          r.netAmount,
+        ]),
+      ),
+      payDateCompact: resolved.payDateCompact,
+    };
   }
 
   /**

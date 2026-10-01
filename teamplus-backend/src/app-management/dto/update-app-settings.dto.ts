@@ -16,6 +16,7 @@ import {
 import { ApiPropertyOptional } from "@nestjs/swagger";
 import { Transform, Type } from "class-transformer";
 import { PAYMENT_PROVIDER_CODES } from "@/payments/constants/payment-provider.constant";
+import { PAYOUT_API_MODES } from "@/settlements/constants/payout-mode.constant";
 
 const emptyStringToUndefined = ({ value }: { value: unknown }) =>
   typeof value === "string" && value.trim() === "" ? undefined : value;
@@ -80,6 +81,16 @@ export class UpdateAppSettingsDto {
   @IsOptional()
   @IsIn(PAYMENT_PROVIDER_CODES)
   paymentProvider?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "나이스 지급대행 API 사용 단계 — off(수동 운영)·readonly(조회만)·live(서브몰 등록·지급 요청). " +
+      "선택 가능 여부는 GET /settlements/payout-modes 참고 (지급대행 키 미설정이면 readonly·live 저장 거부).",
+    enum: PAYOUT_API_MODES,
+  })
+  @IsOptional()
+  @IsIn(PAYOUT_API_MODES)
+  payoutApiMode?: string;
 
   // 서버 설정 (어드민 UI)
   @ApiPropertyOptional({

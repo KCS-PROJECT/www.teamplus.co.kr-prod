@@ -4217,12 +4217,24 @@ export const MESSAGES = {
     statusNone: "미등록",
     statusSubmitted: "등록 확인 중",
     statusRegistered: "등록 완료",
+    statusFailed: "등록 실패",
+    statusChecking: "확인 중",
     statusNoneHint:
       "정산금을 받을 계좌를 등록해주세요. 등록한 계좌는 운영자 확인 후 지급에 사용됩니다.",
+    statusNoneApiHint:
+      "정산금을 받을 계좌를 등록해주세요. 저장하면 나이스에서 예금주를 바로 확인해 등록합니다. 통장에 적힌 그대로 정확히 입력해주세요.",
     statusSubmittedHint:
       "운영자가 계좌를 확인하고 있어요. 확인이 끝나면 등록 완료로 바뀝니다.",
     statusRegisteredHint:
       "계좌 등록이 완료되었어요. 은행·계좌번호·예금주를 바꾸면 운영자가 다시 확인합니다.",
+    statusFailedHint: "나이스 등록에 실패했어요.",
+    statusRegisteredApiHint:
+      "계좌 등록이 완료되었어요. 은행·계좌번호·예금주를 바꾸면 저장할 때 나이스에 다시 등록합니다.",
+    statusCheckingHint: "나이스에서 등록 결과를 확인하고 있어요.",
+    registrationInProgress: "나이스에 등록하고 있습니다.",
+    failedRetryGuide: "계좌 정보를 확인한 뒤 다시 저장해주세요.",
+    rowFailedHint: "정산 계좌 확인이 필요해요",
+    homeTodoFailed: "정산 계좌 확인이 필요해요",
     businessNumberLabel: "사업자등록번호",
     businessNumberPlaceholder: "숫자 10자리",
     businessNumberLockedHint: "사업자번호 변경은 운영자에게 문의해주세요.",
@@ -4237,16 +4249,22 @@ export const MESSAGES = {
     accountInvalid: "계좌번호는 숫자 6~30자리로 입력해주세요.",
     holderLabel: "예금주",
     holderPlaceholder: "예금주명",
+    holderLimitHint: "한글 10자(영문·숫자 30자) 이내로 통장에 적힌 예금주명 그대로 입력해주세요.",
+    holderTooLong: "예금주는 한글 10자(영문·숫자 30자) 이내로 입력해주세요.",
     notOwner: "팀 오너 감독만 정산 계좌를 관리할 수 있어요.",
     backToTeam: "팀으로 돌아가기",
     loadError: "정산 계좌 정보를 불러오지 못했습니다.",
     saveSuccess: "정산 계좌가 저장되었습니다.",
+    saveSuccessRegistered: "정산 계좌가 저장되고 나이스 등록이 완료되었습니다.",
+    saveSuccessFailed: "정산 계좌는 저장되었지만 나이스 등록에 실패했습니다.",
+    saveSuccessChecking:
+      "정산 계좌가 저장되었습니다. 나이스 등록 결과를 확인하고 있어요.",
   },
 
   // ─── Q. 정산 (팀 정산 조회 — /settlements, director·coach 전용) ────
   settlements: {
     pageTitle: "지급 정산",
-    detailTitle: (period: string) => `${period} 정산 상세`,
+    detailTitle: "정산 상세",
     yearMonthLabel: (year: string, month: string) => `${year}년 ${month}월`,
     teamFallback: "우리 팀",
     emptyList: "아직 지급 정산 내역이 없어요.",
@@ -4254,8 +4272,11 @@ export const MESSAGES = {
     paidDateLabel: (date: string) => `지급일 ${date}`,
     totalRevenueLabel: "총 매출",
     refundLabel: "환불",
-    feeLabel: "수수료",
-    netAmountLabel: "순 지급액",
+    platformFeeLabel: "플랫폼 수수료",
+    pgFeeLabel: "결제 수수료",
+    receivableLabel: "받을 금액",
+    paidAmountLabel: "지급 금액",
+    breakdownTitle: "계산 내역",
     statusPending: "정산 대기",
     statusApproved: "지급 예정",
     statusProcessing: "처리 중",
@@ -4265,18 +4286,9 @@ export const MESSAGES = {
     rejectReasonLabel: "반려 사유",
     bankInfoTitle: "지급 계좌",
     accountHolderLabel: "예금주",
-    payoutHistoryTitle: "지급 기록",
-    emptyPayout: "지급 기록이 없습니다.",
-    detailsEmpty: "결제 명세가 없습니다.",
-    detailsLoadMore: "결제 명세 더보기",
-    paymentAmountLabel: "결제 금액",
-    feeAmountLabel: "수수료",
-    actualAmountLabel: "실지급액",
+    // 서버가 메모 없는 지급에 채우는 기본 문구 — 화면에서는 이 값이면 메모로 보여주지 않는다.
+    payoutDefaultNote: "정산 지급 완료",
     memoLabel: "메모",
-    // 결제 명세 행 — 결제/환불 구분 + 귀속월(해당 결제가 속한 월)
-    entryTypePayment: "결제",
-    entryTypeRefund: "환불",
-    attributionMonthLabel: (month: number) => `${month}월분`,
     // 순지급액 마이너스 — 환불이 매출을 초과해 이번 달 지급이 보류되는 경우
     negativeNetAmountNotice: "이번 달은 환불이 더 많아 지급이 보류됩니다.",
     // 정산 기준 안내 — 목록/상세 공통 1줄
@@ -4289,19 +4301,15 @@ export const MESSAGES = {
     loadError: "일시적인 오류로 정산 정보를 불러오지 못했어요.",
     backToList: "목록으로",
     retry: "다시 시도",
-    detailsLoadError: "결제 명세를 불러오지 못했어요.",
-    // 수업·대회별 명세 요약
-    groupsTitle: "수업·대회별 명세",
-    groupsEmpty: "수업·대회별 명세가 없습니다.",
-    groupsLoadError: "수업·대회별 명세를 불러오지 못했어요.",
-    groupSourceClass: "수업",
+    // 훈련·대회별 명세 요약
+    groupsTitle: "훈련·대회별 명세",
+    groupsEmpty: "훈련·대회별 명세가 없습니다.",
+    groupsLoadError: "훈련·대회별 명세를 불러오지 못했어요.",
+    groupSourceClass: "훈련",
     groupSourceTournament: "대회",
     groupSourceOther: "기타",
-    groupPaymentSummary: (count: number, amount: string) => `결제 ${count}건 · ${amount}`,
-    groupRefundSummary: (count: number, amount: string) => `환불 ${count}건 · ${amount}`,
-    groupNetLabel: "지급액",
-    groupsTotalLabel: "합계",
-    groupsTotalPayoutLabel: "총 지급액",
+    groupPaymentRowLabel: (count: number) => `결제 ${count}건`,
+    groupRefundRowLabel: (count: number) => `환불 ${count}건`,
   },
 
   // ─── R. 차단 / 신고 ────────────────────────────────

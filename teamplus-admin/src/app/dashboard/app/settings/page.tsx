@@ -17,6 +17,7 @@ import {
   useMutation,
   useQueryClient,
 } from "@tanstack/react-query";
+import { MESSAGES } from "@/lib/messages";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/page-header";
@@ -65,7 +66,24 @@ interface AppSettingsData {
 
   // 결제
   paymentProvider: string;
+  payoutApiMode: PayoutApiMode;
 }
+
+type PayoutApiMode = "off" | "readonly" | "live";
+
+/** 지급대행 모드 목록 — 선택 가능 여부는 서버가 판정. */
+interface PayoutModeOption {
+  code: PayoutApiMode;
+  label: string;
+  selectable: boolean;
+  reason: string | null;
+}
+
+const PAYOUT_MODE_HINTS: Record<PayoutApiMode, string> = {
+  off: MESSAGES.settings.payoutOffHint,
+  readonly: MESSAGES.settings.payoutReadonlyHint,
+  live: MESSAGES.settings.payoutLiveHint,
+};
 
 /** 결제사 목록 — 선택 가능 여부는 서버가 판정(키 설정 + 결제 화면 구현). */
 interface PaymentProviderOption {
@@ -96,6 +114,7 @@ function normalizeSettings(
     privacyVersion: data?.privacyVersion ?? DEFAULT_SETTINGS.privacyVersion,
     paymentProvider:
       data?.paymentProvider ?? DEFAULT_SETTINGS.paymentProvider,
+    payoutApiMode: data?.payoutApiMode ?? DEFAULT_SETTINGS.payoutApiMode,
   };
 }
 
@@ -128,6 +147,7 @@ function buildUpdatePayload(
     termsVersion: settings.termsVersion.trim(),
     privacyVersion: settings.privacyVersion.trim(),
     paymentProvider: settings.paymentProvider,
+    payoutApiMode: settings.payoutApiMode,
   };
 }
 
@@ -150,6 +170,7 @@ const DEFAULT_SETTINGS: AppSettingsData = {
   termsVersion: "1.0",
   privacyVersion: "1.0",
   paymentProvider: "toss",
+  payoutApiMode: "off",
 };
 
 type TabId = "operation" | "version" | "auth" | "service" | "payment";
@@ -177,6 +198,10 @@ async function fetchSettings(): Promise<AppSettingsData> {
 
 async function fetchPaymentProviders(): Promise<PaymentProviderOption[]> {
   return api.get<PaymentProviderOption[]>("/payments/providers");
+}
+
+async function fetchPayoutModes(): Promise<PayoutModeOption[]> {
+  return api.get<PayoutModeOption[]>("/settlements/payout-modes");
 }
 
 /** payload 구성은 buildUpdatePayload 가 책임진다 — 여기서 다시 걸러내면 필드 누락이 생긴다. */
@@ -262,6 +287,13 @@ function AppSettingsContent() {
   const { data: providers } = useQuery({
     queryKey: ["payment-providers"],
     queryFn: fetchPaymentProviders,
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
+  });
+
+  const { data: payoutModes } = useQuery({
+    queryKey: ["payout-modes"],
+    queryFn: fetchPayoutModes,
     staleTime: 5 * 60 * 1000,
     retry: 1,
   });
@@ -889,6 +921,91 @@ function AppSettingsContent() {
                   <p className="text-sm text-slate-500 dark:text-slate-400">
                     결제사 목록을 불러오지 못했습니다. 백엔드 연결 상태를
                     확인해주세요.
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                    {MESSAGES.settings.payoutTitle}
+                  </p>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
+                    {MESSAGES.settings.payoutDescription}
+                  </p>
+                </div>
+                <div
+                  role="radiogroup"
+                  aria-label={MESSAGES.settings.payoutTitle}
+                  className="space-y-3"
+                >
+                  {(payoutModes ?? []).map((mode) => {
+                    const isSelected = formData.payoutApiMode === mode.code;
+                    return (
+                      <label
+                        key={mode.code}
+                        className={`flex items-center gap-3 p-5 rounded-xl border transition-colors motion-reduce:transition-none ${
+                          !mode.selectable
+                            ? "border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/30 cursor-not-allowed"
+                            : isSelected
+                              ? "border-primary bg-white dark:bg-slate-800 cursor-pointer"
+                              : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600 cursor-pointer"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="payoutApiMode"
+                          value={mode.code}
+                          checked={isSelected}
+                          disabled={!mode.selectable}
+                          onChange={() =>
+                            updateField("payoutApiMode", mode.code)
+                          }
+                          className="w-5 h-5"
+                        />
+                        <div className="flex-1">
+                          <p
+                            className={`text-sm font-medium ${
+                              mode.selectable
+                                ? "text-slate-800 dark:text-slate-200"
+                                : "text-slate-400 dark:text-slate-500"
+                            }`}
+                          >
+                            {mode.label}
+                          </p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                            {PAYOUT_MODE_HINTS[mode.code]}
+                          </p>
+                          {mode.reason && (
+                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                              {mode.reason}
+                            </p>
+                          )}
+                        </div>
+                        {isSelected && (
+                          <span className="text-xs font-medium text-primary">
+                            {MESSAGES.settings.payoutInUse}
+                          </span>
+                        )}
+                      </label>
+                    );
+                  })}
+                  {(payoutModes ?? []).length === 0 && (
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                      {MESSAGES.settings.payoutLoadError}
+                    </p>
+                  )}
+                </div>
+                {formData.payoutApiMode === "live" && (
+                  <p
+                    role="alert"
+                    className="flex items-start gap-1.5 text-sm text-red-600 dark:text-red-400"
+                  >
+                    <AlertTriangle
+                      className="w-4 h-4 flex-shrink-0 mt-0.5"
+                      aria-hidden="true"
+                    />
+                    {MESSAGES.settings.payoutLiveWarning}
                   </p>
                 )}
               </div>

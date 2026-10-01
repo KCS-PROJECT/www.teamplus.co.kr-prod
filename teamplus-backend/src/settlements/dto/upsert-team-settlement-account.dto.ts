@@ -1,4 +1,4 @@
-import { IsOptional, IsString, Length, Matches } from "class-validator";
+import { IsByteLength, IsOptional, IsString, Matches } from "class-validator";
 import { Transform } from "class-transformer";
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 
@@ -37,9 +37,15 @@ export class UpsertTeamSettlementAccountDto {
   @Matches(/^\d{6,30}$/, { message: "계좌번호는 숫자 6~30자리여야 합니다." })
   bankAccount!: string;
 
-  @ApiProperty({ description: "예금주", example: "블랭크하키클럽" })
+  @ApiProperty({
+    description: "예금주 — UTF-8 30바이트 이내(한글 약 10자)",
+    example: "블랭크하키클럽",
+  })
   @Transform(trim)
   @IsString()
-  @Length(1, 30, { message: "예금주는 1~30자로 입력해주세요." })
+  // 나이스 지급대행 규격의 계좌주명이 UTF-8 30바이트다. 은행 실명과 같아야 해 서버에서 자를 수 없다.
+  @IsByteLength(1, 30, {
+    message: "예금주는 한글 10자(영문·숫자 30자) 이내로 입력해주세요.",
+  })
   accountHolder!: string;
 }

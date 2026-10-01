@@ -14,6 +14,7 @@ export const ACCOUNT_LIST_STATUSES = [
   "NONE",
   "SUBMITTED",
   "REGISTERED",
+  "FAILED",
 ] as const;
 export type AccountListStatus = (typeof ACCOUNT_LIST_STATUSES)[number];
 
@@ -22,7 +23,7 @@ export class QuerySettlementAccountsDto {
   @ApiPropertyOptional({ enum: ACCOUNT_LIST_STATUSES })
   @IsOptional()
   @IsIn(ACCOUNT_LIST_STATUSES, {
-    message: "상태는 NONE, SUBMITTED, REGISTERED 중 하나여야 합니다.",
+    message: "상태는 NONE, SUBMITTED, REGISTERED, FAILED 중 하나여야 합니다.",
   })
   status?: AccountListStatus;
 

@@ -3352,6 +3352,10 @@ model AppSettings {
   ///  마이그레이션: manual-migrations/20260826_app_settings_payment_provider.sql
   paymentProvider String @default("toss") @map("payment_provider") @db.VarChar(20)
 
+  /// 나이스 지급대행 API 사용 단계 — off(수동 운영) / readonly(조회만) / live(서브몰 등록·지급 요청)
+  ///  마이그레이션: manual-migrations/20260930_payout_api_4a.sql
+  payoutApiMode String @default("off") @map("payout_api_mode") @db.VarChar(10)
+
   // 메타데이터
   updatedBy String?  @map("updated_by")
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -4469,9 +4473,11 @@ model SettlementDetail {
   paymentDate      DateTime               @map("payment_date") @db.Date
   paymentMethod    String                 @map("payment_method") /// card | wallet | etc
   paymentAmount    Int                    @map("payment_amount") /// PAYMENT=결제 금액(+), REFUND=환불 금액(-)
-  feeRate          Float                  @map("fee_rate") /// 수수료율 (0.0 ~ 1.0)
-  feeAmount        Int                    @map("fee_amount") /// PAYMENT=수수료(+), REFUND=환급 수수료(-)
-  actualAmount     Int                    @map("actual_amount") /// 실지급 금액(paymentAmount-feeAmount, REFUND 는 음수)
+  feeRate          Float                  @map("fee_rate") /// 플랫폼 수수료율 (0.0 ~ 1.0)
+  feeAmount        Int                    @map("fee_amount") /// 플랫폼 수수료 — PAYMENT=(+), REFUND=환급(-)
+  pgFeeRate        Float                  @default(0) @map("pg_fee_rate") /// 결제(PG) 수수료율 — 마감 시점 적용값. 환불은 원 결제 행의 값을 따른다
+  pgFeeAmount      Int                    @default(0) @map("pg_fee_amount") /// 결제(PG) 수수료 — PAYMENT=(+), REFUND=환급(-). 팀 부담
+  actualAmount     Int                    @map("actual_amount") /// 실지급 금액(paymentAmount-feeAmount-pgFeeAmount, REFUND 는 음수)
   /// 귀속월(YYYY-MM) 병기 — 선불=enrollment.billingMonth, 후불=billing.yearMonth, 대회=completedAt KST 월.
   /// 마감 판정에는 쓰지 않는다(마감은 결제일/환불일 현금 기준) — 표시·분석 참고용.
   attributionMonth String?                @map("attribution_month") @db.VarChar(7)
@@ -4498,19 +4504,24 @@ model SettlementDetail {
 /// 팀 정산 수취 계좌 (팀 1:1) — 팀 소유 감독만 입력, 운영자는 조회 후 나이스 관리자에 서브몰을 수동 등록한다.
 /// 사업자번호·계좌번호는 encryptField 로 암호화 저장하고 응답은 역할별로 마스킹한다.
 model TeamSettlementAccount {
-  id             String                      @id @default(cuid())
-  teamId         String                      @unique @map("team_id")
-  businessNumber String                      @map("business_number") /// 암호화. 첫 저장 후 감독 변경 불가(변경은 운영자 초기화 후 재입력)
-  bankCode       String                      @map("bank_code") @db.VarChar(3) /// BANK_CODE 공통코드 code
-  bankAccount    String                      @map("bank_account") /// 암호화
-  accountHolder  String                      @map("account_holder") @db.VarChar(30)
-  status         TeamSettlementAccountStatus @default(SUBMITTED)
-  submittedById  String                      @map("submitted_by_id") /// 마지막으로 저장한 감독
-  submittedAt    DateTime                    @map("submitted_at") @db.Timestamptz(3)
-  registeredById String?                     @map("registered_by_id") /// 나이스 등록 완료로 표시한 운영자
-  registeredAt   DateTime?                   @map("registered_at") @db.Timestamptz(3)
-  createdAt      DateTime                    @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt      DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id                    String                      @id @default(cuid())
+  teamId                String                      @unique @map("team_id")
+  businessNumber        String                      @map("business_number") /// 암호화. 첫 저장 후 감독 변경 불가(변경은 운영자 초기화 후 재입력)
+  bankCode              String                      @map("bank_code") @db.VarChar(3) /// BANK_CODE 공통코드 code
+  bankAccount           String                      @map("bank_account") /// 암호화
+  accountHolder         String                      @map("account_holder") @db.VarChar(30)
+  status                TeamSettlementAccountStatus @default(SUBMITTED)
+  submittedById         String                      @map("submitted_by_id") /// 마지막으로 저장한 감독
+  submittedAt           DateTime                    @map("submitted_at") @db.Timestamptz(3)
+  registeredById        String?                     @map("registered_by_id") /// 나이스 등록 완료로 표시한 운영자
+  registeredAt          DateTime?                   @map("registered_at") @db.Timestamptz(3)
+  subMallId             String?                     @unique @map("sub_mall_id") @db.VarChar(50) /// 나이스 서브몰 ID — API 등록 성공 시에만 기록
+  lastResCode           String?                     @map("last_res_code") @db.VarChar(10) /// 마지막 서브몰 등록 호출의 나이스 응답 코드
+  lastResMsg            String?                     @map("last_res_msg") @db.VarChar(200)
+  lastAttemptedAt       DateTime?                   @map("last_attempted_at") @db.Timestamptz(3)
+  registrationStartedAt DateTime?                   @map("registration_started_at") @db.Timestamptz(3) /// 서브몰 등록 호출 진행 중 표시 — 같은 팀 동시 호출 차단
+  createdAt             DateTime                    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime                    @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   team         Team  @relation(fields: [teamId], references: [id], onDelete: Cascade)
   submittedBy  User  @relation("TeamSettlementAccountSubmitter", fields: [submittedById], references: [id])
@@ -4520,10 +4531,36 @@ model TeamSettlementAccount {
   @@map("team_settlement_accounts")
 }
 
-/// 팀 정산 계좌 상태 — SUBMITTED(감독 입력, 나이스 등록 전) / REGISTERED(운영자가 나이스 서브몰 등록 완료로 표시)
+/// 팀 정산 계좌 상태 — SUBMITTED(감독 입력, 나이스 등록 전·결과 확인 중) / REGISTERED(나이스 서브몰 등록 완료) / FAILED(나이스가 등록을 거절 — 감독 재입력 필요)
 enum TeamSettlementAccountStatus {
   SUBMITTED
   REGISTERED
+  FAILED
+}
+
+/// 나이스 지급대행 API 호출 기록 — 추가만 한다. 계좌번호·사업자번호·키는 저장하지 않는다.
+///  계좌 초기화 뒤에도 과거 서브몰 ID 를 알아야 해서 팀·계좌에 FK 를 걸지 않는다.
+///  sid=RETIRE 는 호출이 아니라 초기화로 물러난 서브몰 ID 표시(다음 등록은 새 ID).
+model NicePayoutApiLog {
+  id           String   @id @default(cuid())
+  sid          String   @db.VarChar(7)
+  teamId       String?  @map("team_id")
+  settlementId String?  @map("settlement_id")
+  subId        String?  @map("sub_id") @db.VarChar(50)
+  reqType      Int?     @map("req_type") @db.SmallInt
+  resCode      String?  @map("res_code") @db.VarChar(10)
+  resMsg       String?  @map("res_msg") @db.VarChar(200)
+  outcome      String   @db.VarChar(10)
+  httpStatus   Int?     @map("http_status")
+  durationMs   Int      @map("duration_ms")
+  error        String?  @db.VarChar(50)
+  requestedBy  String?  @map("requested_by")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([teamId, sid])
+  @@index([settlementId])
+  @@index([createdAt])
+  @@map("nice_payout_api_logs")
 }
 
 /// 정산 상세 항목 종류 — 결제 완료(PAYMENT) / 환불(REFUND)

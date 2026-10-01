@@ -6,6 +6,8 @@ import { SettlementsService } from "./settlements.service";
 import { SettlementCloseService } from "./settlement-close.service";
 import { TeamSettlementAccountService } from "./team-settlement-account.service";
 import { TeamSettlementAccountController } from "./team-settlement-account.controller";
+import { NicePayoutApiService } from "./nice-payout-api.service";
+import { nicePayoutGatewayProvider } from "./gateway/nice-payout.provider";
 
 @Module({
   imports: [PrismaModule, ResourceAccessModule],
@@ -14,6 +16,8 @@ import { TeamSettlementAccountController } from "./team-settlement-account.contr
     SettlementsService,
     SettlementCloseService,
     TeamSettlementAccountService,
+    NicePayoutApiService,
+    nicePayoutGatewayProvider,
   ],
   exports: [SettlementsService, SettlementCloseService],
 })

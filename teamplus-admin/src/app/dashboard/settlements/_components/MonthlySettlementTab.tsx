@@ -11,6 +11,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { MESSAGES } from '@/lib/messages';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -50,8 +51,10 @@ import {
   XCircle,
 } from 'lucide-react';
 import { api } from '@/services/api-client';
+import { isoToDateInput } from '@/lib/kst-date';
 import { SettlementDetailDialog, type SettlementStatus } from './SettlementDetailDialog';
 import { getAccountStatusMeta, type AccountStatus } from './accountStatusMeta';
+import { ActionNotice } from './ActionNotice';
 
 // ════════════════════════════════════════════════
 // 타입
@@ -118,6 +121,7 @@ interface SettlementNegativeNetTeam {
 
 interface SettlementCloseResult {
   month: string;
+  pgFeeRate?: number;
   commissionRate: number;
   created: number;
   updated: number;
@@ -147,12 +151,43 @@ interface SettlementCloseResult {
   warnings?: { previousMonthNotClosed: boolean };
 }
 
+interface PayoutPreviewIncluded {
+  settlementId: string;
+  teamId: string;
+  teamName: string;
+  subMallId: string;
+  netAmount: number;
+}
+
+interface PayoutPreviewExcluded {
+  settlementId: string;
+  teamId: string;
+  teamName: string;
+  netAmount: number;
+  reasonCode: string;
+  reason: string;
+}
+
+interface PayoutPreview {
+  month: string;
+  payDate: string;
+  included: PayoutPreviewIncluded[];
+  excluded: PayoutPreviewExcluded[];
+  includedCount: number;
+  includedTotal: number;
+  excludedCount: number;
+  excludedTotal: number;
+  paidThisMonth?: { count: number; netAmount: number };
+  fingerprint: string;
+}
+
 interface SettlementSummaryBucket {
   count: number;
   netAmount: number;
 }
 
 interface SettlementSummaryResponse {
+  pgFeeRate?: number;
   pending: SettlementSummaryBucket;
   approved: SettlementSummaryBucket;
   paid: SettlementSummaryBucket;
@@ -208,6 +243,10 @@ function getDefaultMonth(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 
+function formatRatePercent(rate: number): string {
+  return String(parseFloat((rate * 100).toFixed(2)));
+}
+
 /** 서버가 내려준 부호를 그대로 쓰는 공용 금액 포맷. -0 은 0원으로 정규화한다. */
 function formatAmount(value: number): string {
   const normalized = Object.is(value, -0) ? 0 : value;
@@ -231,6 +270,83 @@ function extractErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+function getErrorCode(error: unknown): string | undefined {
+  return (error as { response?: { data?: { errorCode?: string } } })?.response?.data?.errorCode;
+}
+
+/** 한국 시간 기준 오늘 다음의 첫 평일(공휴일은 고려하지 않는다) — 서버의 지급일 검증과 같은 기준. */
+function getDefaultPayDate(): string {
+  const d = new Date(`${isoToDateInput(new Date().toISOString())}T00:00:00Z`);
+  do {
+    d.setUTCDate(d.getUTCDate() + 1);
+  } while (d.getUTCDay() === 0 || d.getUTCDay() === 6);
+  return d.toISOString().slice(0, 10);
+}
+
+interface NiceBalance {
+  remainAmt: number;
+  checkedAt: string;
+}
+
+const balanceTimeFormat = new Intl.DateTimeFormat('ko-KR', {
+  timeZone: 'Asia/Seoul',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+});
+
+function isPayoutApiOff(error: unknown): boolean {
+  const res = (error as { response?: { status?: number; data?: { errorCode?: string } } })?.response;
+  return res?.status === 409 && res.data?.errorCode === 'PAYOUT_API_OFF';
+}
+
+/** 나이스 지급대행 잔액 — 지급대행 모드가 꺼져 있으면(409) 카드 자체를 숨긴다. */
+function NiceBalanceCard() {
+  const { data, error, isLoading, isFetching, refetch } = useQuery({
+    queryKey: ['settlements', 'nice-balance'],
+    queryFn: () => api.get<NiceBalance>('/settlements/balance'),
+    retry: false,
+    refetchOnWindowFocus: false,
+    staleTime: 60 * 1000,
+  });
+
+  if (isLoading || isPayoutApiOff(error)) return null;
+
+  const checkedDate = data ? new Date(data.checkedAt) : null;
+  const checkedText =
+    checkedDate && !Number.isNaN(checkedDate.getTime()) ? balanceTimeFormat.format(checkedDate) : null;
+
+  return (
+    <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-5 space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="font-bold text-slate-900 dark:text-white">{MESSAGES.settlement.balanceTitle}</h3>
+        <Button type="button" variant="outline" size="sm" onClick={() => void refetch()} disabled={isFetching}>
+          {MESSAGES.settlement.balanceRetry}
+        </Button>
+      </div>
+      {error ? (
+        <p role="alert" className="text-sm text-red-700 dark:text-red-400">
+          {extractErrorMessage(error, MESSAGES.settlement.balanceLoadError)}
+        </p>
+      ) : data ? (
+        <div>
+          <p className="text-2xl font-bold text-slate-900 dark:text-white tabular-nums">
+            {formatAmount(data.remainAmt)}
+          </p>
+          {checkedText && (
+            <p className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">
+              {MESSAGES.settlementDynamic.balanceCheckedAt(checkedText)}
+            </p>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function MonthlySettlementTab() {
   const [month, setMonth] = useState(getDefaultMonth());
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -251,6 +367,16 @@ export function MonthlySettlementTab() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isCsvDownloading, setIsCsvDownloading] = useState(false);
+
+  const [isPayoutOpen, setIsPayoutOpen] = useState(false);
+  const [payDate, setPayDate] = useState('');
+  const [payoutPreview, setPayoutPreview] = useState<PayoutPreview | null>(null);
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [payoutConfirmed, setPayoutConfirmed] = useState(false);
+  const [isPayoutDownloading, setIsPayoutDownloading] = useState(false);
+  const [payoutMsg, setPayoutMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const previewSeqRef = useRef(0);
 
   // 목록 조회 요청 순번 — 필터를 빠르게 바꿀 때 먼저 보낸 요청이 나중에 도착해
   // 최신 화면을 덮어쓰는 경쟁을 막는다. 응답 시점에 최신 순번이 아니면 버린다.
@@ -332,6 +458,81 @@ export function MonthlySettlementTab() {
     }
   };
 
+  const loadPayoutPreview = async (date: string) => {
+    const seq = ++previewSeqRef.current;
+    setPayoutPreview(null);
+    setPayoutConfirmed(false);
+    setPreviewError(null);
+    if (!date) {
+      setIsPreviewLoading(false);
+      return;
+    }
+    setIsPreviewLoading(true);
+    try {
+      const res = await api.get<PayoutPreview>('/settlements/payout-file/preview', {
+        params: { month, payDate: date },
+      });
+      if (seq !== previewSeqRef.current) return;
+      setPayoutPreview(res);
+    } catch (error) {
+      if (seq !== previewSeqRef.current) return;
+      setPreviewError(extractErrorMessage(error, MESSAGES.settlement.payoutPreviewError));
+    } finally {
+      if (seq === previewSeqRef.current) setIsPreviewLoading(false);
+    }
+  };
+
+  const handleOpenPayout = () => {
+    const date = getDefaultPayDate();
+    setPayDate(date);
+    setPayoutMsg(null);
+    setIsPayoutOpen(true);
+    void loadPayoutPreview(date);
+  };
+
+  const handleClosePayout = (open: boolean) => {
+    if (open || isPayoutDownloading) return;
+    previewSeqRef.current += 1;
+    setIsPayoutOpen(false);
+  };
+
+  const handlePayDateChange = (date: string) => {
+    setPayDate(date);
+    setPayoutMsg(null);
+    void loadPayoutPreview(date);
+  };
+
+  const handleDownloadPayoutFile = async () => {
+    if (!payoutPreview || !payoutConfirmed) return;
+    setIsPayoutDownloading(true);
+    setPayoutMsg(null);
+    try {
+      const query = new URLSearchParams({
+        month,
+        payDate,
+        fingerprint: payoutPreview.fingerprint,
+      });
+      await api.downloadFile(
+        `/settlements/payout-file?${query.toString()}`,
+        MESSAGES.settlementDynamic.payoutFileName(payDate.replace(/-/g, ''), month),
+      );
+      setPayoutConfirmed(false);
+      setPayoutMsg({ type: 'success', text: MESSAGES.settlement.payoutFileDownloaded });
+    } catch (error) {
+      const changed = getErrorCode(error) === 'PAYOUT_FILE_CHANGED';
+      if (changed) void loadPayoutPreview(payDate);
+      setPayoutMsg({
+        type: 'error',
+        text: extractErrorMessage(
+          error,
+          changed ? MESSAGES.settlement.payoutFileChangedFallback : MESSAGES.settlement.payoutFileError,
+        ),
+      });
+    } finally {
+      setIsPayoutDownloading(false);
+    }
+  };
+
   const handleViewDetail = (id: string) => {
     setSelectedId(id);
     setIsDetailOpen(true);
@@ -364,17 +565,9 @@ export function MonthlySettlementTab() {
 
   return (
     <div className="space-y-6">
-      {actionMsg && (
-        <div
-          className={`p-3 rounded-lg text-sm ${
-            actionMsg.type === 'success'
-              ? 'bg-green-50 text-green-700 dark:bg-green-900/20 dark:text-green-400'
-              : 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400'
-          }`}
-        >
-          {actionMsg.text}
-        </div>
-      )}
+      <ActionNotice notice={actionMsg} />
+
+      <NiceBalanceCard />
 
       {/* 월 선택 + 마감 */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
@@ -412,6 +605,10 @@ export function MonthlySettlementTab() {
           >
             <Download className="h-4 w-4 mr-2" aria-hidden="true" />
             {MESSAGES.settlement.csvDownload}
+          </Button>
+          <Button type="button" variant="outline" onClick={handleOpenPayout} className="h-11">
+            <Download className="h-4 w-4 mr-2" aria-hidden="true" />
+            {MESSAGES.settlement.payoutFileButton}
           </Button>
           <Button
             type="button"
@@ -457,6 +654,11 @@ export function MonthlySettlementTab() {
                 )}
               </div>
             ))}
+            {(monthSummary?.pgFeeRate ?? 0) > 0 && (
+              <p className="col-span-full text-xs text-slate-500 dark:text-slate-400">
+                {MESSAGES.settlementDynamic.pgFeeRateNotice(formatRatePercent(monthSummary?.pgFeeRate ?? 0))}
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -516,7 +718,7 @@ export function MonthlySettlementTab() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-sm">
+          <div className="grid grid-cols-2 sm:grid-cols-6 gap-3 text-sm">
             <div className="rounded-lg bg-slate-50 dark:bg-slate-700/50 px-3 py-2">
               <p className="text-slate-500 dark:text-slate-400">{MESSAGES.settlement.closePaymentCount}</p>
               <p className="font-bold text-slate-900 dark:text-white tabular-nums">{closeResult.totals.paymentCount}건</p>
@@ -532,6 +734,10 @@ export function MonthlySettlementTab() {
             <div className="rounded-lg bg-slate-50 dark:bg-slate-700/50 px-3 py-2">
               <p className="text-slate-500 dark:text-slate-400">{MESSAGES.settlement.closeRefundAmountLabel}</p>
               <p className="font-bold text-slate-900 dark:text-white tabular-nums">{formatAmount(closeResult.totals.refundAmount)}</p>
+            </div>
+            <div className="rounded-lg bg-slate-50 dark:bg-slate-700/50 px-3 py-2">
+              <p className="text-slate-500 dark:text-slate-400">{MESSAGES.settlement.pgFeeLabel}</p>
+              <p className="font-bold text-slate-900 dark:text-white tabular-nums">{formatAmount(closeResult.totals.paymentFee ?? 0)}</p>
             </div>
             <div className="rounded-lg bg-slate-50 dark:bg-slate-700/50 px-3 py-2">
               <p className="text-slate-500 dark:text-slate-400">{MESSAGES.settlement.closeNetAmountLabel}</p>
@@ -780,6 +986,202 @@ export function MonthlySettlementTab() {
             </Button>
             <Button type="button" onClick={handleCloseConfirmed} disabled={isClosing}>
               {isClosing ? MESSAGES.settlement.closeInProgress : MESSAGES.settlement.closeButton}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 나이스 지급 엑셀 다이얼로그 */}
+      <Dialog open={isPayoutOpen} onOpenChange={handleClosePayout}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{MESSAGES.settlement.payoutFileTitle}</DialogTitle>
+            <DialogDescription>{MESSAGES.settlement.payoutFileDescription}</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <label htmlFor="payout-pay-date" className="text-sm font-medium text-slate-900 dark:text-white">
+                {MESSAGES.settlement.payoutDateLabel}
+              </label>
+              <Input
+                id="payout-pay-date"
+                type="date"
+                value={payDate}
+                onChange={(e) => handlePayDateChange(e.target.value)}
+                className="h-11 w-44"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setPayoutMsg(null);
+                  void loadPayoutPreview(payDate);
+                }}
+                disabled={isPreviewLoading || !payDate}
+                className="h-11"
+              >
+                {MESSAGES.settlement.payoutPreviewButton}
+              </Button>
+            </div>
+
+            <p className="text-xs text-slate-500 dark:text-slate-400">{MESSAGES.settlement.payoutDeadlineNotice}</p>
+
+            {isPreviewLoading && (
+              <p className="text-sm text-slate-500 dark:text-slate-400">{MESSAGES.settlement.payoutPreviewLoading}</p>
+            )}
+
+            {previewError && (
+              <p role="alert" className="text-sm text-red-700 dark:text-red-400">
+                {previewError}
+              </p>
+            )}
+
+            {payoutPreview && (
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                    {MESSAGES.settlement.payoutIncludedTitle}
+                  </h4>
+                  {payoutPreview.included.length === 0 ? (
+                    <p className="text-sm text-slate-500 dark:text-slate-400">
+                      {MESSAGES.settlement.payoutIncludedEmpty}
+                    </p>
+                  ) : (
+                    <div className="rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>{MESSAGES.settlement.payoutColTeam}</TableHead>
+                            <TableHead>{MESSAGES.settlement.payoutColSubId}</TableHead>
+                            <TableHead className="text-right">{MESSAGES.settlement.payoutColAmount}</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {payoutPreview.included.map((item) => (
+                            <TableRow key={item.settlementId}>
+                              <TableCell className="font-medium text-slate-900 dark:text-white">{item.teamName}</TableCell>
+                              <TableCell className="tabular-nums text-slate-500 dark:text-slate-400">{item.subMallId}</TableCell>
+                              <TableCell className="text-right tabular-nums text-slate-900 dark:text-white">
+                                {formatAmount(item.netAmount)}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                  <p className="text-sm font-bold text-slate-900 dark:text-white tabular-nums">
+                    {MESSAGES.settlementDynamic.payoutTeamsTotal(
+                      payoutPreview.includedCount,
+                      formatAmount(payoutPreview.includedTotal),
+                    )}
+                  </p>
+                </div>
+
+                {payoutPreview.excluded.length > 0 && (
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                      {MESSAGES.settlement.payoutExcludedTitle}
+                    </h4>
+                    <div className="rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>{MESSAGES.settlement.payoutColTeam}</TableHead>
+                            <TableHead className="text-right">{MESSAGES.settlement.payoutColExcludedAmount}</TableHead>
+                            <TableHead>{MESSAGES.settlement.payoutColReason}</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {payoutPreview.excluded.map((item) => (
+                            <TableRow key={item.settlementId}>
+                              <TableCell className="font-medium text-slate-900 dark:text-white">{item.teamName}</TableCell>
+                              <TableCell className="text-right tabular-nums text-slate-900 dark:text-white">
+                                {formatAmount(item.netAmount)}
+                              </TableCell>
+                              <TableCell className="text-slate-500 dark:text-slate-400 whitespace-normal">
+                                {item.reason}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 tabular-nums">
+                      {MESSAGES.settlementDynamic.payoutTeamsTotal(
+                        payoutPreview.excludedCount,
+                        formatAmount(payoutPreview.excludedTotal),
+                      )}
+                    </p>
+                  </div>
+                )}
+
+                {(payoutPreview.paidThisMonth?.count ?? 0) > 0 && (
+                  <p className="text-sm text-slate-500 dark:text-slate-400 tabular-nums">
+                    {MESSAGES.settlementDynamic.payoutPaidThisMonth(
+                      payoutPreview.paidThisMonth?.count ?? 0,
+                      formatAmount(payoutPreview.paidThisMonth?.netAmount ?? 0),
+                    )}
+                  </p>
+                )}
+
+                <div className="flex items-start gap-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 p-3" role="alert">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden="true" />
+                  <p className="text-sm text-amber-700 dark:text-amber-400">{MESSAGES.settlement.payoutFileWarning}</p>
+                </div>
+
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={payoutConfirmed}
+                    onChange={(e) => setPayoutConfirmed(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 rounded border-slate-300 text-primary focus:ring-primary"
+                  />
+                  <span className="text-sm text-slate-700 dark:text-slate-300">
+                    {MESSAGES.settlement.payoutFileConfirmCheckbox}
+                  </span>
+                </label>
+              </div>
+            )}
+
+            {payoutMsg && (
+              <p
+                role={payoutMsg.type === 'error' ? 'alert' : 'status'}
+                className={`text-sm ${
+                  payoutMsg.type === 'error'
+                    ? 'text-red-700 dark:text-red-400'
+                    : 'text-green-700 dark:text-green-400'
+                }`}
+              >
+                {payoutMsg.text}
+              </p>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => handleClosePayout(false)}
+              disabled={isPayoutDownloading}
+            >
+              {MESSAGES.settlement.close}
+            </Button>
+            <Button
+              type="button"
+              onClick={() => void handleDownloadPayoutFile()}
+              disabled={
+                isPayoutDownloading ||
+                isPreviewLoading ||
+                !payoutPreview ||
+                payoutPreview.includedCount === 0 ||
+                !payoutConfirmed
+              }
+            >
+              {isPayoutDownloading
+                ? MESSAGES.settlement.payoutFileDownloading
+                : MESSAGES.settlement.payoutFileDownloadButton}
             </Button>
           </DialogFooter>
         </DialogContent>

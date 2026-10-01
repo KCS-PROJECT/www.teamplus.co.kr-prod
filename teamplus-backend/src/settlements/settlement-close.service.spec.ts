@@ -3,6 +3,15 @@ import { BadRequestException } from "@nestjs/common";
 import { SettlementCloseService } from "./settlement-close.service";
 import { PrismaService } from "@/prisma/prisma.service";
 
+// 결제 수수료율은 코드 고정값이다 — 기존 계약 검증은 0 으로 두고(수수료 도입 전과 같은 금액),
+//   결제 수수료 전용 describe 에서만 값을 바꾼다.
+const mockPgFee = { rate: 0 };
+jest.mock("./constants/pg-fee.constant", () => ({
+  get PG_FEE_RATE() {
+    return mockPgFee.rate;
+  },
+}));
+
 /**
  * [정산 센터] 월 마감 생성기 검증 — 마감 기준 = 결제일/환불일 현금 기준.
  *  "M월 정산 = KST M월에 completedAt 인 결제 − KST M월에 processedAt 인 환불".
@@ -799,6 +808,245 @@ describe("SettlementCloseService", () => {
 
       expect(result.conflicts).toEqual([]);
       expect(mockPrisma.settlementDetail.createMany).toHaveBeenCalled();
+    });
+  });
+  describe("결제(PG) 수수료 — 팀 부담", () => {
+    const createdRows = () =>
+      mockPrisma.settlementDetail.createMany.mock.calls[0][0].data;
+    const settlementTotals = () => {
+      const calls = mockPrisma.settlement.updateMany.mock.calls;
+      return calls[calls.length - 1][0].data;
+    };
+
+    beforeEach(() => {
+      mockPgFee.rate = 0.011;
+      mockPrisma.settlement.create.mockResolvedValue({ id: "settle-1" });
+    });
+    afterEach(() => {
+      mockPgFee.rate = 0;
+    });
+
+    it("결제 건마다 결제 수수료를 반올림해 빼고, 정산 합계 paymentFee·netAmount 에 반영한다", async () => {
+      mockPrisma.appSettings.findFirst.mockResolvedValue({ commissionRate: 0 });
+      mockPrisma.payment.findMany.mockResolvedValue([
+        makePayment(),
+        makePayment({ id: "pay-2", orderNumber: "ORDER-2", amount: 11500 }),
+      ]);
+
+      const result = await service.closeMonth(MONTH);
+
+      const rows = createdRows();
+      expect(rows[0]).toMatchObject({
+        paymentAmount: 10000,
+        feeAmount: 0,
+        pgFeeRate: 0.011,
+        pgFeeAmount: 110,
+        actualAmount: 9890,
+      });
+      // 11500 × 1.1% = 126.5 → 127 (건별 반올림)
+      expect(rows[1]).toMatchObject({ pgFeeAmount: 127, actualAmount: 11373 });
+      expect(settlementTotals()).toEqual({
+        totalRevenue: 21500,
+        refundAmount: 0,
+        platformFee: 0,
+        paymentFee: 237,
+        netAmount: 21263,
+      });
+      expect(result.pgFeeRate).toBe(0.011);
+      expect(result.totals.paymentFee).toBe(237);
+      expect(result.totals.netAmount).toBe(21263);
+    });
+
+    it("플랫폼 수수료와 함께 걷어도 둘 다 결제 금액 기준이고 불변식이 맞는다", async () => {
+      mockPrisma.payment.findMany.mockResolvedValue([makePayment()]);
+
+      await service.closeMonth(MONTH);
+
+      const [row] = createdRows();
+      expect(row).toMatchObject({
+        feeRate: 0.03,
+        feeAmount: 300,
+        pgFeeAmount: 110,
+        actualAmount: 9590,
+      });
+      expect(row.actualAmount).toBe(
+        row.paymentAmount - row.feeAmount - row.pgFeeAmount,
+      );
+      const totals = settlementTotals();
+      expect(totals.netAmount).toBe(
+        totals.totalRevenue -
+          totals.refundAmount -
+          totals.platformFee -
+          totals.paymentFee,
+      );
+    });
+
+    it("같은 달 환불은 현재 요율로 결제 수수료도 되돌린다", async () => {
+      mockPrisma.appSettings.findFirst.mockResolvedValue({ commissionRate: 0 });
+      mockPrisma.payment.findMany.mockResolvedValue([makePayment()]);
+      mockPrisma.refundLog.findMany.mockResolvedValue([makeRefundLog()]);
+
+      await service.closeMonth(MONTH);
+
+      const refundRow = createdRows().find(
+        (r: { entryType: string }) => r.entryType === "REFUND",
+      );
+      expect(refundRow).toMatchObject({
+        paymentAmount: -3000,
+        pgFeeRate: 0.011,
+        pgFeeAmount: -33,
+        actualAmount: -2967,
+      });
+      expect(settlementTotals()).toMatchObject({
+        totalRevenue: 10000,
+        refundAmount: 3000,
+        paymentFee: 77,
+        netAmount: 6923,
+      });
+    });
+
+    it("다른 달 결제의 환불은 그 결제 행에 기록된 결제 수수료율로 되돌린다", async () => {
+      mockPrisma.appSettings.findFirst.mockResolvedValue({ commissionRate: 0 });
+      mockPrisma.refundLog.findMany.mockResolvedValue([makeRefundLog()]);
+      mockPrisma.settlementDetail.findMany.mockResolvedValue([
+        {
+          eventKey: "P:pay-1",
+          paymentId: "pay-1",
+          feeRate: 0,
+          pgFeeRate: 0.02,
+        },
+      ]);
+
+      await service.closeMonth(MONTH);
+
+      expect(createdRows()[0]).toMatchObject({
+        entryType: "REFUND",
+        pgFeeRate: 0.02,
+        pgFeeAmount: -60,
+        actualAmount: -2940,
+      });
+    });
+
+    it("결제 수수료 없이 마감된 결제(요율 0)의 환불은 결제 수수료 환급도 0 이다", async () => {
+      mockPrisma.appSettings.findFirst.mockResolvedValue({ commissionRate: 0 });
+      mockPrisma.refundLog.findMany.mockResolvedValue([makeRefundLog()]);
+      mockPrisma.settlementDetail.findMany.mockResolvedValue([
+        { eventKey: "P:pay-1", paymentId: "pay-1", feeRate: 0, pgFeeRate: 0 },
+      ]);
+
+      await service.closeMonth(MONTH);
+
+      expect(createdRows()[0]).toMatchObject({
+        pgFeeRate: 0,
+        pgFeeAmount: 0,
+        actualAmount: -3000,
+      });
+    });
+
+    it("이 달 결제의 환불이 다른 달 정산에 이미 기록돼 있으면 결제 행도 그 환불 행의 요율을 따른다", async () => {
+      mockPrisma.appSettings.findFirst.mockResolvedValue({
+        commissionRate: 0.05,
+      });
+      mockPrisma.payment.findMany.mockResolvedValue([
+        makePayment(),
+        makePayment({ id: "pay-2", orderNumber: "ORDER-2" }),
+      ]);
+      mockPrisma.settlementDetail.findMany.mockImplementation(
+        (args: { where: { entryType?: string } }) =>
+          Promise.resolve(
+            args.where.entryType === "REFUND"
+              ? [{ paymentId: "pay-1", feeRate: 0.03, pgFeeRate: 0 }]
+              : [],
+          ),
+      );
+
+      await service.closeMonth(MONTH);
+
+      expect(mockPrisma.settlementDetail.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            entryType: "REFUND",
+            paymentId: { in: ["pay-1", "pay-2"] },
+            settlement: { settlementMonth: { not: MONTH } },
+          },
+        }),
+      );
+      const rows = createdRows();
+      expect(rows[0]).toMatchObject({
+        feeRate: 0.03,
+        feeAmount: 300,
+        pgFeeRate: 0,
+        pgFeeAmount: 0,
+        actualAmount: 9700,
+      });
+      // 환불 기록이 없는 결제는 현재 요율 그대로.
+      expect(rows[1]).toMatchObject({
+        feeRate: 0.05,
+        feeAmount: 500,
+        pgFeeRate: 0.011,
+        pgFeeAmount: 110,
+        actualAmount: 9390,
+      });
+    });
+
+    it("같은 달 환불은 그 결제 행에 실제로 적용한 요율을 따른다", async () => {
+      mockPrisma.appSettings.findFirst.mockResolvedValue({ commissionRate: 0 });
+      mockPrisma.payment.findMany.mockResolvedValue([makePayment()]);
+      mockPrisma.refundLog.findMany.mockResolvedValue([makeRefundLog()]);
+      mockPrisma.settlementDetail.findMany.mockImplementation(
+        (args: { where: { entryType?: string } }) =>
+          Promise.resolve(
+            args.where.entryType === "REFUND"
+              ? [{ paymentId: "pay-1", feeRate: 0, pgFeeRate: 0 }]
+              : [],
+          ),
+      );
+
+      await service.closeMonth(MONTH);
+
+      const refundRow = createdRows().find(
+        (r: { entryType: string }) => r.entryType === "REFUND",
+      );
+      expect(refundRow).toMatchObject({ pgFeeRate: 0, actualAmount: -3000 });
+      expect(Object.is(refundRow.pgFeeAmount, 0)).toBe(true);
+    });
+
+    it("대기(pending) 정산을 다시 마감하면 명세를 지우고 결제 수수료를 반영해 다시 만든다", async () => {
+      mockPrisma.appSettings.findFirst.mockResolvedValue({ commissionRate: 0 });
+      mockPrisma.payment.findMany.mockResolvedValue([makePayment()]);
+      mockPrisma.settlement.findUnique.mockResolvedValue({
+        id: "settle-1",
+        status: "pending",
+      });
+
+      const result = await service.closeMonth(MONTH);
+
+      expect(mockPrisma.settlementDetail.deleteMany).toHaveBeenCalledWith({
+        where: { settlementId: "settle-1" },
+      });
+      expect(createdRows()[0]).toMatchObject({ pgFeeAmount: 110 });
+      expect(result.updated).toBe(1);
+      expect(result.totals.netAmount).toBe(9890);
+    });
+
+    it("승인된 정산은 결제 수수료가 생겨도 다시 계산하지 않는다", async () => {
+      mockPrisma.payment.findMany.mockResolvedValue([makePayment()]);
+      mockPrisma.settlement.findUnique.mockResolvedValue({
+        id: "settle-1",
+        status: "approved",
+      });
+
+      const result = await service.closeMonth(MONTH);
+
+      expect(mockPrisma.settlementDetail.deleteMany).not.toHaveBeenCalled();
+      expect(mockPrisma.settlementDetail.createMany).not.toHaveBeenCalled();
+      expect(result.skipped).toEqual([
+        expect.objectContaining({
+          reason: "LOCKED_STATUS",
+          status: "approved",
+        }),
+      ]);
+      expect(result.totals.paymentFee).toBe(0);
     });
   });
 });

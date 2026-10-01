@@ -1,13 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback, useContext } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { MobileContainer } from '@/components/layout/MobileContainer';
 import { PageAppBar } from '@/components/layout/PageAppBar';
 import { useNativeUI } from '@/hooks/useNativeUI';
 import { useNavigation } from '@/hooks/useNavigation';
-import { AuthContext } from '@/contexts/AuthContext';
-import { Icon } from '@/components/ui/Icon';
 import { api } from '@/services/api-client';
 import { MESSAGES } from '@/lib/messages';
 
@@ -62,28 +60,6 @@ interface ApiSettlementDetail {
   transactions?: SettlementTransaction[];
 }
 
-interface SettlementDetailLine {
-  id: string;
-  paymentId: string;
-  orderNumber: string;
-  productName: string;
-  paymentDate: string;
-  paymentMethod: string;
-  paymentAmount: number;
-  feeRate: number;
-  feeAmount: number;
-  actualAmount: number;
-  status: string;
-  memo: string | null;
-  entryType: 'PAYMENT' | 'REFUND';
-  attributionMonth: string | null;
-}
-
-interface DetailsMeta {
-  page: number;
-  totalPages: number;
-}
-
 type GroupSourceType = 'CLASS' | 'TOURNAMENT' | 'OTHER';
 
 interface SettlementGroup {
@@ -95,31 +71,12 @@ interface SettlementGroup {
   refundCount: number;
   refundAmount: number;
   feeAmount: number;
+  pgFeeAmount?: number;
   netAmount: number;
-}
-
-interface SettlementGroupTotals {
-  paymentCount: number;
-  paymentAmount: number;
-  refundCount: number;
-  refundAmount: number;
-  feeAmount: number;
-  netAmount: number;
-}
-
-interface GroupDetailState {
-  lines: SettlementDetailLine[];
-  page: number;
-  requestedPage: number;
-  hasMore: boolean;
-  isLoading: boolean;
-  errored: boolean;
 }
 
 // 상세 로드 실패 3분류 — 404/403/기타(네트워크·서버 오류).
 type SettlementDetailErrorKind = 'notFound' | 'denied' | 'load' | null;
-
-const DETAILS_PAGE_SIZE = 10;
 
 const VALID_STATUSES: SettlementStatus[] = [
   'pending',
@@ -164,34 +121,6 @@ function extractItems<T>(payload: unknown): T[] {
   return [];
 }
 
-// 명세 meta 는 { total, page, pageSize, totalPages } 로 확정 — page < totalPages 로 단순 판정.
-function extractDetailsMeta(payload: unknown): DetailsMeta | null {
-  if (!payload || typeof payload !== 'object') return null;
-  const obj = payload as Record<string, unknown>;
-  const meta = obj.meta as Record<string, unknown> | undefined;
-  if (!meta) return null;
-  const page = typeof meta.page === 'number' ? meta.page : undefined;
-  const totalPages = typeof meta.totalPages === 'number' ? meta.totalPages : undefined;
-  if (page === undefined || totalPages === undefined) return null;
-  return { page, totalPages };
-}
-
-// 귀속월("YYYY-MM") → "N월분" 표기. attributionMonth 가 없으면 표시하지 않는다.
-function formatAttributionMonth(ym: string | null): string | null {
-  if (!ym) return null;
-  const month = Number(ym.split('-')[1]);
-  if (!Number.isFinite(month)) return null;
-  return MESSAGES.settlements.attributionMonthLabel(month);
-}
-
-function extractGroupTotals(payload: unknown): SettlementGroupTotals | null {
-  if (!payload || typeof payload !== 'object') return null;
-  const meta = (payload as Record<string, unknown>).meta as Record<string, unknown> | undefined;
-  const totals = meta?.totals;
-  if (!totals || typeof totals !== 'object') return null;
-  return totals as SettlementGroupTotals;
-}
-
 function groupKey(group: SettlementGroup): string {
   return `${group.sourceType}:${group.sourceId ?? group.name}`;
 }
@@ -206,10 +135,10 @@ function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('ko-KR').format(amount) + '원';
 }
 
-// 수수료는 차감액으로 표기한다 — 양수(수수료)는 "-X원", 음수(환불 시 수수료 환급)는 "+X원", 0원은 부호 없이.
-function formatFeeAmount(fee: number): string {
-  if (fee > 0) return `-${formatCurrency(fee)}`;
-  if (fee < 0) return `+${formatCurrency(-fee)}`;
+// 받을 금액에서 빠지는 금액(환불·수수료) 표기 — 양수는 "-X원", 음수(수수료 환급)는 "+X원", 0원은 부호 없이.
+function formatDeduction(amount: number): string {
+  if (amount > 0) return `-${formatCurrency(amount)}`;
+  if (amount < 0) return `+${formatCurrency(-amount)}`;
   return formatCurrency(0);
 }
 
@@ -256,140 +185,96 @@ const SETTLEMENT_STATUS: Record<SettlementStatus, { label: string; className: st
 // Sub components
 // ---------------------------------------------------------------------------
 
-function PayoutRow({ tx, isLast }: { tx: SettlementTransaction; isLast?: boolean }) {
-  const isReject = tx.transactionType === 'reject';
+type AmountTone = 'default' | 'minus' | 'total' | 'negative';
+
+const AMOUNT_TONE_CLASS: Record<AmountTone, string> = {
+  default: 'text-it-ink-800 dark:text-white',
+  minus: 'text-it-red-500 dark:text-it-red-300',
+  total: 'font-bold text-it-blue-500',
+  negative: 'font-bold text-flame-500',
+};
+
+// 계산 내역 한 줄 — 왼쪽 항목명, 오른쪽 금액.
+function AmountRow({
+  label,
+  value,
+  tone = 'default',
+  className = '',
+}: {
+  label: string;
+  value: string;
+  tone?: AmountTone;
+  className?: string;
+}) {
+  const isTotal = tone === 'total' || tone === 'negative';
   return (
-    <div
-      className={`py-3 ${!isLast ? 'border-b border-it-line dark:border-rink-700' : ''}`}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="text-card-body font-bold text-it-ink-800 dark:text-white">
-            {isReject ? MESSAGES.settlements.rejectReasonLabel : formatCurrency(tx.amount)}
-          </p>
-          {tx.description && (
-            <p className="mt-0.5 text-card-meta text-it-ink-500 dark:text-rink-300">
-              {tx.description}
-            </p>
-          )}
-        </div>
-        <span className="shrink-0 text-card-meta text-it-ink-400 dark:text-rink-300 tabular-nums">
-          {formatDateOnly(tx.transactionDate)}
-        </span>
-      </div>
+    <div className={`flex items-baseline justify-between gap-3 py-1.5 ${className}`}>
+      <dt
+        className={`text-card-body ${
+          isTotal
+            ? 'font-bold text-it-ink-800 dark:text-white'
+            : 'text-it-ink-500 dark:text-rink-300'
+        }`}
+      >
+        {label}
+      </dt>
+      <dd className={`text-card-body tabular-nums ${AMOUNT_TONE_CLASS[tone]}`}>{value}</dd>
     </div>
   );
 }
 
-function DetailLineRow({ line, isLast }: { line: SettlementDetailLine; isLast?: boolean }) {
-  const isRefund = line.entryType === 'REFUND';
-  const attributionLabel = formatAttributionMonth(line.attributionMonth);
-  return (
-    <div
-      className={`py-4 ${!isLast ? 'border-b border-it-line dark:border-rink-700' : ''}`}
-    >
-      <div className="flex items-start justify-between mb-2">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5 mb-0.5">
-            <span
-              className={`inline-flex items-center px-1.5 py-0.5 rounded-w-pill text-[11px] font-bold ${
-                isRefund
-                  ? 'bg-flame-500/10 text-flame-500 dark:bg-flame-500/15 dark:text-flame-500'
-                  : 'bg-it-blue-50 text-it-blue-500 dark:bg-it-blue-500/15 dark:text-it-blue-500'
-              }`}
-            >
-              {isRefund ? MESSAGES.settlements.entryTypeRefund : MESSAGES.settlements.entryTypePayment}
-            </span>
-            {attributionLabel && (
-              <span className="text-card-meta text-it-ink-400 dark:text-rink-300">
-                {attributionLabel}
-              </span>
-            )}
-          </div>
-          <p className="text-card-meta font-mono text-it-ink-400 dark:text-rink-300 mb-0.5">
-            {line.orderNumber}
-          </p>
-          <p className="text-card-title font-bold text-it-ink-800 dark:text-white truncate">
-            {line.productName}
-          </p>
-        </div>
-        <span className="shrink-0 ml-3 text-card-meta text-it-ink-400 dark:text-rink-300 tabular-nums">
-          {formatDateOnly(line.paymentDate)}
-        </span>
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <p className="text-card-meta text-it-ink-400 dark:text-rink-300 mb-0.5">
-            {MESSAGES.settlements.paymentAmountLabel}
-          </p>
-          <p
-            className={`text-card-body font-bold tabular-nums ${
-              isRefund ? 'text-flame-500' : 'text-it-ink-800 dark:text-white'
-            }`}
-          >
-            {formatCurrency(line.paymentAmount)}
-          </p>
-        </div>
-        <div className="text-right">
-          <p className="text-card-meta text-it-ink-400 dark:text-rink-300 mb-0.5">
-            {MESSAGES.settlements.actualAmountLabel}
-          </p>
-          <p
-            className={`text-card-body font-bold tabular-nums ${
-              isRefund ? 'text-flame-500' : 'text-it-blue-500'
-            }`}
-          >
-            {formatCurrency(line.actualAmount)}
-          </p>
-        </div>
-      </div>
-      <p className="mt-2 text-card-meta text-it-red-500 dark:text-it-red-300">
-        {MESSAGES.settlements.feeAmountLabel} ({(line.feeRate * 100).toFixed(1)}%){' '}
-        {formatFeeAmount(line.feeAmount)}
-      </p>
-      {line.memo && (
-        <p className="mt-1 text-card-meta text-it-ink-500 dark:text-rink-300">
-          {MESSAGES.settlements.memoLabel}: {line.memo}
-        </p>
-      )}
-    </div>
-  );
+// 훈련·대회 한 줄 아래에 적는 금액 계산 — 있는 항목만. 뺄 것이 없으면 결제 금액이 지급액과 같아 건수만 적는다.
+function groupSummaryParts(group: SettlementGroup): string[] {
+  const pgFeeAmount = group.pgFeeAmount ?? 0;
+  const paymentLabel = MESSAGES.settlements.groupPaymentRowLabel(group.paymentCount);
+  const hasDeduction = group.refundCount > 0 || group.feeAmount !== 0 || pgFeeAmount !== 0;
+  if (!hasDeduction) return [paymentLabel];
+  const parts: string[] = [];
+  if (group.paymentCount > 0) {
+    parts.push(`${paymentLabel} ${formatCurrency(group.paymentAmount)}`);
+  }
+  if (group.refundCount > 0) {
+    parts.push(
+      `${MESSAGES.settlements.groupRefundRowLabel(group.refundCount)} ${formatDeduction(group.refundAmount)}`,
+    );
+  }
+  if (group.feeAmount !== 0) {
+    parts.push(`${MESSAGES.settlements.platformFeeLabel} ${formatDeduction(group.feeAmount)}`);
+  }
+  if (pgFeeAmount !== 0) {
+    parts.push(`${MESSAGES.settlements.pgFeeLabel} ${formatDeduction(pgFeeAmount)}`);
+  }
+  return parts;
 }
 
-function GroupSummaryBody({ group }: { group: SettlementGroup }) {
+function GroupRow({ group }: { group: SettlementGroup }) {
+  const parts = groupSummaryParts(group);
   return (
-    <div className="min-w-0 flex-1">
-      <div className="flex items-center gap-1.5">
-        <span className="inline-flex shrink-0 items-center rounded-w-pill bg-it-fill px-1.5 py-0.5 text-[11px] font-bold text-it-ink-600 dark:bg-rink-700 dark:text-rink-100">
-          {groupSourceLabel(group.sourceType)}
-        </span>
-        <p className="truncate text-card-title font-bold text-it-ink-800 dark:text-white">
-          {group.name}
-        </p>
-      </div>
-      <p className="mt-1 text-card-meta tabular-nums text-it-ink-500 dark:text-rink-300">
-        {MESSAGES.settlements.groupPaymentSummary(
-          group.paymentCount,
-          formatCurrency(group.paymentAmount),
-        )}
-      </p>
-      {group.refundCount > 0 && (
-        <p className="text-card-meta tabular-nums text-it-red-500 dark:text-it-red-300">
-          {MESSAGES.settlements.groupRefundSummary(
-            group.refundCount,
-            formatCurrency(group.refundAmount),
-          )}
-        </p>
-      )}
-      <p className="mt-1 text-card-meta text-it-ink-400 dark:text-rink-300">
-        {MESSAGES.settlements.groupNetLabel}{' '}
+    <div className="border-b border-it-line py-3 last:border-b-0 dark:border-rink-700">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span className="inline-flex shrink-0 items-center rounded-w-pill bg-it-fill px-1.5 py-0.5 text-[11px] font-bold text-it-ink-600 dark:bg-rink-700 dark:text-rink-100">
+            {groupSourceLabel(group.sourceType)}
+          </span>
+          <p className="truncate text-card-body font-bold text-it-ink-800 dark:text-white">
+            {group.name}
+          </p>
+        </div>
         <span
-          className={`text-card-body font-bold tabular-nums ${
-            group.netAmount < 0 ? 'text-flame-500' : 'text-it-blue-500'
+          className={`shrink-0 text-card-body font-bold tabular-nums ${
+            group.netAmount < 0 ? 'text-flame-500' : 'text-it-ink-800 dark:text-white'
           }`}
         >
           {formatCurrency(group.netAmount)}
         </span>
+      </div>
+      {/* 항목 단위로만 줄이 넘어가게 한다 — "결제 수수료 / -6,600원" 처럼 중간에서 끊기지 않도록. */}
+      <p className="mt-1 flex flex-wrap gap-x-1 text-card-meta tabular-nums text-it-ink-500 dark:text-rink-300">
+        {parts.map((part, i) => (
+          <span key={part} className="whitespace-nowrap">
+            {i > 0 ? `· ${part}` : part}
+          </span>
+        ))}
       </p>
     </div>
   );
@@ -409,9 +294,6 @@ export default function SettlementDetailPage() {
 
   const params = useParams();
   const { navigate, back } = useNavigation();
-  // 인증 훅은 layout 에서만 호출 — 페이지는 이미 채워진 컨텍스트 값만 읽는다.
-  const user = useContext(AuthContext)?.user;
-  const canViewDetails = user?.userType === 'director' || user?.userType === 'admin';
 
   // 알림 딥링크 등으로 히스토리가 없을 때 뒤로가기가 앱 밖으로 나가지 않도록 목록으로 보낸다.
   const handleBack = useCallback(() => {
@@ -424,12 +306,8 @@ export default function SettlementDetailPage() {
   const [errorKind, setErrorKind] = useState<SettlementDetailErrorKind>(null);
 
   const [groups, setGroups] = useState<SettlementGroup[]>([]);
-  const [groupTotals, setGroupTotals] = useState<SettlementGroupTotals | null>(null);
   const [isSummaryLoading, setIsSummaryLoading] = useState(true);
   const [summaryErrored, setSummaryErrored] = useState(false);
-  // 그룹별 명세 — 키는 `${sourceType}:${sourceId ?? name}`. 첫 펼침 때만 조회한다.
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
-  const [groupDetails, setGroupDetails] = useState<Record<string, GroupDetailState>>({});
 
   // 풀스크린 로더 fast-path (v11) — 정산 본문 + 명세 요약 첫 로드가 끝나야 OFF
   usePageReady(!isLoading && !isSummaryLoading);
@@ -466,7 +344,6 @@ export default function SettlementDetailPage() {
       const res = await api.get<unknown>(`/settlements/${settlementId}/details/summary`);
       if (res.success) {
         setGroups(extractItems<SettlementGroup>(res.data));
-        setGroupTotals(extractGroupTotals(res.data));
         setSummaryErrored(false);
       } else {
         setSummaryErrored(true);
@@ -482,71 +359,6 @@ export default function SettlementDetailPage() {
     void loadSummary();
   }, [loadSummary]);
 
-  // 그룹 결제 명세 — 감독만 조회(코치는 403 대상이라 호출 자체를 하지 않는다).
-  const loadGroupDetails = useCallback(
-    async (group: SettlementGroup, page: number) => {
-      if (!settlementId || !canViewDetails) return;
-      const key = groupKey(group);
-      setGroupDetails((prev) => ({
-        ...prev,
-        [key]: {
-          lines: prev[key]?.lines ?? [],
-          page: prev[key]?.page ?? 0,
-          hasMore: prev[key]?.hasMore ?? false,
-          requestedPage: page,
-          isLoading: true,
-          errored: false,
-        },
-      }));
-      const params: Record<string, string | number> = {
-        page,
-        pageSize: DETAILS_PAGE_SIZE,
-        sourceType: group.sourceType,
-      };
-      if (group.sourceId) params.sourceId = group.sourceId;
-      else params.productName = group.name;
-      try {
-        const res = await api.get<unknown>(`/settlements/${settlementId}/details`, { params });
-        if (res.success) {
-          const items = extractItems<SettlementDetailLine>(res.data);
-          const meta = extractDetailsMeta(res.data);
-          setGroupDetails((prev) => ({
-            ...prev,
-            [key]: {
-              lines: page === 1 ? items : [...(prev[key]?.lines ?? []), ...items],
-              page,
-              requestedPage: page,
-              hasMore: meta ? meta.page < meta.totalPages : false,
-              isLoading: false,
-              errored: false,
-            },
-          }));
-        } else {
-          setGroupDetails((prev) => ({
-            ...prev,
-            [key]: { ...prev[key], isLoading: false, errored: true },
-          }));
-        }
-      } catch {
-        setGroupDetails((prev) => ({
-          ...prev,
-          [key]: { ...prev[key], isLoading: false, errored: true },
-        }));
-      }
-    },
-    [settlementId, canViewDetails],
-  );
-
-  const handleToggleGroup = useCallback(
-    (group: SettlementGroup) => {
-      const key = groupKey(group);
-      const willOpen = !openGroups[key];
-      setOpenGroups((prev) => ({ ...prev, [key]: willOpen }));
-      if (willOpen && !groupDetails[key]) void loadGroupDetails(group, 1);
-    },
-    [openGroups, groupDetails, loadGroupDetails],
-  );
-
   if (isLoading) return null;
 
   if (!settlement) {
@@ -559,7 +371,7 @@ export default function SettlementDetailPage() {
         : MESSAGES.settlements.loadError;
     return (
       <MobileContainer hasBottomNav={false}>
-        <PageAppBar title={MESSAGES.settlements.pageTitle} onBack={handleBack} />
+        <PageAppBar title={MESSAGES.settlements.detailTitle} onBack={handleBack} />
         <main className="flex-1 overflow-y-auto bg-it-canvas dark:bg-puck !pb-8">
           <div className="flex flex-col items-center gap-3 px-5 py-20 text-center">
             <p className="text-card-body text-it-ink-500 dark:text-rink-300">{message}</p>
@@ -587,36 +399,76 @@ export default function SettlementDetailPage() {
   }
 
   const [year, month] = settlement.settlementMonth.split('-');
-  const periodText = year && month ? MESSAGES.settlements.yearMonthLabel(year, month) : settlement.settlementMonth;
+  const periodText =
+    year && month
+      ? MESSAGES.settlements.yearMonthLabel(year, String(Number(month)))
+      : settlement.settlementMonth;
   const statusCfg = SETTLEMENT_STATUS[settlement.status];
-  const fee = settlement.platformFee + settlement.paymentFee;
+  const platformFee = settlement.platformFee;
+  const paymentFee = settlement.paymentFee;
 
   const payouts = settlement.transactions.filter((t) => t.transactionType === 'payout');
   const rejectReason = settlement.transactions.find((t) => t.transactionType === 'reject');
 
   const hasBankInfo = settlement.bankName || settlement.bankAccount || settlement.accountHolder;
   const isNetNegative = settlement.netAmount < 0;
+  const isPaid = settlement.status === 'paid';
+  const amountLabel = isPaid
+    ? MESSAGES.settlements.paidAmountLabel
+    : MESSAGES.settlements.receivableLabel;
+  // transactions 는 서버가 지급일 내림차순으로 준다 — 첫 payout 이 가장 최근 지급이다.
+  const lastPayout = isPaid ? payouts[0] : undefined;
+  const paidDate = lastPayout ? formatDateOnly(lastPayout.transactionDate) : '';
+  // 운영자가 메모 없이 지급하면 서버가 기본 문구를 채운다 — 직접 적은 메모만 보여준다.
+  const payoutNote =
+    lastPayout?.description && lastPayout.description !== MESSAGES.settlements.payoutDefaultNote
+      ? lastPayout.description
+      : null;
 
   return (
     <MobileContainer hasBottomNav={false}>
-      <PageAppBar title={MESSAGES.settlements.detailTitle(periodText)} onBack={handleBack} />
+      <PageAppBar title={MESSAGES.settlements.detailTitle} onBack={handleBack} />
 
       <main className="flex-1 overflow-y-auto bg-it-canvas dark:bg-puck !pb-8">
-        {/* flat 흰 섹션 — 정산 요약(카드 박스 제거) */}
+        {/* 받을 금액 — 상태·지급일·계좌를 한 덩어리로 */}
         <section className="mt-2 bg-it-surface dark:bg-it-blue-950 p-4 flex flex-col gap-4">
-          <p className="text-card-meta text-it-ink-400 dark:text-rink-300">
-            {MESSAGES.settlements.basisNotice}
-          </p>
-
-          <div className="flex items-center justify-between">
-            <p className="text-card-title font-bold text-it-ink-800 dark:text-white">
-              {settlement.teamName}
-            </p>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate text-card-title font-bold text-it-ink-800 dark:text-white">
+                {periodText}
+              </p>
+              <p className="mt-0.5 truncate text-card-meta text-it-ink-500 dark:text-rink-300">
+                {settlement.teamName}
+              </p>
+            </div>
             <span
               className={`shrink-0 inline-flex items-center px-2.5 py-1 rounded-w-pill text-card-meta font-bold ${statusCfg.className}`}
             >
               {statusCfg.label}
             </span>
+          </div>
+
+          <div>
+            <p className="text-card-meta font-medium text-it-ink-500 dark:text-rink-300">
+              {amountLabel}
+            </p>
+            <p
+              className={`mt-1 text-w-h2 font-bold tabular-nums ${
+                isNetNegative ? 'text-flame-500' : 'text-it-blue-500'
+              }`}
+            >
+              {formatCurrency(settlement.netAmount)}
+            </p>
+            {paidDate && (
+              <p className="mt-1 text-card-meta text-it-ink-500 dark:text-rink-300">
+                {MESSAGES.settlements.paidDateLabel(paidDate)}
+              </p>
+            )}
+            {payoutNote && (
+              <p className="mt-0.5 text-card-meta text-it-ink-500 dark:text-rink-300">
+                {MESSAGES.settlements.memoLabel}: {payoutNote}
+              </p>
+            )}
           </div>
 
           {/* 순지급액 마이너스 — 환불 초과로 지급 보류 */}
@@ -640,73 +492,23 @@ export default function SettlementDetailPage() {
             </div>
           )}
 
-          {/* Stats Summary Grid — flat 인셋 2x2 */}
-          <div className="grid grid-cols-2 gap-2">
-            <div className="flex flex-col gap-1.5 rounded-w-md p-4 bg-it-fill dark:bg-puck/40">
-              <p className="text-it-ink-500 dark:text-rink-300 text-card-meta font-medium uppercase tracking-wider">
-                {MESSAGES.settlements.totalRevenueLabel}
-              </p>
-              <p className="text-it-ink-800 dark:text-white text-card-title font-bold tabular-nums">
-                {formatCurrency(settlement.totalRevenue)}
-              </p>
-            </div>
-            <div className="flex flex-col gap-1.5 rounded-w-md p-4 bg-it-fill dark:bg-puck/40">
-              <p className="text-it-ink-500 dark:text-rink-300 text-card-meta font-medium uppercase tracking-wider">
-                {MESSAGES.settlements.refundLabel}
-              </p>
-              <p className="text-it-red-500 dark:text-it-red-300 text-card-title font-bold tabular-nums">
-                {formatCurrency(settlement.refundAmount)}
-              </p>
-            </div>
-            <div className="flex flex-col gap-1.5 rounded-w-md p-4 bg-it-fill dark:bg-puck/40">
-              <p className="text-it-ink-500 dark:text-rink-300 text-card-meta font-medium uppercase tracking-wider">
-                {MESSAGES.settlements.feeLabel}
-              </p>
-              <p className="text-it-red-500 dark:text-it-red-300 text-card-title font-bold tabular-nums">
-                {formatFeeAmount(fee)}
-              </p>
-            </div>
-            <div
-              className={`flex flex-col gap-1.5 rounded-w-md p-4 ${
-                isNetNegative ? 'bg-flame-500/10 dark:bg-flame-500/15' : 'bg-it-blue-50 dark:bg-it-blue-500/15'
-              }`}
-            >
-              <p
-                className={`text-card-meta font-medium uppercase tracking-wider ${
-                  isNetNegative ? 'text-flame-500' : 'text-it-blue-500'
-                }`}
-              >
-                {MESSAGES.settlements.netAmountLabel}
-              </p>
-              <p
-                className={`text-xl font-bold tabular-nums ${
-                  isNetNegative ? 'text-flame-500' : 'text-it-blue-500'
-                }`}
-              >
-                {formatCurrency(settlement.netAmount)}
-              </p>
-            </div>
-          </div>
-
           {/* 지급 계좌 — 값이 있을 때만 표시(코치는 계좌번호 null) */}
           {hasBankInfo && (
-            <div className="rounded-w-md border-[1.5px] border-it-line-strong dark:border-rink-700 p-4">
-              <p className="text-card-meta font-bold text-it-ink-500 dark:text-rink-300 mb-2">
+            <div className="rounded-w-md bg-it-fill px-4 py-3 dark:bg-puck/40">
+              <p className="text-card-meta font-medium text-it-ink-500 dark:text-rink-300">
                 {MESSAGES.settlements.bankInfoTitle}
               </p>
-              <div className="flex flex-col gap-1 text-card-body text-it-ink-800 dark:text-white">
-                {settlement.bankName && (
-                  <p>
-                    {settlement.bankName}
-                    {settlement.bankAccount ? ` ${settlement.bankAccount}` : ''}
-                  </p>
-                )}
-                {settlement.accountHolder && (
-                  <p className="text-card-meta text-it-ink-500 dark:text-rink-300">
-                    {MESSAGES.settlements.accountHolderLabel} {settlement.accountHolder}
-                  </p>
-                )}
-              </div>
+              {settlement.bankName && (
+                <p className="mt-0.5 text-card-body text-it-ink-800 dark:text-white">
+                  {settlement.bankName}
+                  {settlement.bankAccount ? ` ${settlement.bankAccount}` : ''}
+                </p>
+              )}
+              {settlement.accountHolder && (
+                <p className="text-card-meta text-it-ink-500 dark:text-rink-300">
+                  {MESSAGES.settlements.accountHolderLabel} {settlement.accountHolder}
+                </p>
+              )}
             </div>
           )}
         </section>
@@ -714,22 +516,43 @@ export default function SettlementDetailPage() {
         {/* flat 섹션 사이 8px 회색 갭 */}
         <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
 
-        {/* flat 흰 섹션 — 지급 기록 */}
+        {/* 계산 내역 — 매출에서 무엇이 빠져 받을 금액이 됐는지 */}
         <section className="bg-it-surface dark:bg-it-blue-950 p-4">
           <h2 className="text-it-ink-800 dark:text-white text-card-title font-bold tracking-tight mb-1">
-            {MESSAGES.settlements.payoutHistoryTitle}
+            {MESSAGES.settlements.breakdownTitle}
           </h2>
-          {payouts.length === 0 ? (
-            <p className="py-8 text-center text-card-body text-it-ink-400 dark:text-rink-300">
-              {MESSAGES.settlements.emptyPayout}
-            </p>
-          ) : (
-            <div className="flex flex-col">
-              {payouts.map((tx, i) => (
-                <PayoutRow key={tx.id} tx={tx} isLast={i === payouts.length - 1} />
-              ))}
-            </div>
-          )}
+          <dl className="flex flex-col">
+            <AmountRow
+              label={MESSAGES.settlements.totalRevenueLabel}
+              value={formatCurrency(settlement.totalRevenue)}
+            />
+            <AmountRow
+              label={MESSAGES.settlements.refundLabel}
+              value={formatDeduction(settlement.refundAmount)}
+              tone={settlement.refundAmount !== 0 ? 'minus' : 'default'}
+            />
+            {platformFee !== 0 && (
+              <AmountRow
+                label={MESSAGES.settlements.platformFeeLabel}
+                value={formatDeduction(platformFee)}
+                tone="minus"
+              />
+            )}
+            <AmountRow
+              label={MESSAGES.settlements.pgFeeLabel}
+              value={formatDeduction(paymentFee)}
+              tone={paymentFee !== 0 ? 'minus' : 'default'}
+            />
+            <AmountRow
+              label={amountLabel}
+              value={formatCurrency(settlement.netAmount)}
+              tone={isNetNegative ? 'negative' : 'total'}
+              className="mt-1.5 border-t border-it-line pt-3 dark:border-rink-700"
+            />
+          </dl>
+          <p className="mt-3 text-card-meta text-it-ink-400 dark:text-rink-300">
+            {MESSAGES.settlements.basisNotice}
+          </p>
         </section>
 
         <div className="h-2 bg-it-canvas dark:bg-puck" aria-hidden="true" />
@@ -756,96 +579,9 @@ export default function SettlementDetailPage() {
             </p>
           ) : (
             <div className="flex flex-col">
-              {groups.map((group) => {
-                const key = groupKey(group);
-                const isOpen = !!openGroups[key];
-                const detail = groupDetails[key];
-                return (
-                  <div key={key} className="border-b border-it-line dark:border-rink-700">
-                    {canViewDetails ? (
-                      <button
-                        type="button"
-                        onClick={() => handleToggleGroup(group)}
-                        aria-expanded={isOpen}
-                        className="flex min-h-[44px] w-full items-center gap-3 py-3 text-left active:brightness-95"
-                      >
-                        <GroupSummaryBody group={group} />
-                        <Icon
-                          name={isOpen ? 'expand_less' : 'expand_more'}
-                          className="shrink-0 text-card-emphasis text-it-ink-500 dark:text-rink-300"
-                          aria-hidden="true"
-                        />
-                      </button>
-                    ) : (
-                      <div className="flex items-center py-3">
-                        <GroupSummaryBody group={group} />
-                      </div>
-                    )}
-                    {canViewDetails && isOpen && (
-                      <div className="pb-3 pl-2">
-                        {detail?.lines.map((line, i) => (
-                          <DetailLineRow
-                            key={line.id}
-                            line={line}
-                            isLast={i === detail.lines.length - 1}
-                          />
-                        ))}
-                        {detail?.errored && (
-                          <div className="flex flex-col items-center gap-2 py-3 text-center">
-                            <p className="text-card-meta text-it-ink-400 dark:text-rink-300">
-                              {MESSAGES.settlements.detailsLoadError}
-                            </p>
-                            <button
-                              type="button"
-                              onClick={() => void loadGroupDetails(group, detail.requestedPage)}
-                              className="inline-flex h-11 items-center justify-center rounded-w-md bg-it-blue-500 px-4 text-card-meta font-semibold text-white transition-colors hover:bg-it-blue-600 active:brightness-95 motion-reduce:transition-none"
-                            >
-                              {MESSAGES.settlements.retry}
-                            </button>
-                          </div>
-                        )}
-                        {detail && !detail.errored && detail.hasMore && (
-                          <button
-                            type="button"
-                            onClick={() => void loadGroupDetails(group, detail.page + 1)}
-                            disabled={detail.isLoading}
-                            className="mt-2 min-h-[44px] w-full rounded-w-md border border-dashed border-it-line-strong dark:border-rink-700 text-card-body font-semibold text-it-ink-500 dark:text-rink-300 hover:bg-it-fill dark:hover:bg-rink-800 active:brightness-95 transition-colors motion-reduce:transition-none disabled:opacity-50"
-                          >
-                            {MESSAGES.settlements.detailsLoadMore}
-                          </button>
-                        )}
-                        {detail && !detail.isLoading && !detail.errored && detail.lines.length === 0 && (
-                          <p className="py-4 text-center text-card-meta text-it-ink-400 dark:text-rink-300">
-                            {MESSAGES.settlements.detailsEmpty}
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-              {groupTotals && (
-                <div className="pt-3">
-                  <p className="text-card-meta tabular-nums text-it-ink-500 dark:text-rink-300">
-                    {MESSAGES.settlements.groupsTotalLabel}{' '}
-                    {MESSAGES.settlements.groupPaymentSummary(
-                      groupTotals.paymentCount,
-                      formatCurrency(groupTotals.paymentAmount),
-                    )}
-                    {groupTotals.refundCount > 0 &&
-                      ` / ${MESSAGES.settlements.groupRefundSummary(
-                        groupTotals.refundCount,
-                        formatCurrency(groupTotals.refundAmount),
-                      )}`}
-                  </p>
-                  <p className="mt-1 text-card-body font-bold text-it-ink-800 dark:text-white">
-                    {MESSAGES.settlements.groupsTotalPayoutLabel}{' '}
-                    <span className="tabular-nums text-it-blue-500">
-                      {formatCurrency(groupTotals.netAmount)}
-                    </span>
-                  </p>
-                </div>
-              )}
+              {groups.map((group) => (
+                <GroupRow key={groupKey(group)} group={group} />
+              ))}
             </div>
           )}
         </section>

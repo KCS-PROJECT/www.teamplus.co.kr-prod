@@ -20,6 +20,8 @@ import {
 } from "@/payments/settlement/payment-team-scope.util";
 import { acquireSettlementCloseLock } from "./utils/settlement-locks.util";
 import { SETTLEMENT_STATUS } from "./constants/settlement-status.constant";
+import { PG_FEE_RATE } from "./constants/pg-fee.constant";
+import { calcFee } from "./utils/settlement-fee.util";
 
 /**
  * approve/payout 등으로 확정되어 재계산 대상에서 제외되는 상태 — 그 팀은 잠긴 채 skip.
@@ -91,6 +93,8 @@ export interface CloseSettlementNegativeNetTeam {
 export interface CloseSettlementResult {
   month: string;
   commissionRate: number;
+  /** 이번 마감에 적용한 결제(PG) 수수료율 */
+  pgFeeRate: number;
   created: number;
   updated: number;
   deleted: number;
@@ -134,6 +138,9 @@ interface DraftDetailRow {
   feeRate: number;
   /** PAYMENT=+수수료, REFUND=-환급 수수료. */
   feeAmount: number;
+  pgFeeRate: number;
+  /** PAYMENT=+결제 수수료, REFUND=-환급. */
+  pgFeeAmount: number;
   actualAmount: number;
   attributionMonth: string | null;
   memo: string | null;
@@ -315,6 +322,7 @@ export class SettlementCloseService {
       this.prisma.appSettings.findFirst({ select: { commissionRate: true } }),
     ]);
     const commissionRate = appSettings ? Number(appSettings.commissionRate) : 0;
+    const pgFeeRate = PG_FEE_RATE;
 
     const { start: monthStart, end: monthEnd } = kstMonthBoundsUtc(month);
 
@@ -342,8 +350,30 @@ export class SettlementCloseService {
       select: CLOSE_PAYMENT_SELECT,
     });
 
+    // 이 달 결제의 환불이 다른 달 정산에 이미 기록돼 있으면 결제 행도 그 환불 행의 요율을 쓴다 —
+    //   결제 행만 현재 요율로 다시 계산하면 환급액과 어긋나 환불된 금액에 수수료만 남는다.
+    const refundRowsElsewhere =
+      payments.length > 0
+        ? await this.prisma.settlementDetail.findMany({
+            where: {
+              entryType: SettlementEntryType.REFUND,
+              paymentId: { in: payments.map((p) => p.id) },
+              settlement: { settlementMonth: { not: month } },
+            },
+            select: { paymentId: true, feeRate: true, pgFeeRate: true },
+          })
+        : [];
+    const refundedRatesByPaymentId = new Map(
+      refundRowsElsewhere.map((d) => [d.paymentId, d]),
+    );
+
     // 같은 배치(이번 달) 안의 PAYMENT 유무 — REFUND 매칭 판정에 쓴다.
     const paymentIdsThisRun = new Set<string>();
+    // 이번 배치의 PAYMENT 행에 실제로 적용한 요율 — 같은 달 환불이 그대로 따른다.
+    const appliedRatesByPaymentId = new Map<
+      string,
+      { feeRate: number; pgFeeRate: number }
+    >();
 
     for (const p of payments) {
       if (p.pgProvider && NON_CASH_PG_PROVIDERS.has(p.pgProvider)) {
@@ -372,7 +402,15 @@ export class SettlementCloseService {
         });
       }
 
-      const feeAmount = Math.round(p.amount * commissionRate);
+      const refundedRates = refundedRatesByPaymentId.get(p.id);
+      const rowFeeRate = refundedRates?.feeRate ?? commissionRate;
+      const rowPgFeeRate = refundedRates?.pgFeeRate ?? pgFeeRate;
+      appliedRatesByPaymentId.set(p.id, {
+        feeRate: rowFeeRate,
+        pgFeeRate: rowPgFeeRate,
+      });
+      const feeAmount = calcFee(p.amount, rowFeeRate);
+      const pgFeeAmount = calcFee(p.amount, rowPgFeeRate);
       pushRow({
         teamId,
         paymentId: p.id,
@@ -384,9 +422,11 @@ export class SettlementCloseService {
         paymentDate: instantToKstDateOnly(p.completedAt ?? p.createdAt),
         paymentMethod: p.paymentMethod ?? p.pgProvider ?? "unknown",
         paymentAmount: p.amount,
-        feeRate: commissionRate,
+        feeRate: rowFeeRate,
         feeAmount,
-        actualAmount: p.amount - feeAmount,
+        pgFeeRate: rowPgFeeRate,
+        pgFeeAmount,
+        actualAmount: p.amount - feeAmount - pgFeeAmount,
         attributionMonth: resolveAttributionMonth(p),
         memo: null,
       });
@@ -411,7 +451,12 @@ export class SettlementCloseService {
       const existingPaymentDetails =
         await this.prisma.settlementDetail.findMany({
           where: { eventKey: { in: candidatePaymentEventKeys } },
-          select: { eventKey: true, paymentId: true, feeRate: true },
+          select: {
+            eventKey: true,
+            paymentId: true,
+            feeRate: true,
+            pgFeeRate: true,
+          },
         });
       const matchedPaymentEventKeys = new Set(
         existingPaymentDetails.map((d) => d.eventKey),
@@ -420,6 +465,9 @@ export class SettlementCloseService {
       //   따른다 — 결제 당시 3%로 걷었으면 환불도 3%만 환급한다(중간에 요율이 바뀌어도).
       const originalFeeRateByPaymentId = new Map(
         existingPaymentDetails.map((d) => [d.paymentId, d.feeRate]),
+      );
+      const originalPgFeeRateByPaymentId = new Map(
+        existingPaymentDetails.map((d) => [d.paymentId, d.pgFeeRate]),
       );
 
       for (const r of refundLogs) {
@@ -458,12 +506,21 @@ export class SettlementCloseService {
           continue;
         }
 
-        // 이번 배치에서 같이 만든 PAYMENT 행이면 그 행과 같은(=commissionRate) 요율,
+        // 이번 배치에서 같이 만든 PAYMENT 행이면 그 행에 적용한 요율,
         //   아니면 과거에 기록된 원 결제 Detail 의 feeRate 를 그대로 쓴다.
-        const originalFeeRate = paymentIdsThisRun.has(original.id)
-          ? commissionRate
-          : (originalFeeRateByPaymentId.get(original.id) ?? commissionRate);
-        const feeAmount = -Math.round(r.refundAmount * originalFeeRate);
+        const appliedThisRun = appliedRatesByPaymentId.get(original.id);
+        const originalFeeRate =
+          appliedThisRun?.feeRate ??
+          originalFeeRateByPaymentId.get(original.id) ??
+          commissionRate;
+        // 0 에서 빼서 음수화한다 — 단항 마이너스는 수수료가 0 일 때 -0 을 만든다.
+        const feeAmount = 0 - calcFee(r.refundAmount, originalFeeRate);
+        // 결제 수수료도 같은 규칙 — 수수료 없이 마감된 결제(0)의 환불은 환급도 0 이다.
+        const originalPgFeeRate =
+          appliedThisRun?.pgFeeRate ??
+          originalPgFeeRateByPaymentId.get(original.id) ??
+          pgFeeRate;
+        const pgFeeAmount = 0 - calcFee(r.refundAmount, originalPgFeeRate);
         pushRow({
           teamId,
           paymentId: original.id,
@@ -478,7 +535,9 @@ export class SettlementCloseService {
           paymentAmount: -r.refundAmount,
           feeRate: originalFeeRate,
           feeAmount,
-          actualAmount: -r.refundAmount - feeAmount,
+          pgFeeRate: originalPgFeeRate,
+          pgFeeAmount,
+          actualAmount: -r.refundAmount - feeAmount - pgFeeAmount,
           attributionMonth: resolveAttributionMonth(original),
           memo: "환불",
         });
@@ -505,6 +564,7 @@ export class SettlementCloseService {
     let totalRevenue = 0;
     let refundAmount = 0;
     let platformFee = 0;
+    let paymentFee = 0;
     let netAmount = 0;
     const skipped: CloseSettlementSkippedTeam[] = [];
     const conflicts: CloseSettlementConflict[] = [];
@@ -556,6 +616,7 @@ export class SettlementCloseService {
           totalRevenue += result.totals.totalRevenue;
           refundAmount += result.totals.refundAmount;
           platformFee += result.totals.platformFee;
+          paymentFee += result.totals.paymentFee;
           netAmount += result.totals.netAmount;
           conflicts.push(...result.conflicts);
           if (result.totals.netAmount < 0) {
@@ -572,6 +633,7 @@ export class SettlementCloseService {
     return {
       month,
       commissionRate,
+      pgFeeRate,
       created,
       updated,
       deleted,
@@ -583,7 +645,7 @@ export class SettlementCloseService {
         totalRevenue,
         refundAmount,
         platformFee,
-        paymentFee: 0,
+        paymentFee,
         netAmount,
       },
       excluded,
@@ -801,6 +863,8 @@ export class SettlementCloseService {
             paymentAmount: r.paymentAmount,
             feeRate: r.feeRate,
             feeAmount: r.feeAmount,
+            pgFeeRate: r.pgFeeRate,
+            pgFeeAmount: r.pgFeeAmount,
             actualAmount: r.actualAmount,
             attributionMonth: r.attributionMonth,
             status: SettlementDetailStatus.PENDING,
@@ -813,6 +877,7 @@ export class SettlementCloseService {
         let totalRevenue = 0;
         let refundAmount = 0;
         let platformFee = 0;
+        let paymentFee = 0;
         let netAmount = 0;
         for (const r of targetRows) {
           if (r.entryType === SettlementEntryType.PAYMENT) {
@@ -823,6 +888,7 @@ export class SettlementCloseService {
             refundAmount += -r.paymentAmount;
           }
           platformFee += r.feeAmount;
+          paymentFee += r.pgFeeAmount;
           netAmount += r.actualAmount;
         }
 
@@ -832,7 +898,7 @@ export class SettlementCloseService {
             totalRevenue,
             refundAmount,
             platformFee,
-            paymentFee: 0,
+            paymentFee,
             netAmount,
           },
         });
@@ -854,7 +920,7 @@ export class SettlementCloseService {
             totalRevenue,
             refundAmount,
             platformFee,
-            paymentFee: 0,
+            paymentFee,
             netAmount,
           },
           conflicts,
