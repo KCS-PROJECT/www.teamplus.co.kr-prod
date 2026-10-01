@@ -4272,7 +4272,8 @@ export const MESSAGES = {
     paidDateLabel: (date: string) => `지급일 ${date}`,
     totalRevenueLabel: "총 매출",
     refundLabel: "환불",
-    feeLabel: "수수료",
+    platformFeeLabel: "플랫폼 수수료",
+    pgFeeLabel: "결제 수수료",
     netAmountLabel: "순 지급액",
     statusPending: "정산 대기",
     statusApproved: "지급 예정",
@@ -4288,7 +4289,6 @@ export const MESSAGES = {
     detailsEmpty: "결제 명세가 없습니다.",
     detailsLoadMore: "결제 명세 더보기",
     paymentAmountLabel: "결제 금액",
-    feeAmountLabel: "수수료",
     actualAmountLabel: "실지급액",
     memoLabel: "메모",
     // 결제 명세 행 — 결제/환불 구분 + 귀속월(해당 결제가 속한 월)

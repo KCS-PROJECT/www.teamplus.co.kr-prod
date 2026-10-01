@@ -135,6 +135,8 @@ interface SettlementDetailLine {
   paymentAmount: number;
   feeRate: number;
   feeAmount: number;
+  pgFeeRate?: number;
+  pgFeeAmount?: number;
   actualAmount: number;
   status: string;
   entryType: SettlementEntryType;
@@ -159,6 +161,7 @@ interface SettlementSummaryGroup {
   refundCount: number;
   refundAmount: number;
   feeAmount: number;
+  pgFeeAmount?: number;
   netAmount: number;
 }
 
@@ -168,6 +171,7 @@ interface SettlementSummaryTotals {
   refundCount: number;
   refundAmount: number;
   feeAmount: number;
+  pgFeeAmount?: number;
   netAmount: number;
 }
 
@@ -540,10 +544,13 @@ export function SettlementDetailDialog({
   const payoutAccountReady = (detail?.netAmount ?? 0) <= 0 || teamAccount?.status === 'REGISTERED';
   const totalFee = detail ? detail.platformFee + detail.paymentFee : 0;
   // 수수료율이 0 인 동안에는 명세의 수수료 열을 숨긴다 — 요율이 생기면 자동으로 다시 보인다.
-  const showFeeColumn = totalFee !== 0 || lines.some((line) => line.feeAmount !== 0);
+  const showFeeColumn =
+    totalFee !== 0 || lines.some((line) => line.feeAmount !== 0 || (line.pgFeeAmount ?? 0) !== 0);
   const colCount = showFeeColumn ? 5 : 4;
   const showSummaryFeeColumn =
-    (summaryTotals?.feeAmount ?? 0) !== 0 || summaryGroups.some((group) => group.feeAmount !== 0);
+    (summaryTotals?.feeAmount ?? 0) !== 0 ||
+    (summaryTotals?.pgFeeAmount ?? 0) !== 0 ||
+    summaryGroups.some((group) => group.feeAmount !== 0 || (group.pgFeeAmount ?? 0) !== 0);
   const summaryColCount = showSummaryFeeColumn ? 5 : 4;
   const hasLineFilter =
     linesQuery.entryType !== 'ALL' || linesQuery.q !== '' || linesQuery.source !== null;
@@ -563,7 +570,10 @@ export function SettlementDetailDialog({
     ? [
         { key: 'revenue', label: MESSAGES.settlement.amountTotalRevenue, value: detail.totalRevenue, emphasis: false },
         { key: 'refund', label: MESSAGES.settlement.amountRefund, value: detail.refundAmount, emphasis: false },
-        { key: 'fee', label: MESSAGES.settlement.amountFee, value: totalFee, emphasis: false },
+        ...(detail.platformFee !== 0
+          ? [{ key: 'fee', label: MESSAGES.settlement.amountPlatformFee, value: detail.platformFee, emphasis: false }]
+          : []),
+        { key: 'pgFee', label: MESSAGES.settlement.amountPaymentFee, value: detail.paymentFee, emphasis: false },
         { key: 'net', label: MESSAGES.settlement.amountNet, value: detail.netAmount, emphasis: true },
       ]
     : [];
@@ -632,9 +642,13 @@ export function SettlementDetailDialog({
             </div>
           ) : detail ? (
             <>
-              {/* 금액 요약 — 한 줄 4칸 + 계좌 한 줄 */}
+              {/* 금액 요약 — 한 줄(플랫폼 수수료가 있으면 5칸) + 계좌 한 줄 */}
               <div className="shrink-0 space-y-2">
-                <dl className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
+                <dl
+                  className={`grid grid-cols-2 gap-2 text-sm ${
+                    summaryItems.length > 4 ? 'sm:grid-cols-5' : 'sm:grid-cols-4'
+                  }`}
+                >
                   {summaryItems.map((item) => (
                     <div key={item.key} className="rounded-lg bg-slate-50 dark:bg-slate-700/50 px-3 py-2">
                       <dt className="text-xs text-slate-500 dark:text-slate-400">{item.label}</dt>
@@ -889,7 +903,7 @@ export function SettlementDetailDialog({
                                   </td>
                                   {showSummaryFeeColumn && (
                                     <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap text-slate-500 dark:text-slate-400">
-                                      {formatAmount(group.feeAmount)}
+                                      {formatAmount(group.feeAmount + (group.pgFeeAmount ?? 0))}
                                     </td>
                                   )}
                                   <td
@@ -930,7 +944,7 @@ export function SettlementDetailDialog({
                               </td>
                               {showSummaryFeeColumn && (
                                 <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap text-slate-500 dark:text-slate-400">
-                                  {formatAmount(summaryTotals.feeAmount)}
+                                  {formatAmount(summaryTotals.feeAmount + (summaryTotals.pgFeeAmount ?? 0))}
                                 </td>
                               )}
                               <td
@@ -1029,7 +1043,7 @@ export function SettlementDetailDialog({
                                   </td>
                                   {showFeeColumn && (
                                     <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap text-slate-500 dark:text-slate-400">
-                                      {formatAmount(line.feeAmount)}
+                                      {formatAmount(line.feeAmount + (line.pgFeeAmount ?? 0))}
                                     </td>
                                   )}
                                   <td

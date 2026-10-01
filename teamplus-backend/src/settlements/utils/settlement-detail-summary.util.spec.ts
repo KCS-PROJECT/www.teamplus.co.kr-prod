@@ -9,6 +9,7 @@ const row = (
   productName: "화요반",
   paymentAmount: 10000,
   feeAmount: 0,
+  pgFeeAmount: 0,
   actualAmount: 10000,
   ...overrides,
 });
@@ -60,6 +61,26 @@ describe("aggregateDetailsBySource", () => {
     );
     expect(meta.totals.netAmount).toBe(6790);
     expect(meta.groupCount).toBe(1);
+  });
+
+  it("결제 수수료는 플랫폼 수수료와 따로 합산하고 환불 환급분을 상계한다", () => {
+    const { data, meta } = aggregateDetailsBySource([
+      row({ paymentAmount: 30000, pgFeeAmount: 330, actualAmount: 29670 }),
+      row({
+        entryType: "REFUND",
+        paymentAmount: -9000,
+        pgFeeAmount: -99,
+        actualAmount: -8901,
+      }),
+    ]);
+    expect(data[0]).toEqual(
+      expect.objectContaining({
+        feeAmount: 0,
+        pgFeeAmount: 231,
+        netAmount: 20769,
+      }),
+    );
+    expect(meta.totals.pgFeeAmount).toBe(231);
   });
 
   it("OTHER 는 상품명으로 묶고 sourceId=null", () => {

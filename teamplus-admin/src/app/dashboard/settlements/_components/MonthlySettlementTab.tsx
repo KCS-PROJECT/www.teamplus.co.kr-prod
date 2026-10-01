@@ -120,6 +120,7 @@ interface SettlementNegativeNetTeam {
 
 interface SettlementCloseResult {
   month: string;
+  pgFeeRate?: number;
   commissionRate: number;
   created: number;
   updated: number;
@@ -155,6 +156,7 @@ interface SettlementSummaryBucket {
 }
 
 interface SettlementSummaryResponse {
+  pgFeeRate?: number;
   pending: SettlementSummaryBucket;
   approved: SettlementSummaryBucket;
   paid: SettlementSummaryBucket;
@@ -208,6 +210,10 @@ function getDefaultMonth(): string {
   const now = new Date();
   const d = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function formatRatePercent(rate: number): string {
+  return String(parseFloat((rate * 100).toFixed(2)));
 }
 
 /** 서버가 내려준 부호를 그대로 쓰는 공용 금액 포맷. -0 은 0원으로 정규화한다. */
@@ -515,6 +521,11 @@ export function MonthlySettlementTab() {
                 )}
               </div>
             ))}
+            {(monthSummary?.pgFeeRate ?? 0) > 0 && (
+              <p className="col-span-full text-xs text-slate-500 dark:text-slate-400">
+                {MESSAGES.settlementDynamic.pgFeeRateNotice(formatRatePercent(monthSummary?.pgFeeRate ?? 0))}
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -574,7 +585,7 @@ export function MonthlySettlementTab() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-sm">
+          <div className="grid grid-cols-2 sm:grid-cols-6 gap-3 text-sm">
             <div className="rounded-lg bg-slate-50 dark:bg-slate-700/50 px-3 py-2">
               <p className="text-slate-500 dark:text-slate-400">{MESSAGES.settlement.closePaymentCount}</p>
               <p className="font-bold text-slate-900 dark:text-white tabular-nums">{closeResult.totals.paymentCount}건</p>
@@ -590,6 +601,10 @@ export function MonthlySettlementTab() {
             <div className="rounded-lg bg-slate-50 dark:bg-slate-700/50 px-3 py-2">
               <p className="text-slate-500 dark:text-slate-400">{MESSAGES.settlement.closeRefundAmountLabel}</p>
               <p className="font-bold text-slate-900 dark:text-white tabular-nums">{formatAmount(closeResult.totals.refundAmount)}</p>
+            </div>
+            <div className="rounded-lg bg-slate-50 dark:bg-slate-700/50 px-3 py-2">
+              <p className="text-slate-500 dark:text-slate-400">{MESSAGES.settlement.pgFeeLabel}</p>
+              <p className="font-bold text-slate-900 dark:text-white tabular-nums">{formatAmount(closeResult.totals.paymentFee ?? 0)}</p>
             </div>
             <div className="rounded-lg bg-slate-50 dark:bg-slate-700/50 px-3 py-2">
               <p className="text-slate-500 dark:text-slate-400">{MESSAGES.settlement.closeNetAmountLabel}</p>

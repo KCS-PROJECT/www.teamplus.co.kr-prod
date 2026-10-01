@@ -72,6 +72,8 @@ interface SettlementDetailLine {
   paymentAmount: number;
   feeRate: number;
   feeAmount: number;
+  pgFeeRate?: number;
+  pgFeeAmount?: number;
   actualAmount: number;
   status: string;
   memo: string | null;
@@ -95,6 +97,7 @@ interface SettlementGroup {
   refundCount: number;
   refundAmount: number;
   feeAmount: number;
+  pgFeeAmount?: number;
   netAmount: number;
 }
 
@@ -104,6 +107,7 @@ interface SettlementGroupTotals {
   refundCount: number;
   refundAmount: number;
   feeAmount: number;
+  pgFeeAmount?: number;
   netAmount: number;
 }
 
@@ -211,6 +215,11 @@ function formatFeeAmount(fee: number): string {
   if (fee > 0) return `-${formatCurrency(fee)}`;
   if (fee < 0) return `+${formatCurrency(-fee)}`;
   return formatCurrency(0);
+}
+
+// 요율은 소수 2자리까지, 불필요한 0 은 제거한다(1.10 → 1.1).
+function formatRatePercent(rate: number): string {
+  return String(parseFloat((rate * 100).toFixed(2)));
 }
 
 // paymentDate·transactionDate 는 @db.Date(달력일, UTC 자정 저장) — 로컬/KST 변환 없이
@@ -343,10 +352,22 @@ function DetailLineRow({ line, isLast }: { line: SettlementDetailLine; isLast?: 
           </p>
         </div>
       </div>
-      <p className="mt-2 text-card-meta text-it-red-500 dark:text-it-red-300">
-        {MESSAGES.settlements.feeAmountLabel} ({(line.feeRate * 100).toFixed(1)}%){' '}
-        {formatFeeAmount(line.feeAmount)}
-      </p>
+      {line.feeAmount !== 0 && (
+        <p className="mt-2 text-card-meta text-it-red-500 dark:text-it-red-300">
+          {MESSAGES.settlements.platformFeeLabel} ({(line.feeRate * 100).toFixed(1)}%){' '}
+          {formatFeeAmount(line.feeAmount)}
+        </p>
+      )}
+      {(line.pgFeeAmount ?? 0) !== 0 && (
+        <p
+          className={`text-card-meta text-it-red-500 dark:text-it-red-300 ${
+            line.feeAmount !== 0 ? 'mt-0.5' : 'mt-2'
+          }`}
+        >
+          {MESSAGES.settlements.pgFeeLabel} ({formatRatePercent(line.pgFeeRate ?? 0)}%){' '}
+          {formatFeeAmount(line.pgFeeAmount ?? 0)}
+        </p>
+      )}
       {line.memo && (
         <p className="mt-1 text-card-meta text-it-ink-500 dark:text-rink-300">
           {MESSAGES.settlements.memoLabel}: {line.memo}
@@ -379,6 +400,16 @@ function GroupSummaryBody({ group }: { group: SettlementGroup }) {
             group.refundCount,
             formatCurrency(group.refundAmount),
           )}
+        </p>
+      )}
+      {group.feeAmount !== 0 && (
+        <p className="text-card-meta tabular-nums text-it-ink-500 dark:text-rink-300">
+          {MESSAGES.settlements.platformFeeLabel} {formatFeeAmount(group.feeAmount)}
+        </p>
+      )}
+      {(group.pgFeeAmount ?? 0) !== 0 && (
+        <p className="text-card-meta tabular-nums text-it-ink-500 dark:text-rink-300">
+          {MESSAGES.settlements.pgFeeLabel} {formatFeeAmount(group.pgFeeAmount ?? 0)}
         </p>
       )}
       <p className="mt-1 text-card-meta text-it-ink-400 dark:text-rink-300">
@@ -589,7 +620,8 @@ export default function SettlementDetailPage() {
   const [year, month] = settlement.settlementMonth.split('-');
   const periodText = year && month ? MESSAGES.settlements.yearMonthLabel(year, month) : settlement.settlementMonth;
   const statusCfg = SETTLEMENT_STATUS[settlement.status];
-  const fee = settlement.platformFee + settlement.paymentFee;
+  const platformFee = settlement.platformFee;
+  const paymentFee = settlement.paymentFee;
 
   const payouts = settlement.transactions.filter((t) => t.transactionType === 'payout');
   const rejectReason = settlement.transactions.find((t) => t.transactionType === 'reject');
@@ -658,16 +690,28 @@ export default function SettlementDetailPage() {
                 {formatCurrency(settlement.refundAmount)}
               </p>
             </div>
+            {platformFee !== 0 && (
+              <div className="flex flex-col gap-1.5 rounded-w-md p-4 bg-it-fill dark:bg-puck/40">
+                <p className="text-it-ink-500 dark:text-rink-300 text-card-meta font-medium uppercase tracking-wider">
+                  {MESSAGES.settlements.platformFeeLabel}
+                </p>
+                <p className="text-it-red-500 dark:text-it-red-300 text-card-title font-bold tabular-nums">
+                  {formatFeeAmount(platformFee)}
+                </p>
+              </div>
+            )}
             <div className="flex flex-col gap-1.5 rounded-w-md p-4 bg-it-fill dark:bg-puck/40">
               <p className="text-it-ink-500 dark:text-rink-300 text-card-meta font-medium uppercase tracking-wider">
-                {MESSAGES.settlements.feeLabel}
+                {MESSAGES.settlements.pgFeeLabel}
               </p>
               <p className="text-it-red-500 dark:text-it-red-300 text-card-title font-bold tabular-nums">
-                {formatFeeAmount(fee)}
+                {formatFeeAmount(paymentFee)}
               </p>
             </div>
             <div
               className={`flex flex-col gap-1.5 rounded-w-md p-4 ${
+                platformFee !== 0 ? 'col-span-2' : ''
+              } ${
                 isNetNegative ? 'bg-flame-500/10 dark:bg-flame-500/15' : 'bg-it-blue-50 dark:bg-it-blue-500/15'
               }`}
             >
@@ -838,6 +882,16 @@ export default function SettlementDetailPage() {
                         formatCurrency(groupTotals.refundAmount),
                       )}`}
                   </p>
+                  {groupTotals.feeAmount !== 0 && (
+                    <p className="text-card-meta tabular-nums text-it-ink-500 dark:text-rink-300">
+                      {MESSAGES.settlements.platformFeeLabel} {formatFeeAmount(groupTotals.feeAmount)}
+                    </p>
+                  )}
+                  {(groupTotals.pgFeeAmount ?? 0) !== 0 && (
+                    <p className="text-card-meta tabular-nums text-it-ink-500 dark:text-rink-300">
+                      {MESSAGES.settlements.pgFeeLabel} {formatFeeAmount(groupTotals.pgFeeAmount ?? 0)}
+                    </p>
+                  )}
                   <p className="mt-1 text-card-body font-bold text-it-ink-800 dark:text-white">
                     {MESSAGES.settlements.groupsTotalPayoutLabel}{' '}
                     <span className="tabular-nums text-it-blue-500">

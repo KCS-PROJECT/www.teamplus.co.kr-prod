@@ -13,6 +13,7 @@ import { PrismaService } from "@/prisma/prisma.service";
 import { ResourceAccessService } from "@/common/access/resource-access.service";
 import { RedisService } from "@/redis/redis.service";
 import { NicePayoutApiService } from "./nice-payout-api.service";
+import { PG_FEE_RATE } from "./constants/pg-fee.constant";
 import { JwtUserPayload } from "@/common/interfaces/authenticated-request.interface";
 import { encryptField } from "@/common/utils/field-encryption.util";
 import { randomBytes } from "crypto";
@@ -588,7 +589,9 @@ describe("SettlementsService", () => {
           paymentAmount: -3000,
           feeRate: 0,
           feeAmount: 0,
-          actualAmount: -3000,
+          pgFeeRate: 0.011,
+          pgFeeAmount: -33,
+          actualAmount: -2967,
           memo: "환불",
         },
       ]);
@@ -606,7 +609,7 @@ describe("SettlementsService", () => {
       expect(mockPrisma.settlementDetail.count).not.toHaveBeenCalled();
       const csv = buffer.toString("utf-8");
       expect(csv).toContain(
-        "환불,수업,'=HYPERLINK(),ORD-1,2026-07-10,card,2026-07,-3000,0,0,-3000,환불",
+        "환불,수업,'=HYPERLINK(),ORD-1,2026-07-10,card,2026-07,-3000,0,0,0.011,-33,-2967,환불",
       );
       expect(filename).toBe("settlement_details_2026-07_s-1.csv");
     });
@@ -1000,7 +1003,11 @@ describe("SettlementsService", () => {
   describe("getSettlementsSummary", () => {
     it("월 단위 상태별 건수·순지급액 합계를 반환한다", async () => {
       mockPrisma.settlement.groupBy.mockResolvedValue([
-        { status: "pending", _count: { _all: 3 }, _sum: { netAmount: 30000 } },
+        {
+          status: "pending",
+          _count: { _all: 3 },
+          _sum: { netAmount: 30000 },
+        },
         { status: "approved", _count: { _all: 2 }, _sum: { netAmount: 20000 } },
         { status: "paid", _count: { _all: 1 }, _sum: { netAmount: 10000 } },
         { status: "rejected", _count: { _all: 1 }, _sum: { netAmount: 0 } },
@@ -1015,6 +1022,7 @@ describe("SettlementsService", () => {
         _sum: { netAmount: true },
       });
       expect(result).toEqual({
+        pgFeeRate: PG_FEE_RATE,
         pending: { count: 3, netAmount: 30000 },
         approved: { count: 2, netAmount: 20000 },
         paid: { count: 1, netAmount: 10000 },
@@ -1028,6 +1036,7 @@ describe("SettlementsService", () => {
       const result = await service.getSettlementsSummary("2026-07");
 
       expect(result).toEqual({
+        pgFeeRate: PG_FEE_RATE,
         pending: { count: 0, netAmount: 0 },
         approved: { count: 0, netAmount: 0 },
         paid: { count: 0, netAmount: 0 },
@@ -1056,6 +1065,7 @@ describe("SettlementsService", () => {
         _sum: { netAmount: true },
       });
       expect(result).toEqual({
+        pgFeeRate: PG_FEE_RATE,
         pending: { count: 0, netAmount: 0 },
         approved: { count: 0, netAmount: 0 },
         paid: { count: 0, netAmount: 0 },

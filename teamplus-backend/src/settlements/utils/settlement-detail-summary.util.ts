@@ -7,6 +7,7 @@ export interface SettlementDetailSummaryInput {
   productName: string;
   paymentAmount: number;
   feeAmount: number;
+  pgFeeAmount: number;
   actualAmount: number;
 }
 
@@ -19,8 +20,10 @@ export interface SettlementDetailSummaryGroup {
   refundCount: number;
   /** 환불 금액 합계(양수) — Settlement.refundAmount 규약과 같다. */
   refundAmount: number;
-  /** 수수료 합계(환불 환급분 상계 후). */
+  /** 플랫폼 수수료 합계(환불 환급분 상계 후). */
   feeAmount: number;
+  /** 결제(PG) 수수료 합계(환불 환급분 상계 후). */
+  pgFeeAmount: number;
   /** 실지급액 합계. */
   netAmount: number;
 }
@@ -48,6 +51,7 @@ export function aggregateDetailsBySource(
     refundCount: 0,
     refundAmount: 0,
     feeAmount: 0,
+    pgFeeAmount: 0,
     netAmount: 0,
   };
 
@@ -67,6 +71,7 @@ export function aggregateDetailsBySource(
         refundCount: 0,
         refundAmount: 0,
         feeAmount: 0,
+        pgFeeAmount: 0,
         netAmount: 0,
       };
       groups.set(key, group);
@@ -81,6 +86,7 @@ export function aggregateDetailsBySource(
         target.paymentAmount += row.paymentAmount;
       }
       target.feeAmount += row.feeAmount;
+      target.pgFeeAmount += row.pgFeeAmount;
       target.netAmount += row.actualAmount;
     }
   }

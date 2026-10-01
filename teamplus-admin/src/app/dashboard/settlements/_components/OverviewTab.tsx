@@ -168,7 +168,7 @@ function OverviewContent({ data, feeRate }: { data: SettlementOverview; feeRate:
           variant="info"
         />
         <MiniStatsCard
-          title="정산 예정액 (수수료 차감)"
+          title="정산 예정액 (결제 수수료 차감 전)"
           value={`${totalSettlement.toLocaleString()}원`}
           icon={<Wallet className="h-5 w-5" />}
           variant="primary"

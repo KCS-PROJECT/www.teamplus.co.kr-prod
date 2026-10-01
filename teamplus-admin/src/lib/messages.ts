@@ -74,6 +74,7 @@ export const MESSAGES = {
     monthSummaryLoadError: '정산 현황을 불러오지 못했습니다.',
     monthSummaryTeamCount: '정산 팀',
     monthSummaryTotalNet: '순지급액 합계',
+    pgFeeLabel: '결제 수수료',
     monthSummaryPendingLabel: '대기',
     monthSummaryApprovedLabel: '지급 예정',
     monthSummaryPaidLabel: '지급 완료',
@@ -114,7 +115,8 @@ export const MESSAGES = {
     // 정산 상세 팝업
     amountTotalRevenue: '총 매출',
     amountRefund: '환불',
-    amountFee: '수수료',
+    amountPlatformFee: '플랫폼 수수료',
+    amountPaymentFee: '결제 수수료',
     amountNet: '순지급액',
     bankAccountLabel: '입금 계좌',
     accountHolderSeparator: '예금주',
@@ -405,6 +407,7 @@ export const MESSAGES = {
     },
     closeSuccessSummary: (month: string) => `${month} 정산 마감이 완료되었습니다.`,
     monthSummaryTitle: (month: string) => `${month} 정산 현황`,
+    pgFeeRateNotice: (rate: string) => `마감 시 적용되는 결제 수수료율 ${rate}% (팀 부담 · 고정)`,
     previousMonthNotClosedWarning: (month: string) =>
       `전월(${month}) 정산이 마감되지 않았습니다. 해당 월 결제는 이번 정산에 포함되지 않습니다.`,
     attributionMonthLabel: (yearMonth: string) => `${Number(yearMonth.split('-')[1])}월분`,

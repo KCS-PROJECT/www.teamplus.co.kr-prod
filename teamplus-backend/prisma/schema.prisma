@@ -4473,9 +4473,11 @@ model SettlementDetail {
   paymentDate      DateTime               @map("payment_date") @db.Date
   paymentMethod    String                 @map("payment_method") /// card | wallet | etc
   paymentAmount    Int                    @map("payment_amount") /// PAYMENT=결제 금액(+), REFUND=환불 금액(-)
-  feeRate          Float                  @map("fee_rate") /// 수수료율 (0.0 ~ 1.0)
-  feeAmount        Int                    @map("fee_amount") /// PAYMENT=수수료(+), REFUND=환급 수수료(-)
-  actualAmount     Int                    @map("actual_amount") /// 실지급 금액(paymentAmount-feeAmount, REFUND 는 음수)
+  feeRate          Float                  @map("fee_rate") /// 플랫폼 수수료율 (0.0 ~ 1.0)
+  feeAmount        Int                    @map("fee_amount") /// 플랫폼 수수료 — PAYMENT=(+), REFUND=환급(-)
+  pgFeeRate        Float                  @default(0) @map("pg_fee_rate") /// 결제(PG) 수수료율 — 마감 시점 적용값. 환불은 원 결제 행의 값을 따른다
+  pgFeeAmount      Int                    @default(0) @map("pg_fee_amount") /// 결제(PG) 수수료 — PAYMENT=(+), REFUND=환급(-). 팀 부담
+  actualAmount     Int                    @map("actual_amount") /// 실지급 금액(paymentAmount-feeAmount-pgFeeAmount, REFUND 는 음수)
   /// 귀속월(YYYY-MM) 병기 — 선불=enrollment.billingMonth, 후불=billing.yearMonth, 대회=completedAt KST 월.
   /// 마감 판정에는 쓰지 않는다(마감은 결제일/환불일 현금 기준) — 표시·분석 참고용.
   attributionMonth String?                @map("attribution_month") @db.VarChar(7)

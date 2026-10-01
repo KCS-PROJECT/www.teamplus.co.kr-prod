@@ -40,6 +40,7 @@ import {
 } from "./utils/account-mask.util";
 import { TeamSettlementAccountService } from "./team-settlement-account.service";
 import { NicePayoutApiService } from "./nice-payout-api.service";
+import { PG_FEE_RATE } from "./constants/pg-fee.constant";
 import { resolvePayoutApiMode } from "./payout-mode.util";
 import { describePayoutApiModes } from "./constants/payout-mode.constant";
 import { describePayoutCallForOperator } from "./gateway/payout-res-code.util";
@@ -85,6 +86,8 @@ const SETTLEMENT_DETAIL_ROW_SELECT = {
   paymentAmount: true,
   feeRate: true,
   feeAmount: true,
+  pgFeeRate: true,
+  pgFeeAmount: true,
   actualAmount: true,
   status: true,
   memo: true,
@@ -540,6 +543,7 @@ export class SettlementsService {
         productName: true,
         paymentAmount: true,
         feeAmount: true,
+        pgFeeAmount: true,
         actualAmount: true,
       },
       // 그룹 이름은 가장 최근 행의 productName — 월 중 이름이 바뀌면 최신 이름을 보여준다.
@@ -586,6 +590,8 @@ export class SettlementsService {
       "결제금액",
       "수수료율",
       "수수료",
+      "결제수수료율",
+      "결제수수료",
       "실지급액",
       "메모",
     ];
@@ -601,6 +607,8 @@ export class SettlementsService {
       String(d.paymentAmount),
       String(d.feeRate),
       String(d.feeAmount),
+      String(d.pgFeeRate),
+      String(d.pgFeeAmount),
       String(d.actualAmount),
       d.memo ?? "",
     ]);
@@ -820,10 +828,15 @@ export class SettlementsService {
     const byStatus = new Map(grouped.map((g) => [g.status, g]));
     const pick = (status: SettlementStatus) => {
       const g = byStatus.get(status);
-      return { count: g?._count._all ?? 0, netAmount: g?._sum.netAmount ?? 0 };
+      return {
+        count: g?._count._all ?? 0,
+        netAmount: g?._sum.netAmount ?? 0,
+      };
     };
 
     return {
+      // 새로 마감하는 정산에 적용되는 결제 수수료율(정책 고정값) — 화면 표시용.
+      pgFeeRate: PG_FEE_RATE,
       pending: pick(SETTLEMENT_STATUS.PENDING),
       approved: pick(SETTLEMENT_STATUS.APPROVED),
       paid: pick(SETTLEMENT_STATUS.PAID),
