@@ -2420,6 +2420,7 @@ export class TeamsService {
    *  - myParentTeams: 학부모 본인이 가입 승인된 팀 (회원가입 시 teamCode 로 자동 가입된 PARENT 멤버십)
    *      → 프론트는 myChildTeams 비어있을 때 폴백으로 사용
    *  - clubTeams: 호환용 빈 배열
+   *  - totalChildren: 등록된 자녀 수 — 웹 /team 이 0 이면 "자녀 없음", 아니면 "소속 팀 없음"으로 빈 상태를 구분한다
    */
   async getParentVisibleTeams(parentUserId: string) {
     const TEAM_SELECT = {
@@ -2486,6 +2487,7 @@ export class TeamsService {
       myChildTeams: Array.from(childTeamMap.values()),
       myParentTeams: Array.from(parentTeamMap.values()),
       clubTeams: [] as Array<unknown>,
+      totalChildren: parentChildren.length,
     };
   }
 

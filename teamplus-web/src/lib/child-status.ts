@@ -40,7 +40,7 @@ export function isSelectableChild(): boolean {
   return true;
 }
 
-/** 선택 스코프 노출 대상 자녀 목록 (무소속 포함, pending/rejected 제외) */
+/** 선택 스코프 노출 대상 자녀 목록 — 등록된 모든 자녀(무소속·pending·rejected 포함, isSelectableChild 참조) */
 export function getSelectableChildren(children: Child[]): Child[] {
   return children.filter(isSelectableChild);
 }

@@ -368,7 +368,7 @@ export function GlobalMenu({ isOpen, onClose }: GlobalMenuProps) {
     ? `${appSettings?.appName ?? "TEAMPLUS"} v${resolvedAppVersion}`
     : "TEAMPLUS";
   // 자녀 선택 — 전역 선택 상태(SelectedChildContext) + 선택 대상 자녀 SoT(useChildren.selectableChildren,
-  //   무소속 포함·pending/rejected 제외). 프로필 아래 한 줄 + 모달(DrawerChildPicker)로 전환.
+  //   등록된 모든 자녀 — 무소속·pending·rejected 포함). 프로필 아래 한 줄 + 모달(DrawerChildPicker)로 전환.
   const { selectableChildren } = useChildren();
   const { selectedChildId, setSelectedChildId } = useSelectedChild();
   const childPickerItems = useMemo(

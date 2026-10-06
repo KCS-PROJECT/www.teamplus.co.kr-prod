@@ -281,9 +281,7 @@ export class AuthService {
     let verifiedCiHash: string | null = null;
     if (IDENTITY_REQUIRED_TYPES.includes(resolvedUserType)) {
       if (!identityVerificationId) {
-        throw new BadRequestException(
-          "본인인증을 먼저 완료해주세요. (PARENT/COACH/DIRECTOR/ACADEMY_DIRECTOR 가입 필수)",
-        );
+        throw new BadRequestException("본인인증을 먼저 완료해주세요.");
       }
       const verification = await this.prisma.identityVerification.findUnique({
         where: { requestId: identityVerificationId },
@@ -1779,7 +1777,11 @@ export class AuthService {
     );
 
     if (!isPasswordValid) {
-      throw new BadRequestException("현재 비밀번호가 일치하지 않습니다.");
+      // 웹 비밀번호 변경 화면이 이 코드로 "현재 비밀번호" 입력란에 오류를 붙인다.
+      throw new BadRequestException({
+        errorCode: "INVALID_PASSWORD",
+        message: "현재 비밀번호가 일치하지 않습니다.",
+      });
     }
 
     // Check if new password is same as current

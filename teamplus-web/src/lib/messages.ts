@@ -615,6 +615,9 @@ export const MESSAGES = {
         "본인인증 요청이 올바르지 않습니다. 처음부터 다시 시도해주세요.",
       CALLBACK_ERROR: "본인인증 처리 중 오류가 발생했습니다. 다시 시도해주세요.",
       VERIFICATION_FAILED: "본인인증에 실패했습니다. 다시 시도해주세요.",
+      // 인증 수단(카카오 등)에 따라 CI 를 주지 않는다 — 같은 수단 재시도로는 해결되지 않는다.
+      CI_MISSING:
+        "선택한 인증 수단에서 본인 확인 정보를 받지 못했습니다. PASS 등 다른 인증 수단으로 다시 시도해주세요.",
     } as Record<string, string>,
     // [R1 #2] 팝업 모드에서 window.close() 가 무시되는 경우(스크립트로 열리지
     // 않은 창 등) 대비 — 결과는 이미 postMessage/크럼으로 부모에 전달됐으므로
@@ -1840,6 +1843,9 @@ export const MESSAGES = {
     emptyManagedHint: "훈련·대회 공지는 각 훈련·대회 상세 화면에서 작성할 수 있습니다",
     emptyManagedTeam: "등록한 팀 공지가 없습니다.",
     emptyManagedTeamHint: "팀 구성원에게 첫 공지를 보내보세요",
+    managedLoadFailed: "공지를 불러오지 못했습니다.",
+    managedLoadFailedHint: "잠시 후 다시 시도해주세요",
+    managedRetry: "다시 시도하기",
     emptyUnit: "등록된 공지가 없습니다.",
     emptyUnitHint: "공지가 올라오면 이곳에서 알려드릴게요",
     write: "공지 작성하기",
@@ -2333,6 +2339,7 @@ export const MESSAGES = {
    */
   settings: {
     title: "설정",
+    termsLoadFailed: "약관을 불러오지 못했습니다.",
     sections: {
       account: "계정",
       notification: "알림",
@@ -3393,6 +3400,7 @@ export const MESSAGES = {
     classCount: (n: number) => `수업 ${n}개`,
     noticeInputRequired: "제목과 내용을 모두 입력해주세요.",
     noticeSent: (n: number) => `${n}명에게 공지가 발송되었습니다.`,
+    noticeNoRecipients: "공지를 받을 활성 수강생이 없습니다.",
     noticeSending: "발송 중...",
     noticeSendButton: "공지 발송하기",
     noticeRecipientHint: "활성 수강생 전원에게 알림이 발송됩니다",
