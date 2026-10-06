@@ -1109,6 +1109,8 @@ export const MESSAGES = {
       phone: "휴대폰 결제",
       toss: "토스페이먼츠",
       nice: "나이스페이먼츠",
+      // 구모듈 결제는 결제 수단 자리에 결제사 코드(nicestd)가 저장된다 — 신모듈과 같은 브랜드로 표기.
+      nicestd: "나이스페이먼츠",
     } as Record<string, string>,
     noSearchResult: "검색 결과가 없습니다",
     tryOtherKeyword: "다른 검색어로 시도해보세요",

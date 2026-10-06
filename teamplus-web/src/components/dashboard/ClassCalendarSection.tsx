@@ -1048,7 +1048,7 @@ export function ClassCalendarSection({
                     !iceTheme && isSelected && 'bg-ice-500 hover:bg-ice-600',
                     !iceTheme && day.isToday && !isSelected && 'ring-2 ring-inset ring-ice-500',
                   )}
-                  aria-label={`${currentMonth + 1}월 ${day.date}일${day.isToday ? ' 오늘' : ''}${hasClasses ? ` 수업 ${day.classes.length}개` : ''}`}
+                  aria-label={`${Number(day.dateKey.slice(5, 7))}월 ${day.date}일${day.isToday ? ' 오늘' : ''}${hasClasses ? ` 수업 ${day.classes.length}개` : ''}`}
                   aria-selected={isSelected}
                   role="gridcell"
                 >

@@ -25,6 +25,7 @@ import { useSelectedChild } from '@/contexts/SelectedChildContext';
 import { isActiveEnrollment } from '@/lib/enrollment-visibility';
 import { Icon } from '@/components/ui/Icon';
 import { cn } from '@/lib/utils';
+import { MESSAGES } from '@/lib/messages';
 
 // ── 수업목록 카드에 필요한 최소 필드 (classes/page.tsx ClassItem 의 부분집합) ──
 interface EnrolledClassItem {
@@ -136,7 +137,7 @@ function EnrolledClassCard({ item, iceTheme }: { item: EnrolledClassItem; iceThe
           className="inline-flex items-center justify-center min-w-[62px] px-2 py-0.5 rounded-full text-[11.5px] leading-[1.55] font-bold tracking-[-0.01em] bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400"
           aria-hidden="true"
         >
-          등록완료
+          {MESSAGES.class.listChipEnrolled}
         </span>
       }
     >
