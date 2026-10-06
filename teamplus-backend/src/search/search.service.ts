@@ -328,6 +328,8 @@ export class SearchService {
           type: "coach" as const,
           id: user.id,
           title: `${user.lastName}${user.firstName}`.trim(),
+          // 웹 검색 결과는 teamName 을 소속으로 읽는다. name 은 같은 값의 기존 키라 함께 둔다.
+          teamName: user.coachProfile?.team?.name ?? "",
           name: user.coachProfile?.team?.name ?? "",
         };
       }),

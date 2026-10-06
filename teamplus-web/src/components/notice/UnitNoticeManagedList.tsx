@@ -121,6 +121,8 @@ export function UnitNoticeManagedList({
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  // 조회 실패를 빈 목록과 구분한다 — 비우기만 하면 "공지 없음"으로 보여 공지가 사라진 것으로 오해한다.
+  const [loadFailed, setLoadFailed] = useState(false);
   const [actionTarget, setActionTarget] = useState<UnitNoticePost | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<UnitNoticePost | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -162,18 +164,21 @@ export function UnitNoticeManagedList({
       if (res.success && res.data) {
         setPosts(res.data.data);
         setTotal(res.data.total);
+        setLoadFailed(false);
         if (statusFilter === 'all') {
           setCatalog(buildUnitCatalog(res.data.data, res.data.total));
         }
       } else {
         setPosts([]);
         setTotal(0);
+        setLoadFailed(true);
         if (res.error?.message) toast.error(res.error.message);
       }
     } catch {
       if (seq !== loadSeqRef.current) return;
       setPosts([]);
       setTotal(0);
+      setLoadFailed(true);
       toast.error(MESSAGES.error.network);
     } finally {
       if (seq === loadSeqRef.current) {
@@ -311,7 +316,32 @@ export function UnitNoticeManagedList({
             : MESSAGES.unitNotice.tabUnit
         }
       >
-        {posts.length > 0 || statusFilter !== 'all' ? (
+        {loadFailed ? (
+          <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 py-16">
+            <div className="flex flex-col items-center gap-3" role="alert">
+              <div className="w-14 h-14 rounded-w-pill bg-it-red-50 dark:bg-it-red-500/15 flex items-center justify-center">
+                <Icon
+                  name="error_outline"
+                  className="text-3xl text-it-red-500"
+                  aria-hidden="true"
+                />
+              </div>
+              <p className="text-card-body font-semibold text-it-ink-800 dark:text-white">
+                {MESSAGES.unitNotice.managedLoadFailed}
+              </p>
+              <p className="text-card-meta text-it-ink-400 dark:text-it-ink-300 text-center">
+                {MESSAGES.unitNotice.managedLoadFailedHint}
+              </p>
+              <button
+                type="button"
+                onClick={() => void load()}
+                className="mt-1 h-10 px-5 rounded-w-md bg-it-blue-500 text-white text-[14px] font-bold hover:bg-it-blue-600 transition-colors motion-reduce:transition-none"
+              >
+                {MESSAGES.unitNotice.managedRetry}
+              </button>
+            </div>
+          </section>
+        ) : posts.length > 0 || statusFilter !== 'all' ? (
           <section className="mt-2 bg-it-surface dark:bg-it-blue-950 px-5 pt-5 pb-7">
             <div className="flex items-end justify-between pb-1">
               <div>

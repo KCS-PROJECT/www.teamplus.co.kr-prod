@@ -41,7 +41,7 @@ import {
 import { InlineRetryError } from '@/components/settlement/InlineRetryError';
 
 // ─── Types ──────────────────────────────────────────
-// 거래 내역(건별 장부·기본) / 수납 현황(훈련·대회별 청구·수납 소계). 팀이 받는 지급 정산은 /settlements 로 분리.
+// 거래 내역(건별 장부·기본) / 정산 현황(훈련·대회별 청구·결제 소계). 팀이 받는 지급 정산은 /settlements 로 분리.
 type TabType = 'transactions' | 'settlement';
 
 // formatCurrency · staggerDelay · shiftMonth 는 공유 모듈(components/settlement/settlement-format)로 이동.
@@ -77,9 +77,9 @@ export default function DirectorPaymentsPage() {
   const [yearMonth, setYearMonth] = useState<string>(currentYm);
   const [activeTab, setActiveTab] = useState<TabType>('transactions');
 
-  // 신규 월인식 소계 (수납 현황 탭 + Hero)
+  // 신규 월인식 소계 (정산 현황 탭 + Hero)
   const [settlement, setSettlement] = useState<TeamSettlementSummaryResponse | null>(null);
-  // 신규 월인식 인별 미수금 (수납 현황 탭 상단 배너 — 선택 월 연동)
+  // 신규 월인식 인별 미수금 (정산 현황 탭 상단 배너 — 선택 월 연동)
   const [unpaid, setUnpaid] = useState<TeamUnpaidMembersResponse | null>(null);
   // 거래 내역 (결제 1건=1행 장부 — 선택 월 완료 기준)
   const [transactions, setTransactions] = useState<TeamTransactionsResponse | null>(null);
@@ -101,7 +101,7 @@ export default function DirectorPaymentsPage() {
   //   칩에 남도록 월 소계와 축을 분리한다. 실패는 0 취급(fail-closed).
   const [unpaidTotalCount, setUnpaidTotalCount] = useState(0);
 
-  // 미수금 배너 펼침 (수납 현황 탭 상단 — 기본 접힘)
+  // 미수금 배너 펼침 (정산 현황 탭 상단 — 기본 접힘)
   const [unpaidExpanded, setUnpaidExpanded] = useState(false);
   // 미수금 — 상세 시트 대상 회원 / 미납 안내 발송 중 회원
   const [detailMember, setDetailMember] = useState<UnpaidMemberRow | null>(null);
@@ -385,7 +385,7 @@ export default function DirectorPaymentsPage() {
         role="main"
         aria-label={MESSAGES.settlement.ariaCenter}
       >
-        {/* ── 정산 요약 — navy 밴드 Hero (ICETIMES flat) + 월 선택기 ──────── */}
+        {/* ── 결제 요약 — navy 밴드 Hero (ICETIMES flat) + 월 선택기 ──────── */}
         <section className="animate-fade-in bg-it-blue-800 px-5 pb-[22px] pt-5 motion-reduce:animate-none dark:bg-it-blue-900">
           {/* 상단 라벨 + 월 스텝퍼 */}
           <div className="flex items-center justify-between">
@@ -416,7 +416,7 @@ export default function DirectorPaymentsPage() {
             </div>
           </div>
 
-          {/* 총 수납 — 단일 히어로 숫자 (선택 월 == 응답 월일 때만 수치, 아니면 '—') */}
+          {/* 결제 완료 — 단일 히어로 숫자 (선택 월 == 응답 월일 때만 수치, 아니면 '—') */}
           <div className="mt-3.5" aria-busy={isMonthLoading}>
             <p className="text-[12.5px] text-white/70">{MESSAGES.settlement.totalCollected}</p>
             <p className="mt-[3px] text-[34px] font-extrabold leading-none text-white tabular-nums">
@@ -429,7 +429,7 @@ export default function DirectorPaymentsPage() {
             </p>
           </div>
 
-          {/* 미수금 / 정산 예정 — 정의형 2열 (반투명 라인 구분) */}
+          {/* 미수금 / 청구 예정 — 정의형 2열 (반투명 라인 구분) */}
           <div className="mt-4 grid grid-cols-2 gap-6 border-t border-white/15 pt-3.5">
             <div>
               <p className="text-[12px] text-white/70">{MESSAGES.settlement.unpaidAmount}</p>
@@ -745,7 +745,7 @@ function EmptyState({ message }: { message: string }) {
   );
 }
 
-/** 수납 현황 탭 — 훈련/대회 소계 섹션 헤더. */
+/** 정산 현황 탭 — 훈련/대회 소계 섹션 헤더. */
 function SectionTitle({ label }: { label: string }) {
   return (
     <h3 className="pb-1 pt-4 text-[12.5px] font-extrabold text-it-ink-400 dark:text-wtext-3">

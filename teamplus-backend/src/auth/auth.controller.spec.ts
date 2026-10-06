@@ -59,6 +59,7 @@ describe("AuthController", () => {
     login: jest.fn(),
     refreshToken: jest.fn(),
     getProfile: jest.fn(),
+    logout: jest.fn(),
   };
 
   const mockCryptoService = {
@@ -87,6 +88,10 @@ describe("AuthController", () => {
       socket: {},
       ...overrides,
     }) as unknown as ExpressRequest;
+
+  /** 서명 없는 JWT 형태 — 컨트롤러는 payload 만 읽는다(검증은 서비스 mock). */
+  const fakeJwt = (payload: Record<string, unknown>): string =>
+    `header.${Buffer.from(JSON.stringify(payload)).toString("base64url")}.sig`;
 
   const makeRes = (): ExpressResponse =>
     ({
@@ -201,6 +206,21 @@ describe("AuthController", () => {
       );
     });
 
+    it("should not set the shared refresh cookie for admin login (ADM channel)", async () => {
+      mockAuthService.login.mockResolvedValue({
+        ...mockAuthResponse,
+        user: { ...mockUser, userType: UserType.SYSTEM },
+      });
+
+      const result = await controller.adminLogin(encryptedLoginDto, makeReq());
+
+      expect(result.refreshToken).toBe(mockAuthResponse.refreshToken);
+      expect(mockAuthService.login).toHaveBeenCalledWith(
+        expect.objectContaining({ email: testCredentials.email }),
+        expect.objectContaining({ chldiv: "ADM" }),
+      );
+    });
+
     it("should pass force=true when decrypted payload contains force", async () => {
       mockAuthService.login.mockResolvedValue(mockAuthResponse);
       mockCryptoService.decryptCredentialsWithAudit.mockResolvedValue(
@@ -277,6 +297,37 @@ describe("AuthController", () => {
       );
     });
 
+    it("should not set the shared refresh cookie when rotating an ADM-channel token", async () => {
+      mockAuthService.refreshToken.mockResolvedValue(newTokens);
+      const res = makeRes();
+
+      await controller.refresh(
+        { refreshToken: fakeJwt({ userType: UserType.OPER }) },
+        makeReq(),
+        res,
+      );
+
+      expect(mockAuthService.refreshToken).toHaveBeenCalled();
+      expect(res.cookie).not.toHaveBeenCalled();
+    });
+
+    it("should set the shared refresh cookie when rotating an APP-channel token", async () => {
+      mockAuthService.refreshToken.mockResolvedValue(newTokens);
+      const res = makeRes();
+
+      await controller.refresh(
+        { refreshToken: fakeJwt({ userType: UserType.PARENT }) },
+        makeReq(),
+        res,
+      );
+
+      expect(res.cookie).toHaveBeenCalledWith(
+        "teamplus_refresh_token",
+        newTokens.refreshToken,
+        expect.objectContaining({ httpOnly: true }),
+      );
+    });
+
     it("should fall back to httpOnly cookie when body token is absent [A-1]", async () => {
       mockAuthService.refreshToken.mockResolvedValue(newTokens);
       const req = makeReq({
@@ -319,6 +370,54 @@ describe("AuthController", () => {
           makeRes(),
         ),
       ).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  describe("POST /api/v1/auth/logout", () => {
+    const makeAuthReq = (userType: UserType) =>
+      makeReq({
+        user: {
+          id: mockUser.id,
+          email: mockUser.email,
+          userType,
+        },
+      } as unknown as Partial<ExpressRequest>) as unknown as Parameters<
+        AuthController["logout"]
+      >[0];
+
+    it("should clear the shared refresh cookie for APP-channel users", async () => {
+      mockAuthService.logout.mockResolvedValue({ message: "ok" });
+      const res = makeRes();
+
+      await controller.logout(
+        makeAuthReq(UserType.PARENT),
+        "Bearer access",
+        "",
+        res,
+      );
+
+      expect(res.clearCookie).toHaveBeenCalledWith("teamplus_refresh_token", {
+        path: "/",
+      });
+    });
+
+    it("should leave the shared refresh cookie alone for ADM-channel users", async () => {
+      mockAuthService.logout.mockResolvedValue({ message: "ok" });
+      const res = makeRes();
+
+      await controller.logout(
+        makeAuthReq(UserType.SYSTEM),
+        "Bearer access",
+        "",
+        res,
+      );
+
+      expect(res.clearCookie).not.toHaveBeenCalled();
+      expect(mockAuthService.logout).toHaveBeenCalledWith(
+        mockUser.id,
+        "access",
+        "",
+      );
     });
   });
 

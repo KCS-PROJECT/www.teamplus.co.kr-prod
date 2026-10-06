@@ -54,8 +54,14 @@ export function SessionExpiredGate() {
 
   const handleRelogin = useCallback(() => {
     const { pathname, search } = window.location;
-    const redirect = encodeURIComponent(`${pathname}${search}`);
-    window.location.href = `/login?redirect=${redirect}&reason=${variant}`;
+    // 안내가 뜬 뒤 이미 로그인 화면으로 넘어간 경우, 현재 주소를 그대로 넣으면 redirect 가
+    // 로그인 화면 자신을 가리킨다. 그때는 그 주소가 들고 있던 원래 목적지를 이어 쓴다
+    // (외부·비정상 경로 거부는 로그인 화면의 safeRedirectTarget 이 맡는다).
+    const target = pathname.startsWith("/login")
+      ? new URLSearchParams(search).get("redirect")
+      : `${pathname}${search}`;
+    const redirectQuery = target ? `redirect=${encodeURIComponent(target)}&` : "";
+    window.location.href = `/login?${redirectQuery}reason=${variant}`;
   }, [variant]);
 
   return (

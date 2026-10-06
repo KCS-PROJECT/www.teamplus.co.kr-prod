@@ -644,22 +644,44 @@ export class TournamentsService {
 
     // 후불 대회의 미청구(UNPAID) 참가 건수 — 감독 목록이 "정산 필요" 표시와
     //   진행 탭 잔류 판정에 쓴다. 청구 뒤 미결제(PENDING)는 청구가 끝난 상태라 제외.
-    //   목록 select 는 _count 만 들고 있어 후불 대회에 한해 groupBy 1회로 집계한다.
-    const postpaidIds = tournaments
-      .filter((t) => t.billingMode === "POSTPAID")
-      .map((t) => t.id);
+    //   정산은 confirmTournamentSettlement 가드를 통과해야 가능하므로, 아직 정산할 수
+    //   없는 대회(일정 미등록·진행 전·진행 중)는 신청이 있어도 0 으로 내린다 —
+    //   그렇지 않으면 '예정' 배지와 '정산 필요' 배지가 함께 켜진다.
+    //   목록 select 는 _count 만 들고 있어 후불 대회에 한해 groupBy 2회로 집계한다.
+    const postpaidCandidates = tournaments.filter(
+      (t) => t.billingMode === "POSTPAID" && t.status !== "cancelled",
+    );
     const unsettledCountMap = new Map<string, number>();
-    if (postpaidIds.length > 0) {
-      const grouped = await this.prisma.tournamentRegistration.groupBy({
+    if (postpaidCandidates.length > 0) {
+      const lastMatchRows = await this.prisma.hockeyMatch.groupBy({
         by: ["tournamentId"],
-        where: {
-          tournamentId: { in: postpaidIds },
-          paymentStatus: "UNPAID",
-        },
-        _count: { _all: true },
+        where: { tournamentId: { in: postpaidCandidates.map((t) => t.id) } },
+        _max: { scheduledAt: true },
       });
-      for (const g of grouped) {
-        unsettledCountMap.set(g.tournamentId, g._count._all);
+      const lastMatchStartMap = new Map<string, Date | null>();
+      for (const row of lastMatchRows) {
+        // hockeyMatch.tournamentId 는 nullable(픽업 경기 공용) — where 로 걸렀지만 타입상 좁힌다.
+        if (row.tournamentId != null) {
+          lastMatchStartMap.set(row.tournamentId, row._max.scheduledAt);
+        }
+      }
+      const settleableIds = postpaidCandidates
+        .filter((t) =>
+          this.isTournamentSettleable(t, lastMatchStartMap.get(t.id) ?? null),
+        )
+        .map((t) => t.id);
+      if (settleableIds.length > 0) {
+        const grouped = await this.prisma.tournamentRegistration.groupBy({
+          by: ["tournamentId"],
+          where: {
+            tournamentId: { in: settleableIds },
+            paymentStatus: "UNPAID",
+          },
+          _count: { _all: true },
+        });
+        for (const g of grouped) {
+          unsettledCountMap.set(g.tournamentId, g._count._all);
+        }
       }
     }
 
@@ -2749,6 +2771,26 @@ export class TournamentsService {
   }
 
   /**
+   * 후불 대회 정산(결제요청) 가능 여부 — status='finished' 면 즉시, 아니면
+   * 마지막 경기 시작 +1시간 경과, 경기 미등록이면 종료일(endDate) 다음날부터.
+   * 취소 대회·경기도 종료일도 없는 대회는 불가. 프론트 참가선수목록 isEnded 와 동일 기준.
+   * endDate 는 `@db.Date`(UTC 자정)라 day-level 판정.
+   */
+  private isTournamentSettleable(
+    tournament: { status: string; endDate: Date | null },
+    lastMatchStart: Date | null,
+  ): boolean {
+    if (tournament.status === "cancelled") return false;
+    if (tournament.status === "finished") return true;
+    if (lastMatchStart != null) {
+      return lastMatchStart.getTime() + SETTLE_OPEN_DELAY_MS <= Date.now();
+    }
+    return (
+      tournament.endDate != null && tournament.endDate < kstTodayUtcMidnight()
+    );
+  }
+
+  /**
    * [후불 대회 정산 확정] — 감독/코치가 종료된 후불 대회의 1인당 금액을 입력해
    *   참가자 전원에게 동일 금액을 일괄 청구한다.
    *
@@ -2803,20 +2845,15 @@ export class TournamentsService {
     }
     // 종료 판정 — status='finished' 또는 '마지막 경기 시작 +1시간' 경과.
     //   status 가 자동으로 finished 로 전이되지 않으므로 시각 기준도 함께 인정한다.
-    //   프론트 대회 상세의 결제요청 버튼 isEnded 와 동일 기준.
+    //   프론트 대회 상세의 결제요청 버튼 isEnded · 목록 "정산 필요" 집계와 동일 기준.
     if (tournament.status !== "finished") {
       const lastMatch = await this.prisma.hockeyMatch.aggregate({
         where: { tournamentId },
         _max: { scheduledAt: true },
       });
-      const lastStart = lastMatch._max.scheduledAt;
-      // 경기 미등록 폴백 — endDate 는 `@db.Date`(UTC 자정)라 day-level 판정(다음날부터 종료).
-      const ended =
-        lastStart != null
-          ? lastStart.getTime() + SETTLE_OPEN_DELAY_MS <= Date.now()
-          : tournament.endDate != null &&
-            tournament.endDate < kstTodayUtcMidnight();
-      if (!ended) {
+      if (
+        !this.isTournamentSettleable(tournament, lastMatch._max.scheduledAt)
+      ) {
         throw new BadRequestException(
           "마지막 경기 시작 1시간 후 정산 가능합니다.",
         );

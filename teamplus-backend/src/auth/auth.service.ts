@@ -281,9 +281,7 @@ export class AuthService {
     let verifiedCiHash: string | null = null;
     if (IDENTITY_REQUIRED_TYPES.includes(resolvedUserType)) {
       if (!identityVerificationId) {
-        throw new BadRequestException(
-          "본인인증을 먼저 완료해주세요. (PARENT/COACH/DIRECTOR/ACADEMY_DIRECTOR 가입 필수)",
-        );
+        throw new BadRequestException("본인인증을 먼저 완료해주세요.");
       }
       const verification = await this.prisma.identityVerification.findUnique({
         where: { requestId: identityVerificationId },
@@ -1779,7 +1777,11 @@ export class AuthService {
     );
 
     if (!isPasswordValid) {
-      throw new BadRequestException("현재 비밀번호가 일치하지 않습니다.");
+      // 웹 비밀번호 변경 화면이 이 코드로 "현재 비밀번호" 입력란에 오류를 붙인다.
+      throw new BadRequestException({
+        errorCode: "INVALID_PASSWORD",
+        message: "현재 비밀번호가 일치하지 않습니다.",
+      });
     }
 
     // Check if new password is same as current
@@ -1878,8 +1880,8 @@ export class AuthService {
       );
     }
 
-    // 이메일 마스킹 (개인정보 보호)
-    const maskedEmail = this.maskEmail(user.email);
+    // 아이디 마스킹 (개인정보 보호) — 이름·번호만으로 조회되는 공개 경로라 전체 ID 를 내보내지 않는다.
+    const maskedEmail = this.maskLoginId(user.email);
 
     return {
       email: maskedEmail,
@@ -1982,7 +1984,7 @@ export class AuthService {
       text,
     );
     this.logger.log(
-      `✅ Temp password mailed to ${this.maskEmail(dest)} (account=${this.maskEmail(user.email)}, sent=${sent})`,
+      `✅ Temp password mailed to ${this.maskLoginId(dest)} (account=${this.maskLoginId(user.email)}, sent=${sent})`,
     );
 
     return {
@@ -2876,15 +2878,20 @@ export class AuthService {
   }
 
   /**
-   * 이메일 마스킹 헬퍼
-   * user@example.com → u***@example.com
+   * 로그인 ID 마스킹 — 앞 3자만 남긴다 (2자 이하는 1자).
+   *   users.email 은 로그인 ID 라 `@` 가 없는 값이 기본이며, 이메일 형식이 남은
+   *   계정은 로컬파트에만 적용하고 도메인은 유지한다. 별표 수는 최소 3개로 고정해
+   *   실제 길이를 드러내지 않는다.
+   *   lim12345 → lim*****, ab → a***, system@icetime.com → sys***@icetime.com
    */
-  private maskEmail(email: string): string {
-    const [local, domain] = email.split("@");
-    if (!local || !domain) return email;
-    const visible = local.substring(0, 1);
-    const masked = "*".repeat(Math.max(local.length - 1, 3));
-    return `${visible}${masked}@${domain}`;
+  private maskLoginId(loginId: string): string {
+    const at = loginId.indexOf("@");
+    const local = at >= 0 ? loginId.slice(0, at) : loginId;
+    const domain = at >= 0 ? loginId.slice(at) : "";
+    const visibleLen = Math.min(3, Math.max(local.length - 1, 1));
+    const visible = local.slice(0, visibleLen);
+    const masked = "*".repeat(Math.max(local.length - visibleLen, 3));
+    return `${visible}${masked}${domain}`;
   }
 
   /**

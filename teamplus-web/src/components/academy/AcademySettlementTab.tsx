@@ -204,7 +204,7 @@ export function AcademySettlementTab({ academyId }: AcademySettlementTabProps) {
           className="mt-3 rounded-w-md border-[1.5px] border-it-line bg-it-fill px-4 py-4 dark:border-it-blue-900 dark:bg-it-blue-900/40"
           aria-busy={isMonthLoading}
         >
-          {/* 총 수납 — 단일 히어로 숫자 */}
+          {/* 결제 완료 — 단일 히어로 숫자 */}
           <div>
             <p className="text-[12.5px] text-it-ink-500 dark:text-wtext-4">
               {MESSAGES.settlement.totalCollected}
@@ -219,7 +219,7 @@ export function AcademySettlementTab({ academyId }: AcademySettlementTabProps) {
             </p>
           </div>
 
-          {/* 미수금 / 정산 예정 — 정의형 2열 */}
+          {/* 미수금 / 청구 예정 — 정의형 2열 */}
           <div className="mt-4 grid grid-cols-2 gap-6 border-t border-it-line pt-3.5 dark:border-it-blue-900">
             <div>
               <p className="text-[12px] text-it-ink-500 dark:text-wtext-4">

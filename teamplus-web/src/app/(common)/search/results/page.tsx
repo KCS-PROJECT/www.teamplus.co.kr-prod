@@ -183,7 +183,7 @@ function SearchResultsContent() {
     try {
       type ClubItem = { id: number; title: string; subtitle: string; coachName: string; memberCount: number };
       type ClassItem = { id: number; title: string; subtitle: string; instructorName: string };
-      type CoachItem = { id: number; title: string; clubName: string };
+      type CoachItem = { id: number; title: string; teamName: string };
       type NoticeItem = { id: number; title: string; description: string; targetType?: string };
       type SearchApiResponse = {
         query: string;
@@ -232,7 +232,7 @@ function SearchResultsContent() {
             id: String(coach.id),
             type: '코치',
             title: coach.title,
-            subtitle: coach.clubName || '소속 없음',
+            subtitle: coach.teamName || '소속 없음',
             badge: '코치',
             badgeColor: 'success',
           });

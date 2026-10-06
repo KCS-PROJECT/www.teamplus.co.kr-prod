@@ -170,7 +170,7 @@ export default function ReceiptDetailPage() {
                 merchantName={receipt.storeName}
                 orderNumber={receipt.orderNumber}
                 paymentDate={receipt.paymentDate}
-                method={`${receipt.paymentMethod}${receipt.cardLastFour ? ` (${receipt.cardLastFour})` : ''}`}
+                method={`${MESSAGES.payment2.paymentMethodMap[receipt.paymentMethod] ?? receipt.paymentMethod}${receipt.cardLastFour ? ` (${receipt.cardLastFour})` : ''}`}
                 productName={receipt.productName}
                 totalAmount={receipt.totalAmount}
                 status={mapReceiptStatus(receipt.status)}

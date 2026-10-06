@@ -214,3 +214,40 @@ describe("SearchService — 공지 검색 팀 격리", () => {
     expect(noticeWhere().isActive).toBe(true);
   });
 });
+
+describe("SearchService — 코치 결과 소속 키", () => {
+  let service: SearchService;
+  let prisma: { user: { findMany: jest.Mock; count: jest.Mock } };
+
+  beforeEach(async () => {
+    prisma = {
+      user: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            id: "coach-1",
+            firstName: "코치",
+            lastName: "김",
+            coachProfile: { team: { name: "블랭크" } },
+          },
+          { id: "coach-2", firstName: "코치", lastName: "박", coachProfile: null },
+        ]),
+        count: jest.fn().mockResolvedValue(2),
+      },
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [SearchService, { provide: PrismaService, useValue: prisma }],
+    }).compile();
+
+    service = module.get<SearchService>(SearchService);
+  });
+
+  it("teamName(웹이 읽는 키)과 name(기존 키)이 같은 소속 팀명을 담는다", async () => {
+    const res = await service.search("코치", "coaches", 20, 0, undefined);
+    const items = (res.results.coaches as { items: Array<Record<string, unknown>> }).items;
+
+    expect(items[0]).toMatchObject({ teamName: "블랭크", name: "블랭크" });
+    expect(items[1]).toMatchObject({ teamName: "", name: "" });
+    for (const item of items) expect(item.teamName).toBe(item.name);
+  });
+});

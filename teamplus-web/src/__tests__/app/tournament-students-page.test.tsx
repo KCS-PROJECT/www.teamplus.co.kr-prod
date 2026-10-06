@@ -423,7 +423,7 @@ describe('대회 선수정보 — 선불 (읽기전용)', () => {
     expect(screen.queryByText(MESSAGES.tournament.rosterPrepaidUnpaid)).toBeNull();
     expect(screen.queryByText(MESSAGES.settlement.rowStatusUnsettled)).toBeNull();
     expect(screen.queryByText(MESSAGES.settlement.outstanding)).toBeNull();
-    // 결제 탭 요약(총 수납·완납·환불)은 선불도 노출.
+    // 결제 탭 요약(결제 완료·완납·환불)은 선불도 노출.
     expect(screen.getByText(MESSAGES.settlement.totalCollected)).toBeInTheDocument();
     expect(screen.getByText(MESSAGES.settlement.rowStatusRefunded)).toBeInTheDocument();
   });

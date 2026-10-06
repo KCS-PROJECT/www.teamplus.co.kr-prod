@@ -68,7 +68,10 @@ function NoticeForm({ academyId }: { academyId: string }) {
         title: title.trim(),
         message: message.trim(),
       });
-      if (res.success && res.data) {
+      if (res.success && res.data && res.data.sentCount === 0) {
+        // 서버는 활성 수강생이 없으면 알림을 만들지 않는다 — 발송 완료로 보이지 않게 하고 입력은 유지한다.
+        toast.info(MESSAGES.academy.noticeNoRecipients);
+      } else if (res.success && res.data) {
         toast.success(MESSAGES.academy.noticeSent(res.data.sentCount));
         setTitle('');
         setMessage('');

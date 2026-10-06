@@ -5,6 +5,7 @@ import { MobileContainer } from '@/components/layout/MobileContainer';
 import { PageAppBar } from '@/components/layout/PageAppBar';
 import { Icon } from '@/components/ui/Icon';
 import { NavLink, useNavigation } from '@/components/ui/NavLink';
+import { useToast } from '@/components/ui/Toast';
 import { api } from '@/services/api-client';
 import { MESSAGES } from '@/lib/messages';
 import { POLICY_FALLBACKS, normalizePolicyType } from '@/lib/legal/policy-content';
@@ -82,7 +83,10 @@ export default function TermsPage() {
   usePageReady(!isLoading);
   // [2026-05-13 이슈 D16] Flutter Native AppBar 끄고 Web PageAppBar(forceNative) 단일 노출.
   useDefaultUI();
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const { toast } = useToast();
+  // 로드 effect 는 마운트 1회만 돈다 — toast 를 의존성에 넣지 않으려 ref 로 최신 값을 참조한다.
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   // 약관 로드 — 활성 레코드만 + DB 빈 항목은 정책 표준 fallback 으로 보완
@@ -97,7 +101,6 @@ export default function TermsPage() {
     let cancelled = false;
     const load = async () => {
       setIsLoading(true);
-      setLoadError(null);
       const res = await api.get<TermsItem[]>('/app/terms');
       if (cancelled) return;
 
@@ -106,9 +109,9 @@ export default function TermsPage() {
       if (res.success && Array.isArray(res.data)) {
         combined = res.data.filter((t) => t.isActive !== false);
       } else if (!res.success) {
-        // API 실패 시에도 fallback 으로 정책 노출 — 앱 심사 통과(Apple Privacy URL) 보장
-        // 단, 네트워크 오류는 사용자에게 안내
-        setLoadError(res.error?.message ?? MESSAGES.error.network);
+        // API 실패 시에도 fallback 목록을 그대로 노출한다 — 앱 심사(Apple Privacy URL) 상
+        // 정책 본문이 항상 보여야 하므로 오류 화면으로 가리지 않고 토스트로만 알린다.
+        toastRef.current.error(MESSAGES.settings.termsLoadFailed);
       }
 
       // 등록되지 않은 표준 type 을 fallback 으로 보완
@@ -186,23 +189,7 @@ export default function TermsPage() {
 
       {/* Main Content — ICETIMES flat: 회색 캔버스 + 흰 섹션 */}
       <main className="flex-1 overflow-y-auto bg-it-canvas dark:bg-puck">
-        {isLoading ? null : loadError ? (
-          <section className="bg-it-surface dark:bg-rink-800 mt-2 flex flex-col items-center justify-center py-16 px-4 text-center">
-            <div className="w-16 h-16 rounded-w-md bg-it-red-50 dark:bg-it-red-500/15 flex items-center justify-center mb-4">
-              <Icon name="error_outline" className="text-3xl text-it-red-500" />
-            </div>
-            <p className="text-[15px] font-bold text-it-ink-800 dark:text-white mb-1">
-              약관을 불러오지 못했어요
-            </p>
-            <p className="text-[13px] text-it-ink-500 dark:text-wtext-4 mb-4">{loadError}</p>
-            <button
-              onClick={() => window.location.reload()}
-              className="h-10 px-5 rounded-w-md bg-it-blue-500 text-white text-[14px] font-bold hover:bg-it-blue-600 transition-colors motion-reduce:transition-none"
-            >
-              다시 시도하기
-            </button>
-          </section>
-        ) : terms.length === 0 ? (
+        {isLoading ? null : terms.length === 0 ? (
           <section className="bg-it-surface dark:bg-rink-800 mt-2 flex flex-col items-center justify-center py-16 px-4 text-center">
             <div className="w-16 h-16 rounded-w-md bg-it-fill dark:bg-rink-700 flex items-center justify-center mb-4">
               <Icon name="description" className="text-3xl text-it-ink-400 dark:text-wtext-4" />

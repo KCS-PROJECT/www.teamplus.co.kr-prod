@@ -1022,4 +1022,42 @@ describe("AuthService", () => {
       expect(mockPrismaService.team.count).not.toHaveBeenCalled();
     });
   });
+
+  describe("findId - 아이디 마스킹", () => {
+    const createdAt = new Date("2026-01-01T00:00:00Z");
+    const findWith = async (email: string) => {
+      mockPrismaService.user.findFirst.mockResolvedValueOnce({
+        email,
+        createdAt,
+      });
+      return service.findId("홍길동", "01012345678");
+    };
+
+    it("일반 ID 는 앞 3자만 남기고 가린다", async () => {
+      await expect(findWith("lim12345")).resolves.toEqual({
+        email: "lim*****",
+        createdAt,
+      });
+    });
+
+    it("짧은 ID 도 전체가 드러나지 않는다", async () => {
+      await expect(findWith("ab")).resolves.toMatchObject({ email: "a***" });
+      await expect(findWith("abcd")).resolves.toMatchObject({
+        email: "abc***",
+      });
+    });
+
+    it("이메일 형식 ID 는 로컬파트만 가리고 도메인은 유지한다", async () => {
+      await expect(findWith("system@icetime.com")).resolves.toMatchObject({
+        email: "sys***@icetime.com",
+      });
+    });
+
+    it("일치하는 계정이 없으면 NotFound", async () => {
+      mockPrismaService.user.findFirst.mockResolvedValueOnce(null);
+      await expect(service.findId("없음", "01000000000")).rejects.toThrow(
+        "입력하신 정보와 일치하는 계정을 찾을 수 없습니다.",
+      );
+    });
+  });
 });

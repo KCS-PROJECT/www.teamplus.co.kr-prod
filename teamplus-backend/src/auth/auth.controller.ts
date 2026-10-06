@@ -40,7 +40,12 @@ import { CryptoService } from "./services/crypto.service";
 import { RegisterDto } from "./dto/register.dto";
 import { LoginDto } from "./dto/login.dto";
 import { EncryptedLoginDto } from "./dto/encrypted-login.dto";
-import { CHLDIV, Chldiv } from "./constants/chldiv.constants";
+import {
+  CHLDIV,
+  Chldiv,
+  isUserTypeAllowedForChldiv,
+} from "./constants/chldiv.constants";
+import { UserType } from "@prisma/client";
 import { UpdateProfileDto } from "./dto/update-profile.dto";
 import { ChangePasswordDto } from "./dto/change-password.dto";
 import { SignupDto } from "./dto/signup.dto";
@@ -250,15 +255,10 @@ export class AuthController {
   async adminLogin(
     @Body() encryptedDto: EncryptedLoginDto,
     @Req() req: ExpressRequest,
-    @Res({ passthrough: true }) res: ExpressResponse,
   ) {
-    const result = await this.handleEncryptedLogin(encryptedDto, req, CHLDIV.ADM);
-    // [A-1] httpOnly refresh 쿠키 추가 설정 (body 응답 불변)
-    this.setRefreshCookie(
-      res,
-      (result as { refreshToken?: string })?.refreshToken,
-    );
-    return result;
+    // 공용 refresh 쿠키는 APP 채널 전용 — admin 은 이 쿠키를 읽지 않으면서,
+    //   web 과 호스트를 공유하면 같은 이름 쿠키를 덮어써 web 루트 판정을 오염시킨다.
+    return this.handleEncryptedLogin(encryptedDto, req, CHLDIV.ADM);
   }
 
   /**
@@ -314,6 +314,24 @@ export class AuthController {
 
   private clearRefreshCookie(res: ExpressResponse): void {
     res.clearCookie(AuthController.REFRESH_COOKIE, { path: "/" });
+  }
+
+  /**
+   * ADM 채널(SYSTEM/OPER) 토큰 판정 — 공용 refresh 쿠키를 심거나 지울지 결정한다.
+   *   서명 검증은 호출 전 서비스에서 끝났으므로 payload 만 읽고, 읽을 수 없으면 APP 으로 본다.
+   */
+  private isAdmChannelToken(token: string): boolean {
+    try {
+      const payload = JSON.parse(
+        Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8"),
+      ) as { userType?: string };
+      return isUserTypeAllowedForChldiv(
+        CHLDIV.ADM,
+        payload.userType as UserType,
+      );
+    } catch {
+      return false;
+    }
   }
 
   private getRefreshFromCookie(req: ExpressRequest): string | undefined {
@@ -498,10 +516,12 @@ export class AuthController {
       throw new UnauthorizedException("Refresh Token이 필요합니다.");
     }
     const result = await this.authService.refreshToken(refreshToken);
-    this.setRefreshCookie(
-      res,
-      (result as { refreshToken?: string })?.refreshToken,
-    );
+    if (!this.isAdmChannelToken(refreshToken)) {
+      this.setRefreshCookie(
+        res,
+        (result as { refreshToken?: string })?.refreshToken,
+      );
+    }
     return result;
   }
 
@@ -529,8 +549,12 @@ export class AuthController {
     @Res({ passthrough: true }) res: ExpressResponse,
   ) {
     const accessToken = authorization?.replace("Bearer ", "");
-    // [A-1] httpOnly refresh 쿠키 제거
-    this.clearRefreshCookie(res);
+    // [A-1] httpOnly refresh 쿠키 제거 — ADM 채널은 쿠키를 받지 않으므로 web 쿠키를 지우지 않는다.
+    if (
+      !isUserTypeAllowedForChldiv(CHLDIV.ADM, req.user.userType as UserType)
+    ) {
+      this.clearRefreshCookie(res);
+    }
     // [2026-06-20] x-device-id(앱 안정 식별자) 전달 → 이 디바이스 푸시 등록 비활성화.
     return this.authService.logout(req.user.id, accessToken, deviceId);
   }

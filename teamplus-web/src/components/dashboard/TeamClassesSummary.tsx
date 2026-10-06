@@ -648,7 +648,7 @@ export function TeamClassesSummary({
                           </p>
                           {item.enrolled ? (
                             <span className="shrink-0 rounded-w-pill bg-mint-500/15 px-1.5 py-0.5 text-card-meta font-bold text-mint-600 dark:text-mint-500">
-                              등록완료
+                              {MESSAGES.class.listChipEnrolled}
                             </span>
                           ) : item.kind === 'class' && item.expired ? (
                             /* 만료(다니던 수업·수강권 종료) — 갱신 의사결정 유도.

@@ -2689,13 +2689,12 @@ export default function ClassDetailPage() {
               //   아직 오지 않은 달이면 "N월분 미리 결제"(§4-6 화면 어휘).
               //   [월분 탭] 탭을 고르면 CTA 도 그 달을 따라간다.
               const targetMonth = activeProductMonth ?? monthlyEligibility.targetBillingMonth;
+              //   후불은 결제가 없으므로 아직 오지 않은 달이어도 "미리 결제"가 아니라 "신청하기"다.
               const ctaMonthLabel = targetMonth
-                ? targetMonth === getCurrentYearMonth()
+                ? targetMonth === getCurrentYearMonth() || isPostpaid
                   ? MESSAGES.enrollment.applyForMonthCta(Number(targetMonth.slice(5, 7)))
                   : MESSAGES.enrollment.prepayForMonthCta(Number(targetMonth.slice(5, 7)))
-                : isPostpaid
-                  ? MESSAGES.enrollment.postpaidEnrollCta
-                  : "신청하기";
+                : MESSAGES.enrollment.postpaidEnrollCta;
 
               return (
                 // [2026-06-18 사용자 직접 지시] 배치·문구 변경 —
