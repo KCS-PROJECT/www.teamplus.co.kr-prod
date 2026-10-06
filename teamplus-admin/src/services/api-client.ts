@@ -64,12 +64,6 @@ export const COOKIE_KEYS = {
   REFRESH_TOKEN: "teamplus_admin_refresh_token",
 } as const;
 
-/** 과거 웹과 공유하던 쿠키 이름 — 로그인/로그아웃 시 잔존 쿠키 정리용 */
-const LEGACY_COOKIE_KEYS = [
-  "teamplus_access_token",
-  "teamplus_refresh_token",
-] as const;
-
 // ==================== JWT Token Utilities ====================
 
 /**
@@ -195,12 +189,6 @@ export const setTokens = (accessToken: string, refreshToken: string): void => {
   const secure = location.protocol === "https:" ? "; Secure" : "";
   document.cookie = `${COOKIE_KEYS.ACCESS_TOKEN}=${accessToken}; path=/; max-age=86400; SameSite=Lax${secure}`;
   document.cookie = `${COOKIE_KEYS.REFRESH_TOKEN}=${refreshToken}; path=/; max-age=604800; SameSite=Lax${secure}`; // 7일
-
-  // 레거시 공유 이름 쿠키 정리 — 이전 버전이 심어둔 쿠키가 같은 호스트의
-  // 웹(5001) 역할 리다이렉트를 계속 오염시키는 잔존 차단.
-  LEGACY_COOKIE_KEYS.forEach((key) => {
-    document.cookie = `${key}=; path=/; max-age=0`;
-  });
 };
 
 /**
@@ -213,12 +201,9 @@ export const clearTokens = (): void => {
   localStorage.removeItem(TOKEN_KEYS.ACCESS_TOKEN);
   localStorage.removeItem(TOKEN_KEYS.REFRESH_TOKEN);
 
-  // 쿠키 삭제 (max-age=0으로 즉시 만료) — 레거시 공유 이름까지 함께 정리
+  // 쿠키 삭제 (max-age=0으로 즉시 만료) — admin 이름만. web 쿠키(teamplus_*)는 건드리지 않는다.
   document.cookie = `${COOKIE_KEYS.ACCESS_TOKEN}=; path=/; max-age=0`;
   document.cookie = `${COOKIE_KEYS.REFRESH_TOKEN}=; path=/; max-age=0`;
-  LEGACY_COOKIE_KEYS.forEach((key) => {
-    document.cookie = `${key}=; path=/; max-age=0`;
-  });
 };
 
 // ==================== Request Interceptor ====================
