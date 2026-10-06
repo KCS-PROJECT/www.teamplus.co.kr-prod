@@ -711,7 +711,7 @@ export default function TournamentStudentsPage() {
         ) : (
           /* ── 탭② 결제 현황 — 요약 → 필터 → 금액 행 (수업 결제 탭 동형) ── */
           <section className="bg-it-surface px-4 sm:px-5 pb-8 pt-4 dark:bg-it-blue-950">
-            {/* 요약 패널 — 총 수납 + 상태 인원 + (후불) 미수 */}
+            {/* 요약 패널 — 결제 완료 + 상태 인원 + (후불) 미수 */}
             <div className="rounded-w-md bg-it-fill p-4 dark:bg-rink-800">
               <div className="flex items-baseline justify-between">
                 <span className="text-card-meta font-semibold text-it-ink-500 dark:text-rink-300">

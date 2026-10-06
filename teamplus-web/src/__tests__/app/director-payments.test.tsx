@@ -326,7 +326,7 @@ describe('DirectorPaymentsPage — 최초 로드 실패 (HIGH-2)', () => {
     expect(await screen.findByText(MESSAGES.settlement.loadFailedTitle)).toBeInTheDocument();
     expect(screen.getByText(MESSAGES.settlement.retry)).toBeInTheDocument();
 
-    // 0원 Hero(총 수납/미납 요약)는 렌더되지 않아야 한다.
+    // 0원 Hero(결제 완료/미납 요약)는 렌더되지 않아야 한다.
     expect(screen.queryByText(MESSAGES.settlement.totalCollected)).not.toBeInTheDocument();
   });
 
@@ -615,7 +615,9 @@ describe('DirectorPaymentsPage — 거래 내역 탭 (건별 장부)', () => {
     );
 
     render(<DirectorPaymentsPage />);
-    await screen.findByText(MESSAGES.settlement.totalCollected);
+    // Hero 라벨과 행 상태 배지가 같은 문구("결제 완료")라 Hero 안에서만 찾는다.
+    const hero = (await screen.findByText(MESSAGES.settlement.heroLabel)).closest('section')!;
+    expect(within(hero).getByText(MESSAGES.settlement.totalCollected)).toBeInTheDocument();
 
     // 일자 그룹 헤더 — "MM.DD (요일)" (연월 문맥은 Hero 월 선택기 담당 · 날짜 다른 두 건 → 헤더 2개).
     expect(await screen.findByText('07.24 (금)')).toBeInTheDocument();
@@ -625,7 +627,10 @@ describe('DirectorPaymentsPage — 거래 내역 탭 (건별 장부)', () => {
     expect(screen.getByText('홍부모')).toBeInTheDocument();
     expect(screen.getByText('3월 정규수업')).toBeInTheDocument();
     expect(screen.getByText('14:32')).toBeInTheDocument();
-    expect(screen.getByText(MESSAGES.settlement.txnStatusCompleted)).toBeInTheDocument();
+    const completedBadges = screen
+      .getAllByText(MESSAGES.settlement.txnStatusCompleted)
+      .filter((el) => !hero.contains(el));
+    expect(completedBadges).toHaveLength(1);
     // 행 2 — 선수 연결 없음 → 상품명(대회명)이 타이틀 승격 + 환불 상태.
     expect(screen.getByText('여름컵')).toBeInTheDocument();
     expect(screen.getByText('김부모')).toBeInTheDocument();

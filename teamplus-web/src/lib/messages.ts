@@ -1370,7 +1370,7 @@ export const MESSAGES = {
   settlement: {
     // 탭 — 거래 내역(건별 장부·기본) / 정산 집계(훈련·대회 소계)
     tabTransactions: "거래 내역",
-    tabSettlementAgg: "수납 현황",
+    tabSettlementAgg: "정산 현황",
     tabTraining: "훈련",
     tabTournament: "대회",
     tabUnpaid: "미수금",
@@ -1387,10 +1387,10 @@ export const MESSAGES = {
     unpaidBannerOpen: "미수금 목록 펼치기",
     unpaidBannerClose: "미수금 목록 접기",
     // Hero 요약
-    heroLabel: "정산 요약",
-    totalCollected: "총 수납",
+    heroLabel: "결제 요약",
+    totalCollected: "결제 완료",
     unpaidAmount: "미수금",
-    pendingSettlement: "정산 예정",
+    pendingSettlement: "청구 예정",
     unpaidCountBadge: (n: number) => `미납 ${n}건`,
     won: "원",
     person: "명",
@@ -3365,7 +3365,7 @@ export const MESSAGES = {
     homeMenuNotices: "팀 공지",
     homeMenuNoticesMeta: "공지 작성 · 관리",
     homeMenuCollections: "결제 관리",
-    homeMenuCollectionsMeta: "거래 내역 · 수납 현황 · 미납",
+    homeMenuCollectionsMeta: "거래 내역 · 정산 현황 · 미납",
     homeMenuPayout: "지급 정산",
     homeMenuPayoutMeta: "월별 지급 · 정산 계좌",
   },

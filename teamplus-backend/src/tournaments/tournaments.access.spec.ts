@@ -41,6 +41,7 @@ describe("Tournaments Phase 0 access", () => {
     },
     hockeyMatch: {
       aggregate: jest.fn(),
+      groupBy: jest.fn().mockResolvedValue([]),
       count: jest.fn(),
       findMany: jest.fn(),
       findUnique: jest.fn(),
@@ -239,15 +240,24 @@ describe("Tournaments Phase 0 access", () => {
   });
 
   describe("getTournaments — 후불 미청구 건수(unsettledPostpaidCount)", () => {
-    it("후불 대회만 UNPAID 참가 건수를 집계하고 선불 대회는 0", async () => {
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    it("종료된 후불 대회만 UNPAID 참가 건수를 집계하고 선불 대회는 0", async () => {
       const prisma = makePrismaMock();
       prisma.user.findUnique.mockResolvedValue({
         id: "adm-1",
         userType: "ADMIN",
       });
       prisma.tournament.findMany.mockResolvedValue([
-        { id: "t-post", billingMode: "POSTPAID" },
-        { id: "t-pre", billingMode: "PREPAID" },
+        {
+          id: "t-post",
+          billingMode: "POSTPAID",
+          status: "scheduled",
+          endDate: yesterday,
+        },
+        { id: "t-pre", billingMode: "PREPAID", status: "scheduled", endDate: yesterday },
       ]);
       prisma.tournamentRegistration.groupBy.mockResolvedValue([
         { tournamentId: "t-post", _count: { _all: 3 } },
@@ -265,6 +275,70 @@ describe("Tournaments Phase 0 access", () => {
       expect(result).toEqual([
         expect.objectContaining({ id: "t-post", unsettledPostpaidCount: 3 }),
         expect.objectContaining({ id: "t-pre", unsettledPostpaidCount: 0 }),
+      ]);
+    });
+
+    // 운영 재현 — 일정(기간·경기) 미등록 후불 대회에 신청이 있어도 '정산 필요'가 켜지면
+    //   '예정' 배지와 함께 보인다. 정산 가드(confirmTournamentSettlement)와 같은 기준으로
+    //   아직 정산할 수 없는 대회는 0 으로 내려야 한다.
+    it("일정 미등록·진행 전·진행 중 후불 대회는 UNPAID 가 있어도 0 (정산 불가 상태)", async () => {
+      const prisma = makePrismaMock();
+      prisma.user.findUnique.mockResolvedValue({
+        id: "adm-1",
+        userType: "ADMIN",
+      });
+      prisma.tournament.findMany.mockResolvedValue([
+        // 기간도 경기도 없음 — 운영 cmsii7jag003dlxf333i7phdb 케이스
+        { id: "t-tbd", billingMode: "POSTPAID", status: "scheduled", endDate: null },
+        // 종료일이 아직 안 지남
+        { id: "t-future", billingMode: "POSTPAID", status: "scheduled", endDate: tomorrow },
+        // 마지막 경기 시작 +1시간 이전 (경기가 아직 안 끝남)
+        { id: "t-playing", billingMode: "POSTPAID", status: "ongoing", endDate: tomorrow },
+        // 취소 대회
+        { id: "t-cancel", billingMode: "POSTPAID", status: "cancelled", endDate: yesterday },
+      ]);
+      prisma.hockeyMatch.groupBy.mockResolvedValue([
+        { tournamentId: "t-playing", _max: { scheduledAt: new Date(Date.now() + 60_000) } },
+      ]);
+      const service = makeService(prisma, makeAccessMock(true));
+      const result = await service.getTournaments(undefined, "adm-1");
+      // 정산 가능한 대회가 없으므로 참가 건수 집계 자체를 하지 않는다.
+      expect(prisma.tournamentRegistration.groupBy).not.toHaveBeenCalled();
+      expect(result.map((t) => t.unsettledPostpaidCount)).toEqual([0, 0, 0, 0]);
+    });
+
+    it("마지막 경기 시작 +1시간 경과 또는 status=finished 면 종료일과 무관하게 집계", async () => {
+      const prisma = makePrismaMock();
+      prisma.user.findUnique.mockResolvedValue({
+        id: "adm-1",
+        userType: "ADMIN",
+      });
+      prisma.tournament.findMany.mockResolvedValue([
+        // 종료일은 내일이지만 마지막 경기가 2시간 전 시작 → 정산 가능
+        { id: "t-played", billingMode: "POSTPAID", status: "ongoing", endDate: tomorrow },
+        // 기간 없음이지만 수동 종료 처리
+        { id: "t-finished", billingMode: "POSTPAID", status: "finished", endDate: null },
+      ]);
+      prisma.hockeyMatch.groupBy.mockResolvedValue([
+        { tournamentId: "t-played", _max: { scheduledAt: twoHoursAgo } },
+      ]);
+      prisma.tournamentRegistration.groupBy.mockResolvedValue([
+        { tournamentId: "t-played", _count: { _all: 2 } },
+        { tournamentId: "t-finished", _count: { _all: 1 } },
+      ]);
+      const service = makeService(prisma, makeAccessMock(true));
+      const result = await service.getTournaments(undefined, "adm-1");
+      expect(prisma.tournamentRegistration.groupBy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            tournamentId: { in: ["t-played", "t-finished"] },
+            paymentStatus: "UNPAID",
+          },
+        }),
+      );
+      expect(result).toEqual([
+        expect.objectContaining({ id: "t-played", unsettledPostpaidCount: 2 }),
+        expect.objectContaining({ id: "t-finished", unsettledPostpaidCount: 1 }),
       ]);
     });
 

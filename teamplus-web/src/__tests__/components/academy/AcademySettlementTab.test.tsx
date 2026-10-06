@@ -2,7 +2,7 @@
  * AcademySettlementTab — 렌더 · 월 race · 초기/월 실패 재시도 · detailPath 네비 회귀 테스트.
  *
  * 팀 허브(director-payments)와 동일한 금융 화면 계약을 오픈클래스 정산 탭에서도 검증:
- *  (a) 수업 카드 + 요약(총 수납) 렌더.
+ *  (a) 수업 카드 + 요약(결제 완료) 렌더.
  *  (b) 늦게 도착한 이전 월 응답이 최신 선택 월을 덮지 않는다(요청 시퀀스 가드).
  *  (c) 초기 로드 실패 → 에러+재시도(0원 요약 렌더 금지).
  *  (d) 월 변경 실패 → 인라인 에러+재시도(직전 월 stale 카드 미표시).
@@ -86,7 +86,7 @@ beforeEach(() => {
 });
 
 describe('AcademySettlementTab — 렌더', () => {
-  it('수업 카드와 총 수납 요약을 렌더한다', async () => {
+  it('수업 카드와 결제 완료 요약을 렌더한다', async () => {
     getAcademySettlementSummaryMock.mockResolvedValue(
       makeAcademySettlement('2026-07', 'JULY_CLASS'),
     );
@@ -149,7 +149,7 @@ describe('AcademySettlementTab — 초기 로드 실패', () => {
       await screen.findByText(MESSAGES.settlement.loadFailedTitle),
     ).toBeInTheDocument();
     expect(screen.getByText(MESSAGES.settlement.retry)).toBeInTheDocument();
-    // 0원 요약(총 수납)은 렌더되지 않아야 한다.
+    // 0원 요약(결제 완료)은 렌더되지 않아야 한다.
     expect(screen.queryByText(MESSAGES.settlement.totalCollected)).not.toBeInTheDocument();
   });
 

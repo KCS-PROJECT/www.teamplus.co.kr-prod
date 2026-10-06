@@ -670,7 +670,7 @@ export default function ClassStudentsPage() {
                 <PaymentMonthSkeleton />
               ) : (
                 <>
-                  {/* 요약 압축 — inset fill 패널 (총 수납 + 선불/후불/미설정 인원 + 미수·정산예정) */}
+                  {/* 요약 압축 — inset fill 패널 (결제 완료 + 선불/후불/미설정 인원 + 미수·청구 예정) */}
                   <div className="rounded-w-md bg-it-fill dark:bg-rink-800 p-4">
                     <div className="flex items-baseline justify-between">
                       <span className="text-card-meta font-semibold text-it-ink-500 dark:text-rink-300">
