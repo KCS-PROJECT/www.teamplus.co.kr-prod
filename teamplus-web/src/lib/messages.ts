@@ -4815,6 +4815,10 @@ export const MESSAGES = {
     postpaidLockTitle: "후불 수업은 월 결제를 추가할 수 없어요",
     postpaidLockHint:
       "후불 수업은 출석 횟수에 따라 1회 수업료로 월말 정산됩니다.",
+    // 판매 중 수업(수정 폼) — 판매 시작된 달에는 새 월 결제를 넣을 수 없어 추가를 막고 판매 준비로 안내.
+    onSaleAddLockTitle: "판매 중인 달에는 월 결제를 추가할 수 없어요",
+    onSaleAddLockHint:
+      "다음 달 월 결제는 일정·판매 관리의 판매 준비에서 등록해주세요.",
     editPackage: "월 결제 수정",
     // 목록 행 액션 버튼 — 행 안에 대상이 명확하므로 축약형(Tone & Manner "~하기" 준수).
     rowEdit: "수정하기",
@@ -4906,6 +4910,9 @@ export const MESSAGES = {
     // 제출 시 일괄 반영 — 부분 성공/이탈 안내.
     bulkSaveFailed:
       "수업 정보는 저장됐지만 월 결제 반영에 실패했습니다. 월 결제를 다시 저장해주세요.",
+    // 서버가 사유(가격 잠금 등)를 돌려준 경우 — 일반 문구 대신 사유를 그대로 싣는다.
+    bulkSaveFailedWithReason: (reason: string) =>
+      `수업 정보는 저장됐지만 월 결제는 반영되지 않았어요. ${reason}`,
     deferredDeleteHint:
       "월 결제 추가·수정·삭제는 ‘수정하기’를 눌러야 저장됩니다.",
     unsavedLeaveTitle: "저장하지 않고 나갈까요?",

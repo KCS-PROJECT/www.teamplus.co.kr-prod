@@ -159,7 +159,18 @@ export function PackageManageSection({
   // 후불 수업은 "후불 수업료" 단일 상품으로 출석 기반 월말 정산하므로 패키지 추가를 막는다.
   //   (기존 상품 수정/삭제는 허용 — 추가만 차단.)
   const isPostpaid = billingMode === 'POSTPAID';
-  const canAdd = !readonly && !isPostpaid;
+  // [가격 잠금] 판매 시작된 수업(수정 폼) — 새 정액 상품은 귀속 달을 고를 수 없어 서버가
+  //   첫 일정의 달·판매 승인월로 귀속하는데 그 달은 이미 동결이라 항상 400 이다.
+  //   대상월이 있는 판매 준비(갱신) 상태만 예외. 추가를 막고 일정·판매 관리로 안내한다.
+  const isOnSaleAddLocked =
+    mode === 'deferred' &&
+    !renewalTargetMonth &&
+    !salesPendingLock &&
+    (value ?? []).some(
+      (d) =>
+        d.serverId && d.feeType === 'MONTHLY_FIXED' && d.priceLocked === true,
+    );
+  const canAdd = !readonly && !isPostpaid && !isOnSaleAddLocked;
   // embed — 수강료 카드 내부 삽입용. 자체 카드·제목 없이 추가버튼+목록만 렌더.
   const isEmbed = variant === 'embed';
 
@@ -454,6 +465,37 @@ export function PackageManageSection({
             }
           >
             {MESSAGES.classProduct.postpaidLockHint}
+          </p>
+        </div>
+      )}
+
+      {/* 판매 중 수업 — 새 월 결제 추가 차단 안내. 다음 달분은 일정·판매 관리의 판매 준비에서. */}
+      {isOnSaleAddLocked && !readonly && (
+        <div
+          role="note"
+          className={
+            iceTheme
+              ? 'mb-3 rounded-w-md bg-it-fill dark:bg-rink-700/50 border border-it-line dark:border-rink-700 px-3 py-2.5'
+              : 'mb-3 rounded-w-lg bg-wbg dark:bg-rink-700/50 border border-wline-2 dark:border-rink-700 px-3 py-2.5'
+          }
+        >
+          <p
+            className={
+              iceTheme
+                ? 'text-card-meta font-bold text-it-ink-800 dark:text-rink-100'
+                : 'text-card-meta font-bold text-wtext-1 dark:text-rink-100'
+            }
+          >
+            {MESSAGES.classProduct.onSaleAddLockTitle}
+          </p>
+          <p
+            className={
+              iceTheme
+                ? 'text-card-caption text-it-ink-500 dark:text-rink-300 mt-0.5'
+                : 'text-card-caption text-wtext-3 dark:text-rink-300 mt-0.5'
+            }
+          >
+            {MESSAGES.classProduct.onSaleAddLockHint}
           </p>
         </div>
       )}
