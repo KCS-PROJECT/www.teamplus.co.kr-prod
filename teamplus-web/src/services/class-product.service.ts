@@ -139,13 +139,21 @@ export async function deleteClassProduct(
  * 백엔드는 단일 트랜잭션으로 처리하며 갱신 후 전체 패키지 배열(계산필드 포함)을 반환한다.
  * 빈 입력은 no-op로 현재 목록을 반환한다.
  */
+export type BulkUpsertClassProductsResult =
+  | { ok: true; data: ClassProductDto[] }
+  /** 실패 — message 는 서버 거절 사유(가격 잠금 등). 네트워크 등 사유 미상이면 null. */
+  | { ok: false; message: string | null };
+
 export async function bulkUpsertClassProducts(
   classId: string,
   body: BulkUpsertClassProductsBody,
-): Promise<ClassProductDto[] | null> {
+): Promise<BulkUpsertClassProductsResult> {
   const res = await api.put<ClassProductDto[]>(
     `${buildBase(classId)}/bulk`,
     body,
   );
-  return res.success && Array.isArray(res.data) ? res.data : null;
+  if (res.success && Array.isArray(res.data)) {
+    return { ok: true, data: res.data };
+  }
+  return { ok: false, message: res.error?.message ?? null };
 }

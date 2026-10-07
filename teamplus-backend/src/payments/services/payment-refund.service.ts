@@ -78,7 +78,20 @@ export interface RefundRequester {
   id?: string;
   userType?: string;
   trusted?: boolean;
+  /**
+   * 셀프 서비스 호출인데 결제 종류 가드(선불 수강 결제만 허용)를 면제할 때만 true.
+   * 호출부가 결제 종류와 이용 개시 규칙을 이미 검증한 내부 경로(대회 참가취소의 전날까지
+   * 규칙)에 한한다. HTTP 컨트롤러는 설정하지 않는다 — 생략하면 가드가 적용된다(fail-closed).
+   */
+  domainVerified?: boolean;
 }
+
+/** 셀프 취소 결제 종류 가드 거절 코드 — 웹이 대회/후불을 구분해 안내할 수 있게 sourceType 동반. */
+export const SELF_CANCEL_NOT_ALLOWED = "SELF_CANCEL_NOT_ALLOWED";
+export const SELF_CANCEL_TOURNAMENT_MESSAGE =
+  "대회 참가비는 대회 화면에서 참가 취소해주세요(대회 전날까지). 대회 당일 이후에는 결제 내역에서 환불 요청을 이용해주세요.";
+export const SELF_CANCEL_NOT_ALLOWED_MESSAGE =
+  "이 결제는 앱에서 직접 취소할 수 없습니다. 결제 내역에서 환불 요청을 이용해주세요.";
 
 /**
  * 환불 실행 감사/승인제 연동 컨텍스트 (환불 승인제 — Phase 1).
@@ -220,6 +233,26 @@ export class PaymentRefundService {
     @Optional()
     private readonly resourceAccess?: ResourceAccessService,
   ) {}
+
+  /**
+   * 셀프 취소 결제 종류 가드 — 선불 수강(Enrollment 연결) 결제만 앱에서 직접 취소할 수 있다.
+   * 후불 월 청구는 이미 출석한 회차의 대금이고, 대회 참가비는 대회 화면의 참가취소(전날까지)가
+   * 전용 경로라 둘 다 환불 요청(감독 승인)으로만 돌려받는다. 어느 종류에도 속하지 않는 결제는
+   * fail-closed 로 거절한다. 셀프 서비스 호출이면 항상 적용하고, `requester.domainVerified`
+   * 를 세운 내부 경로만 면제한다.
+   */
+  private async assertSelfCancelDomainAllowed(paymentId: string) {
+    const scope = await this.detectDirectScope(paymentId);
+    if (scope.sourceType === "CLASS_PREPAID") return;
+    throw new ForbiddenException({
+      errorCode: SELF_CANCEL_NOT_ALLOWED,
+      message:
+        scope.sourceType === "TOURNAMENT"
+          ? SELF_CANCEL_TOURNAMENT_MESSAGE
+          : SELF_CANCEL_NOT_ALLOWED_MESSAGE,
+      details: { sourceType: scope.sourceType },
+    });
+  }
 
   /**
    * [환불 정책 1단계] 이용 개시 검증 — 개시된 결제는 셀프 취소 거절.
@@ -733,6 +766,9 @@ export class PaymentRefundService {
     //   있으면 본인(학부모) 셀프 결제취소를 거절한다 — 환불은 감독/관리자 경로로만.
     //   ADMIN/SYSTEM/OPER·trusted 내부 호출은 통과 (관리자 환불·시스템 보상 경로).
     if (isSelfService) {
+      if (!requester?.domainVerified) {
+        await this.assertSelfCancelDomainAllowed(paymentId);
+      }
       await this.assertEnrollmentNotUsed(
         paymentId,
         payment.completedAt ?? payment.createdAt,

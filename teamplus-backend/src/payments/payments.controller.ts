@@ -1364,6 +1364,11 @@ export class PaymentsController {
     description: "결제 취소 요청이 유효하지 않습니다.",
   })
   @ApiResponse({
+    status: 403,
+    description:
+      "본인 결제가 아니거나, 선불 수강 결제가 아니어서(후불 청구·대회 참가비 등) 앱에서 직접 취소할 수 없습니다. (errorCode SELF_CANCEL_NOT_ALLOWED)",
+  })
+  @ApiResponse({
     status: 404,
     description: "결제 기록을 찾을 수 없습니다.",
   })
@@ -1383,6 +1388,7 @@ export class PaymentsController {
       cancelDto.refundBankCode,
       cancelDto.refundAccount,
       cancelDto.refundAccountHolder,
+      // domainVerified 를 세우지 않는다 — 학부모 셀프 취소는 엔진의 결제 종류 가드(선불 수강만)를 거친다.
       { id: req.user.id, userType: req.user.userType },
       { actorId: req.user.id }, // 감사 — ADMIN 직접 환불 실행 주체 기록(RefundLog.actorId)
     );

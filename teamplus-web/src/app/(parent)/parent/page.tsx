@@ -8,7 +8,7 @@
  *  -1. 자녀 스트립 — 네이비 밴드(로고·이름·팀) + [선택] 버튼 → ChildPickerSheet 자녀 전환
  *  0. 자녀 상태 배너 — pending/rejected/자녀0명일 때만 노출 (최상단 긴급 안내)
  *  1. 공지사항 — RecentNoticesSection (팀 단위 정보)
- *  2. 수업 목록 — TeamClassesSummary (팀 등록 수업 상위 5건 요약 + 전체보기)
+ *  2. 수업 목록 — TeamClassesSummary myOnly (선택 자녀의 수강 중 수업·참가 대회 + 전체보기)
  *  3. 수업 일정 — ClassCalendarSection 월 달력 (자녀 등록 수업으로 필터링)
  *  4. 선택일 수업 — SelectedDayClassList (선택일 자녀 수업 + 출석 버튼)
  *
@@ -658,10 +658,8 @@ export default function ParentDashboardPage() {
           <ReadingContentSection placement="promoted" iceTheme />
         )}
 
-        {/* ② 수업 목록 — 팀 등록 수업 상위 5건 요약 + 전체보기.
-              팀 전체 카탈로그라 자녀 칩 필터와 무관 → 칩보다 위에 배치. */}
-        {/* [2026-08-04 사용자 지시] 홈 수업 목록 = 내가 등록했거나 신청/요청한 수업·대회만.
-            팀 카탈로그 전체 탐색은 '전체보기'(→ /classes) 와 빈 상태 CTA 가 담당한다. */}
+        {/* ② 수업 목록 — 선택 자녀의 수강 중·재결제 필요 수업과 참가 확정 대회만(myOnly).
+              결제 전 신청·팀 카탈로그 탐색은 '전체보기'(→ /classes) 와 빈 상태 CTA 가 담당한다. */}
         <TeamClassesSummary
           selectedChildId={selectedChildId}
           classLimit={7}

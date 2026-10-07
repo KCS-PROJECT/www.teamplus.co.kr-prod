@@ -6,7 +6,9 @@
  *    백엔드가 각각 학부모 가시성 기준 필터링(대회는 자녀 소속 팀 + 출생연도 자격).
  *  - SectionHead "수업 목록" + "전체보기 ›" → /classes (카탈로그/등록 진입점은 그대로 유지)
  *  - 카드: 타입 배지(라벨) + 수업명/대회명 + 코치·요일(수업) | 기간(대회) → 클릭 시 /classes/[id] | /tournaments/[id]
- *  - 빈 상태: emptyByPersona.parent('수업')
+ *  - myOnly(학부모 홈): 수업은 수강 중(isActiveEnrollment) + 재결제 필요(만료 후 30일),
+ *    대회는 enrolledChildIds(선불=결제완료 / 후불=신청)만. 결제 전 신청(pending 등)은 제외.
+ *  - 빈 상태: myOnly 면 myClasses.emptyTitle + 카탈로그 CTA, 아니면 emptyByPersona.parent('수업')
  *  - onReady: 첫 fetch 완료(에러/빈 응답 포함) 시 1회 true 발화 → 부모 usePageReady 합성
  *  - DESIGN.md Pattern B 카드 (wsurface · sh-1 · ice-500), 솔리드 컬러, dark: 변형 필수.
  */

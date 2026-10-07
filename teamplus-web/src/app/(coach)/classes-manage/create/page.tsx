@@ -213,9 +213,14 @@ function ClassCreatePageInner() {
       if (upserts.length === 0 && deleteIds.length === 0) return true;
 
       const result = await bulkUpsertClassProducts(cid, { upserts, deleteIds });
-      if (!result) {
-        // 폼은 저장됐으나 패키지 반영 실패 — 명확히 안내하고 완료 이동을 막아 재시도 유도.
-        toast.error(MESSAGES.classProduct.bulkSaveFailed);
+      if (!result.ok) {
+        // 폼은 저장됐으나 패키지 반영 실패 — 서버 거절 사유(가격 잠금 등)를 그대로 싣고
+        //   완료 이동을 막아 재시도 유도. 사유가 없을 때만 일반 문구.
+        toast.error(
+          result.message
+            ? MESSAGES.classProduct.bulkSaveFailedWithReason(result.message)
+            : MESSAGES.classProduct.bulkSaveFailed,
+        );
         return false;
       }
       setProductsDirty(false);

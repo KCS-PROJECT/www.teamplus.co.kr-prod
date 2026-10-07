@@ -165,6 +165,10 @@ export const MESSAGES = {
       draftEditedChip: "수정됨",
       draftCancelChip: "취소 예정",
       draftCancelUndo: "취소 해제",
+      attendedChip: "출석 기록",
+      attendedCancelBlocked: "출석 기록이 있어 취소할 수 없어요. 출석을 먼저 해제해 주세요.",
+      saveAttendedCancelDropped:
+        "출석 기록이 있는 회차는 취소할 수 없어 취소 예정에서 뺐어요. 나머지 변경은 그대로 있으니 다시 저장해 주세요.",
       rowApplyButton: "적용하기",
       draftRemoveAria: (label: string) => `${label} 추가 취소`,
       // [설계 §3.8] 일괄 저장 바 + apply-draft 결과 안내.
@@ -675,12 +679,11 @@ export const MESSAGES = {
     },
     todaySchedule: "오늘의 수업 일정",
     classSchedule: "수업 일정",
-    // [2026-08-04 사용자 지시] 홈 수업 목록은 "내가 등록한 것 또는 수업 요청한 것"만 노출.
-    //   등록 전 단계(신청·자녀 요청 대기)를 '신청중'으로 구분하고,
-    //   비어 있을 때는 카탈로그(/classes)로 이어주는 문구·CTA 를 함께 둔다.
+    // 학부모 홈 수업 목록(TeamClassesSummary myOnly) — 수강 중·재결제 필요 항목만 노출.
+    //   결제 전 신청은 보이지 않으므로, 비어 있을 때 카탈로그(/classes)로 이어주는 문구·CTA 를 둔다.
     myClasses: {
       renewChip: "재결제 필요",
-      emptyTitle: "등록한 수업이 없습니다.",
+      emptyTitle: "신청한 수업이 없습니다.",
       emptyDescription: "수업을 신청하면 여기에서 한눈에 볼 수 있어요.",
       emptyCta: "수업 둘러보기",
     },
@@ -4811,6 +4814,10 @@ export const MESSAGES = {
     postpaidLockTitle: "후불 수업은 월 결제를 추가할 수 없어요",
     postpaidLockHint:
       "후불 수업은 출석 횟수에 따라 1회 수업료로 월말 정산됩니다.",
+    // 판매 중 수업(수정 폼) — 판매 시작된 달에는 새 월 결제를 넣을 수 없어 추가를 막고 판매 준비로 안내.
+    onSaleAddLockTitle: "판매 중인 달에는 월 결제를 추가할 수 없어요",
+    onSaleAddLockHint:
+      "다음 달 월 결제는 일정·판매 관리의 판매 준비에서 등록해주세요.",
     editPackage: "월 결제 수정",
     // 목록 행 액션 버튼 — 행 안에 대상이 명확하므로 축약형(Tone & Manner "~하기" 준수).
     rowEdit: "수정하기",
@@ -4902,6 +4909,9 @@ export const MESSAGES = {
     // 제출 시 일괄 반영 — 부분 성공/이탈 안내.
     bulkSaveFailed:
       "수업 정보는 저장됐지만 월 결제 반영에 실패했습니다. 월 결제를 다시 저장해주세요.",
+    // 서버가 사유(가격 잠금 등)를 돌려준 경우 — 일반 문구 대신 사유를 그대로 싣는다.
+    bulkSaveFailedWithReason: (reason: string) =>
+      `수업 정보는 저장됐지만 월 결제는 반영되지 않았어요. ${reason}`,
     deferredDeleteHint:
       "월 결제 추가·수정·삭제는 ‘수정하기’를 눌러야 저장됩니다.",
     unsavedLeaveTitle: "저장하지 않고 나갈까요?",
