@@ -3530,7 +3530,9 @@ export class TournamentsService {
         undefined,
         undefined,
         undefined,
-        { id: userId },
+        // domainVerified — 대회 결제는 엔진의 셀프 취소 종류 가드가 거부하는 종류지만, 이 경로는
+        //   위에서 본인·전날까지·시작 전 규칙을 마쳤으므로 면제한다. 소유권 검증은 엔진이 다시 한다.
+        { id: userId, domainVerified: true },
         { actorId: userId },
       );
       return { id: registrationId, cancelledAt: new Date(), refunded: true };
