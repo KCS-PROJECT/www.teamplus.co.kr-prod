@@ -679,12 +679,11 @@ export const MESSAGES = {
     },
     todaySchedule: "오늘의 수업 일정",
     classSchedule: "수업 일정",
-    // [2026-08-04 사용자 지시] 홈 수업 목록은 "내가 등록한 것 또는 수업 요청한 것"만 노출.
-    //   등록 전 단계(신청·자녀 요청 대기)를 '신청중'으로 구분하고,
-    //   비어 있을 때는 카탈로그(/classes)로 이어주는 문구·CTA 를 함께 둔다.
+    // 학부모 홈 수업 목록(TeamClassesSummary myOnly) — 수강 중·재결제 필요 항목만 노출.
+    //   결제 전 신청은 보이지 않으므로, 비어 있을 때 카탈로그(/classes)로 이어주는 문구·CTA 를 둔다.
     myClasses: {
       renewChip: "재결제 필요",
-      emptyTitle: "등록한 수업이 없습니다.",
+      emptyTitle: "신청한 수업이 없습니다.",
       emptyDescription: "수업을 신청하면 여기에서 한눈에 볼 수 있어요.",
       emptyCta: "수업 둘러보기",
     },

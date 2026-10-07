@@ -36,37 +36,3 @@ export function isActiveEnrollment(
     return true;
   return false;
 }
-
-/**
- * '내 수업' 판정 — 등록 완료 + 진행 중인 신청/요청 모두 포함.
- *
- * [2026-08-04 사용자 지시] 메인화면(홈) 수업 목록은 "내가 등록한 것 또는 수업 요청한 것"만
- *   보여야 한다. `isActiveEnrollment` 는 **수강 중**(선불 결제완료/후불 승인)만 참이라
- *   결제 전 신청·자녀 요청 대기 건이 빠진다. 그 구간까지 포함하는 별도 판정이 필요하다.
- *
- * 백엔드 enrollment status 흐름 (enrollments.service.ts):
- *   · 학부모 신청  : pending → paid
- *   · 자녀 요청    : pending_approval → approved → paid
- *   · 후불(POSTPAID/BOTH-후불) : approved 에서 수강 시작(결제 없음)
- *
- * 여기서는 위 4개 상태를 화이트리스트로 본다. 취소·거절·환불 등 종결 상태는 제외되어
- * 목록에서 자동으로 사라진다.
- *
- * ⚠️ 상태 문자열은 백엔드 SoT(common/enrollment/enrollment-status.constants.ts —
- *    BLOCKING_APPLICATION + paid)와 동일하게 유지할 것. 백엔드에는 이 4종 외에
- *    rejected/cancelled/expired/completed/refunded 종결 상태가 백엔드 enum 과 상태
- *    상수에 정의되어 있다 — 여기 화이트리스트에 없으므로 자동 제외된다.
- */
-const MY_ENROLLMENT_STATUSES = [
-  "pending", // 학부모 신청 — 결제 전
-  "pending_approval", // 자녀 요청 — 학부모 승인 대기
-  "approved", // 승인됨 (선불=결제 대기 / 후불=수강 중)
-  "paid", // 결제 완료
-] as const;
-
-export function isMyEnrollment(status?: string | null): boolean {
-  return (
-    typeof status === "string" &&
-    (MY_ENROLLMENT_STATUSES as readonly string[]).includes(status)
-  );
-}
