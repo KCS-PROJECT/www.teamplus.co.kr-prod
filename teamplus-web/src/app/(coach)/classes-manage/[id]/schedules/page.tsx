@@ -92,6 +92,8 @@ interface ScheduleItem {
   createdAt?: string;
   /** 낙관적 잠금 기준 버전(apply-draft baseUpdatedAt) — GET schedules 응답 포함. */
   updatedAt?: string;
+  /** 출석 기록(출석·결석) — 1건이라도 있으면 서버가 취소를 거부한다. */
+  attendances?: { id: string }[];
 }
 
 /* ── [설계 v4.1 §3.1] 일정 draft reducer — 저장 전까지 서버 무접촉 ──
@@ -1215,6 +1217,20 @@ export default function ClassSchedulesManagePage() {
         await refreshAll();
         return;
       }
+      if (res.error?.code === 'SCHEDULE_HAS_ATTENDANCE') {
+        // 저장 사이에 출석이 들어온 회차 — 그 회차의 취소 예정만 빼고 나머지 draft 유지.
+        const blocked =
+          (res.error.details as
+            | { conflicts?: { scheduleId: string }[] }
+            | undefined)?.conflicts ?? [];
+        dispatchDraft({
+          type: 'dropConflicts',
+          scheduleIds: blocked.map((c) => c.scheduleId),
+        });
+        toast.error(SC.saveAttendedCancelDropped);
+        await refreshAll();
+        return;
+      }
       // OPERATION_MISMATCH 포함 그 외 — 서버 메시지 우선하되 [Codex R1-4]
       //   draft 유지·재시도 가능 안내를 항상 함께 전달.
       toast.error(
@@ -1307,6 +1323,7 @@ export default function ClassSchedulesManagePage() {
       (isDraftRow || (!s?.isCancelled && !cancelMarked));
     const rowKey = isDraftRow ? row.d.key : (s?.id ?? '');
     const expanded = canEdit && expandedId === rowKey;
+    const hasAttendance = (s?.attendances?.length ?? 0) > 0;
     const SC = MESSAGES.class.salesCycle;
     return (
       <li
@@ -1435,7 +1452,17 @@ export default function ClassSchedulesManagePage() {
             </span>
           )}
           {/* 트레일링 액션 — 서버 행: 취소 마킹 토글 / draft 행: 목록에서 제거(즉시·가역 아님이라 X). */}
-          {canEdit && !isDraftRow && (
+          {canEdit && !isDraftRow && hasAttendance && (
+            <span
+              className="text-card-meta font-bold px-2 py-0.5 rounded bg-it-line dark:bg-rink-700 text-it-ink-500 dark:text-rink-300 shrink-0"
+              role="note"
+              aria-label={SC.attendedCancelBlocked}
+              title={SC.attendedCancelBlocked}
+            >
+              {SC.attendedChip}
+            </span>
+          )}
+          {canEdit && !isDraftRow && !hasAttendance && (
             <button
               type="button"
               onClick={() => handleCancelToggle(row.s.id)}

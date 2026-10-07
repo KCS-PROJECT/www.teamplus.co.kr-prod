@@ -82,6 +82,7 @@ import {
   acquireClassSeatLock,
 } from "./utils/class-locks.util";
 import { normalizeVenuePair, VenuePair } from "./utils/venue-pair.util";
+import { assertSchedulesHaveNoAttendance } from "./utils/schedule-cancel-guard.util";
 import {
   assertVisibilitySelection,
   buildClassVisibilityWhere,
@@ -5729,6 +5730,7 @@ export class ClassesService {
       if (fresh.isCancelled) {
         return fresh;
       }
+      await assertSchedulesHaveNoAttendance(tx, [scheduleId]);
       // P3-H1 — 정산 확정 월의 출석 변경은 lock 안에서 재검증 후 거부.
       await assertScheduleMonthNotSettled(tx, scheduleId);
       // [설계 v4 §4.3-①] 부수효과 단일 진입 게이트 — isCancelled:false 조건부
@@ -6114,6 +6116,8 @@ export class ClassesService {
           );
         }
       }
+
+      await assertSchedulesHaveNoAttendance(tx, cancelIds);
 
       // 정산 확정 월 검증 (cancel — P3-H1).
       for (const c of dto.cancellations) {

@@ -165,6 +165,10 @@ export const MESSAGES = {
       draftEditedChip: "수정됨",
       draftCancelChip: "취소 예정",
       draftCancelUndo: "취소 해제",
+      attendedChip: "출석 기록",
+      attendedCancelBlocked: "출석 기록이 있어 취소할 수 없어요. 출석을 먼저 해제해 주세요.",
+      saveAttendedCancelDropped:
+        "출석 기록이 있는 회차는 취소할 수 없어 취소 예정에서 뺐어요. 나머지 변경은 그대로 있으니 다시 저장해 주세요.",
       rowApplyButton: "적용하기",
       draftRemoveAria: (label: string) => `${label} 추가 취소`,
       // [설계 §3.8] 일괄 저장 바 + apply-draft 결과 안내.

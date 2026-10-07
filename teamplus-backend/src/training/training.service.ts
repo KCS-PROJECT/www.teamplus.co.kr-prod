@@ -11,6 +11,7 @@ import {
   acquireClassScheduleAndPostpaidLocksIfNeeded,
 } from "@/classes/utils/class-locks.util";
 import { assertScheduleMonthNotSettled } from "@/payments/settlement/postpaid-attendance.util";
+import { assertSchedulesHaveNoAttendance } from "@/classes/utils/schedule-cancel-guard.util";
 import { CreditDomainService } from "@/credits/credit-domain.service";
 import { AttendanceAuditLogService } from "@/attendance/attendance-audit-log.service";
 import { NotificationsService } from "@/notifications/notifications.service";
@@ -625,6 +626,7 @@ export class TrainingService {
       // [설계 v4 §4.3-①] schedule lock(무조건) → postpaid lock(IfNeeded) 고정 순서.
       //   postpaid lock 단독은 PREPAID 수업 no-op — 동시 취소 크레딧 중복 복원 차단.
       await acquireClassScheduleAndPostpaidLocksIfNeeded(tx, classId);
+      await assertSchedulesHaveNoAttendance(tx, [scheduleId]);
       // P3-H1 — 정산 확정 월의 출석 변경은 lock 안에서 재검증 후 거부.
       await assertScheduleMonthNotSettled(tx, scheduleId);
       // 부수효과 단일 진입 게이트 — tx 밖 isCancelled 검사는 lock 대기 중 낡을 수
