@@ -37,6 +37,10 @@ import { RedisService } from "@/redis/redis.service";
 import { resolveActivePaymentProvider } from "@/payments/payment-provider.util";
 import { acquireTournamentBillingLock } from "./utils/tournament-locks.util";
 import {
+  isTournamentUsageStarted,
+  resolveTournamentUsageStart,
+} from "@/common/utils/tournament-usage.util";
+import {
   isParticipantRegistration,
   participantRegistrationWhere,
 } from "@/common/utils/tournament-participation.util";
@@ -3485,36 +3489,21 @@ export class TournamentsService {
       throw new BadRequestException("이미 취소된 등록입니다.");
     }
 
-    // 대회 시작일 당일부터 취소 불가 — startDate(@db.Date UTC자정)가 오늘(KST) 이하면 차단.
-    //   day-level: 시작일 당일부터 불가, 전날(D-1)까지 가능. (프론트 canCancelTournamentRegistration 과 동일 기준)
-    if (
-      registration.tournament?.startDate != null &&
-      registration.tournament.startDate <= kstTodayUtcMidnight()
-    ) {
+    // 이용 개시 판정 SoT — 환불 엔진과 같은 유틸(tournament-usage.util). day-level:
+    //   시작일(미정이면 취소·연기 제외 첫 경기의 KST 날짜) 당일부터 취소 불가, 전날(D-1)까지 가능
+    //   (프론트 canCancelTournamentRegistration 과 동일 기준). 시작일·경기 모두 없으면 대회
+    //   상태(ongoing/finished)로만 차단. 유료 건은 엔진이 같은 판정을 한 번 더 한다(fail-closed).
+    const usageStart = await resolveTournamentUsageStart(this.prisma, {
+      id: tournamentId,
+      startDate: registration.tournament?.startDate ?? null,
+      status: registration.tournament?.status ?? "scheduled",
+    });
+    if (isTournamentUsageStarted(usageStart)) {
       throw new BadRequestException(
-        "대회 당일부터는 참가를 취소할 수 없습니다.",
+        registration.tournament?.startDate != null
+          ? "대회 당일부터는 참가를 취소할 수 없습니다."
+          : "대회가 시작된 후에는 참가를 취소할 수 없습니다.",
       );
-    }
-    // 일정 미정(startDate null) 대회 — 날짜 가드가 비활성이므로 경기 폴백으로 사후 취소 차단.
-    //   assertTournamentRegistrationOpen·confirmTournamentSettlement 와 동일한 hockeyMatch
-    //   기준: 첫 경기가 이미 시작됐거나 대회가 진행/종료 상태면 취소(환불 전환) 불가.
-    if (registration.tournament?.startDate == null) {
-      const status = registration.tournament?.status;
-      if (status === "ongoing" || status === "finished") {
-        throw new BadRequestException(
-          "대회가 시작된 후에는 참가를 취소할 수 없습니다.",
-        );
-      }
-      const firstMatch = await this.prisma.hockeyMatch.aggregate({
-        where: { tournamentId },
-        _min: { scheduledAt: true },
-      });
-      const firstStart = firstMatch._min.scheduledAt;
-      if (firstStart != null && firstStart.getTime() <= Date.now()) {
-        throw new BadRequestException(
-          "대회가 시작된 후에는 참가를 취소할 수 없습니다.",
-        );
-      }
     }
 
     // 결제 완료(PAID) 건 — 환불 실행 엔진(PaymentRefundService)에 위임한다.
@@ -3531,7 +3520,8 @@ export class TournamentsService {
         undefined,
         undefined,
         // domainVerified — 대회 결제는 엔진의 셀프 취소 종류 가드가 거부하는 종류지만, 이 경로는
-        //   위에서 본인·전날까지·시작 전 규칙을 마쳤으므로 면제한다. 소유권 검증은 엔진이 다시 한다.
+        //   위에서 본인·전날까지·시작 전 규칙을 마쳤으므로 종류 가드만 면제한다. 소유권 검증과
+        //   개시 판정(같은 유틸)은 엔진이 다시 한다.
         { id: userId, domainVerified: true },
         { actorId: userId },
       );

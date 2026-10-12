@@ -1330,8 +1330,9 @@ export class PaymentsController {
   @UseGuards(AuthGuard("jwt"), RolesGuard)
   @ApiBearerAuth()
   // [청약철회 — 전자상거래법 §17] 소비자의 청약철회는 사업자 승인 대상이 아니므로
-  //   PARENT 셀프 취소 경로를 유지한다. 이용 개시(출석 1회) 후에는 서비스 가드
-  //   (assertEnrollmentNotUsed)가 403 으로 막고 감독 승인 부분환불로 유도한다.
+  //   PARENT 셀프 취소 경로를 유지한다. 이용 개시(첫 회차 당일 0시 KST — 결제 당일에 회차가
+  //   있으면 결제 즉시) 후에는 서비스 가드(refund-eligibility.util assertSelfCancelAllowed)가
+  //   403 으로 막고 환불 요청(승인제)·감독 부분환불로 유도한다.
   //   ADMIN 직접 환불도 동일 경로(멱등·actorId 감사). 소유권/trusted 가드는 방어 심층.
   @Roles("PARENT", "ADMIN")
   @AuditAction({
