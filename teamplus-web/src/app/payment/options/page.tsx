@@ -209,6 +209,7 @@ function PaymentOptionsContent() {
   //   pending/pending_approval/approved(결제 대기)는 월 무관 잠금을 유지한다(중복 결제창 방지).
   const enrolledChildIds = useMemo(() => {
     const myUserId = user?.id;
+    const classLoaded = classInfo != null;
     const sellableMonths = classInfo?.sellableMonths;
     const rowsByChild = new Map<string, EnrollmentItem[]>();
     for (const e of enrollmentsList) {
@@ -227,6 +228,9 @@ function PaymentOptionsContent() {
         ids.add(childId);
         continue;
       }
+      // 결제 완료만 있는 자녀는 판매 월로 판정한다 — 수업 정보 도착 전에는 판정을 미룬다.
+      //   미루지 않으면 판매 월 부재를 "전 월 결제 완료"로 읽어 다음 달분 결제 진입을 막는다.
+      if (!classLoaded) continue;
       if (!sellableMonths || sellableMonths.length === 0) {
         ids.add(childId);
         continue;
@@ -239,7 +243,7 @@ function PaymentOptionsContent() {
       if (sellableMonths.every((m) => paidMonths.has(m))) ids.add(childId);
     }
     return ids;
-  }, [enrollmentsList, classId, user?.id, classInfo?.sellableMonths]);
+  }, [enrollmentsList, classId, user?.id, classInfo]);
 
   // 수업 대상 연령(targetBirthYears 우선, ageMin/ageMax 폴백)에 맞지 않는 자녀 ID 집합.
   //   공용 isChildAgeEligibleForClass 사용 — 출생연도 비연속 선택까지 정확히 매칭. 수업 상세와 동일.
@@ -349,10 +353,14 @@ function PaymentOptionsContent() {
       router.replace(`/classes/${classId}`);
       return;
     }
-    // 부적합 자녀 진입 차단 (이미 수강 중 / 팀 미승인 / 연령 제한)
-    //   notApproved/ageIncompatible 은 classInfo 로딩 완료 후에야 정확. classInfo 로딩 전엔 빈 Set.
+    // 이미 수강 중·신청 중 — 결제 완료분의 월 판정은 enrolledChildIds 가 수업 정보를 기다린다.
+    if (enrolledChildIds.has(initialChildId)) {
+      router.replace(`/classes/${classId}`);
+      return;
+    }
+    // 팀 미승인·연령 제한은 수업 정보(팀·대상 연령)가 있어야 판정할 수 있다.
+    if (!classInfo) return;
     if (
-      enrolledChildIds.has(initialChildId) ||
       notApprovedChildIds.has(initialChildId) ||
       ageIncompatibleChildIds.has(initialChildId)
     ) {
@@ -365,6 +373,7 @@ function PaymentOptionsContent() {
     classId,
     initialChildId,
     children,
+    classInfo,
     enrolledChildIds,
     JSON.stringify([...ageIncompatibleChildIds]),
     JSON.stringify([...notApprovedChildIds]),

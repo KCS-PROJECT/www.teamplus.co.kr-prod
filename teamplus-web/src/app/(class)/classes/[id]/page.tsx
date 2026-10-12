@@ -597,57 +597,6 @@ export default function ClassDetailPage() {
     return map;
   }, [myEnrollments, classId, isPostpaid, isBoth]);
 
-  // 자녀별 등록 상태 배지 — 수강생 선택 리스트에서 선/후불 방식까지 구분 표기.
-  //   후불 approved 는 잠금 집합(enrolledChildIds)에서 제외되어 무표시였음 — 미신청 자녀와
-  //   구분되지 않던 문제를 배지로 해소. 우선순위: paid > 후불 수강 중.
-  //   선불 pending(결제 이탈)은 확정 청구가 아니므로 배지 미표시 — 미신청과 동일 취급.
-  //   행별 선/후불 판정은 백엔드 resolveRowBillingTiming 규칙 미러:
-  //   전용 수업은 billingMode, BOTH 는 결제 상품의 billingTiming 으로 분기.
-  const enrollmentBadgeByChildId = useMemo(() => {
-    const RANK = { paid: 2, postpaid: 1 } as const;
-    const map = new Map<
-      string,
-      { label: string; tone: "paid" | "postpaid" }
-    >();
-    const setIfHigher = (
-      childId: string,
-      badge: { label: string; tone: "paid" | "postpaid" },
-    ) => {
-      const prev = map.get(childId);
-      if (!prev || RANK[badge.tone] > RANK[prev.tone]) map.set(childId, badge);
-    };
-    for (const e of myEnrollments) {
-      if (e.class?.id !== classId) continue;
-      if (!e.child?.id) continue;
-      const isRowPostpaid =
-        isPostpaid || (isBoth && e.product?.billingTiming === "POSTPAID");
-      if (e.status === "paid") {
-        // 만료(hasValidPass=false)된 결제 이력은 "수강 중"이 아니므로 배지 미표시 —
-        //   paidByChildId(CTA 판정)와 동일 기준. 남기면 재결제 대상 자녀가
-        //   "결제완료"로 보이는데 CTA 는 신청하기인 모순 상태가 된다.
-        if (e.hasValidPass === false) continue;
-        setIfHigher(
-          e.child.id,
-          isRowPostpaid
-            ? {
-                label: MESSAGES.enrollment.postpaidActiveBadgeLabel,
-                tone: "postpaid",
-              }
-            : {
-                label: MESSAGES.enrollment.paidPrepaidBadgeLabel,
-                tone: "paid",
-              },
-        );
-      } else if (e.status === "approved" && (isPostpaid || isBoth)) {
-        setIfHigher(e.child.id, {
-          label: MESSAGES.enrollment.postpaidActiveBadgeLabel,
-          tone: "postpaid",
-        });
-      }
-    }
-    return map;
-  }, [myEnrollments, classId, isPostpaid, isBoth]);
-
   // 종료된 훈련(학부모) "수강한 자녀" 요약 — 행별 선/후불은 상품 billingTiming 우선,
   //   없으면 수업 결제방식(BOTH 는 approved=후불 · paid=선불)으로 판정.
   const endedChildrenSummary = useMemo(() => {
@@ -820,19 +769,6 @@ export default function ClassDetailPage() {
     JSON.stringify([...paidByChildId.keys()]),
   ]);
 
-  // 선택된 자녀에 대한 paid Enrollment (결제취소 진입 판정)
-  const paidEnrollment = useMemo(
-    () => (selectedChildId ? paidByChildId.get(selectedChildId) ?? null : null),
-    [paidByChildId, selectedChildId],
-  );
-
-  // [2026-06-18] 선택 자녀가 이미 결제완료한 수강 플랜(ClassProduct) id —
-  //   해당 패키지 카드를 '결제완료'로 표시하고 재선택을 막는다.
-  const paidProductId = useMemo(
-    () => paidEnrollment?.product?.id ?? null,
-    [paidEnrollment],
-  );
-
   // [수강 자격 월별 판정] 선불 paid / 후불 approved 를 귀속월(billingMonth) 기준으로 판정 —
   //   "그 달 자격 있음" 을 (선불) 결제 상태·(후불) 승인 상태와 대상월의 곱으로 본다(§1 조건식).
   //   billingMonth 가 없는 응답(구버전 백엔드·결정 불능 잔여 행)에서는 월별 판정이 불가능하므로
@@ -893,14 +829,9 @@ export default function ClassDetailPage() {
     }
     return Array.from(months).sort();
   }, [classData?.products]);
-  // 사용자가 고른 탭은 자녀와 묶어 둔다 — 자녀를 바꾸면 리셋 이펙트 없이 그 자녀의
-  //   미결제 대상월로 바로 돌아간다.
-  const [productMonthPick, setProductMonthPick] = useState<{
-    childId: string;
-    month: string;
-  } | null>(null);
-  const pickedMonth =
-    productMonthPick?.childId === selectedChildId ? productMonthPick.month : null;
+  // 사용자가 고른 탭은 자녀를 바꿔도 유지한다 — "탭 고르기 → 자녀 고르기" 순서로 결제하는
+  //   흐름에서 탭이 되돌아가지 않게. 고른 적이 없을 때만 자녀의 미결제 대상월을 따른다.
+  const [pickedMonth, setPickedMonth] = useState<string | null>(null);
   // 기본 탭 = 선택 자녀의 가장 이른 미결제 판매 달. 자녀 미선택(감독 열람 포함)은 가장 이른 달.
   const activeProductMonth = useMemo(() => {
     if (productMonths.length === 0) return null;
@@ -915,6 +846,117 @@ export default function ClassDetailPage() {
     hasMonthTabs &&
     activeProductMonth !== null &&
     monthlyEligibility.coveredMonths.has(activeProductMonth);
+
+  // 월분 탭이 보이면 화면의 결제 상태(수강생 배지·결제취소 대상·결제완료 카드)는 지금 탭의
+  //   달 기준이다 — 다른 달 결제로 "결제완료"가 뜨거나, 11월분을 보며 누른 신청취소가 10월분
+  //   결제를 취소하지 않게. 귀속월 없는 행(레거시)은 어느 탭에서나 포함해 기존 동작을 지킨다.
+  //   자녀 자동 선택은 달과 무관한 paidByChildId 를 그대로 쓴다(탭↔자녀 상호 재계산 방지).
+  const tabMonth = hasMonthTabs ? activeProductMonth : null;
+  const isRowInTabMonth = useCallback(
+    (e: MyEnrollment) =>
+      tabMonth === null || !e.billingMonth || e.billingMonth.slice(0, 7) === tabMonth,
+    [tabMonth],
+  );
+
+  // 자녀별 등록 상태 배지 — 수강생 선택 리스트에서 선/후불 방식까지 구분 표기.
+  //   후불 approved 는 잠금 집합(enrolledChildIds)에서 제외되어 무표시였음 — 미신청 자녀와
+  //   구분되지 않던 문제를 배지로 해소. 우선순위: paid > 후불 수강 중.
+  //   선불 pending(결제 이탈)은 확정 청구가 아니므로 배지 미표시 — 미신청과 동일 취급.
+  //   행별 선/후불 판정은 백엔드 resolveRowBillingTiming 규칙 미러:
+  //   전용 수업은 billingMode, BOTH 는 결제 상품의 billingTiming 으로 분기.
+  const enrollmentBadgeByChildId = useMemo(() => {
+    const RANK = { paid: 2, postpaid: 1 } as const;
+    const map = new Map<
+      string,
+      { label: string; tone: "paid" | "postpaid" }
+    >();
+    const setIfHigher = (
+      childId: string,
+      badge: { label: string; tone: "paid" | "postpaid" },
+    ) => {
+      const prev = map.get(childId);
+      if (!prev || RANK[badge.tone] > RANK[prev.tone]) map.set(childId, badge);
+    };
+    for (const e of myEnrollments) {
+      if (e.class?.id !== classId) continue;
+      if (!e.child?.id) continue;
+      if (!isRowInTabMonth(e)) continue;
+      const isRowPostpaid =
+        isPostpaid || (isBoth && e.product?.billingTiming === "POSTPAID");
+      if (e.status === "paid") {
+        // 만료(hasValidPass=false)된 결제 이력은 "수강 중"이 아니므로 배지 미표시 —
+        //   paidByChildId(CTA 판정)와 동일 기준. 남기면 재결제 대상 자녀가
+        //   "결제완료"로 보이는데 CTA 는 신청하기인 모순 상태가 된다.
+        if (e.hasValidPass === false) continue;
+        setIfHigher(
+          e.child.id,
+          isRowPostpaid
+            ? {
+                label: MESSAGES.enrollment.postpaidActiveBadgeLabel,
+                tone: "postpaid",
+              }
+            : {
+                label: MESSAGES.enrollment.paidPrepaidBadgeLabel,
+                tone: "paid",
+              },
+        );
+      } else if (e.status === "approved" && (isPostpaid || isBoth)) {
+        setIfHigher(e.child.id, {
+          label: MESSAGES.enrollment.postpaidActiveBadgeLabel,
+          tone: "postpaid",
+        });
+      }
+    }
+    return map;
+  }, [myEnrollments, classId, isPostpaid, isBoth, isRowInTabMonth]);
+
+  // 탭 달 기준 자녀별 대표 등록 — 결제취소·수강 종료 대상과 칩 결제완료 표시가 같은 행을 본다.
+  //   귀속월이 정확히 일치하는 행을 귀속월 없는 레거시 행보다 우선한다. 탭이 없으면 기존의
+  //   달 무관 맵(paidByChildId·postpaidByChildId)을 그대로 쓴다.
+  const pickByChildInTab = useCallback(
+    (match: (e: MyEnrollment) => boolean) => {
+      const map = new Map<string, MyEnrollment>();
+      for (const e of myEnrollments) {
+        if (e.class?.id !== classId || !e.child?.id) continue;
+        if (!match(e) || !isRowInTabMonth(e)) continue;
+        const prev = map.get(e.child.id);
+        if (!prev || (!prev.billingMonth && e.billingMonth)) map.set(e.child.id, e);
+      }
+      return map;
+    },
+    [myEnrollments, classId, isRowInTabMonth],
+  );
+  const paidByChildIdInTab = useMemo(
+    () =>
+      tabMonth === null
+        ? paidByChildId
+        : pickByChildInTab((e) => e.status === "paid" && e.hasValidPass !== false),
+    [tabMonth, paidByChildId, pickByChildInTab],
+  );
+  const postpaidByChildIdInTab = useMemo(() => {
+    if (tabMonth === null) return postpaidByChildId;
+    if (!isPostpaid && !isBoth) return new Map<string, MyEnrollment>();
+    return pickByChildInTab((e) => e.status === "approved");
+  }, [tabMonth, postpaidByChildId, isPostpaid, isBoth, pickByChildInTab]);
+
+  // 선택된 자녀에 대한 paid Enrollment (결제취소 진입 판정)
+  const paidEnrollment = useMemo(
+    () => (selectedChildId ? paidByChildIdInTab.get(selectedChildId) ?? null : null),
+    [paidByChildIdInTab, selectedChildId],
+  );
+
+  // 수강생 칩의 결제완료 표시(라벨 폴백·색)용 — 배지와 같은 탭 달 기준.
+  const paidChildIdsInTab = useMemo(
+    () => new Set(paidByChildIdInTab.keys()),
+    [paidByChildIdInTab],
+  );
+
+  // [2026-06-18] 선택 자녀가 이미 결제완료한 수강 플랜(ClassProduct) id —
+  //   해당 패키지 카드를 '결제완료'로 표시하고 재선택을 막는다.
+  const paidProductId = useMemo(
+    () => paidEnrollment?.product?.id ?? null,
+    [paidEnrollment],
+  );
 
   // [2026-06-09] 결제 회차 기본 선택 — 정액(MONTHLY_FIXED) 패키지만 자동 선택.
   //   [2026-06-29] 1회 수업료(PER_SESSION)는 참고가로만 노출(선불=패키지)하므로 자동 선택 대상에서 제외.
@@ -1079,7 +1121,7 @@ export default function ClassDetailPage() {
 
   // 후불: 선택 자녀의 수강 중(approved) 등록 — "수강 종료" 대상.
   const postpaidEnrollment = selectedChildId
-    ? postpaidByChildId.get(selectedChildId) ?? null
+    ? postpaidByChildIdInTab.get(selectedChildId) ?? null
     : null;
 
   // 후불 수강 종료 — 백엔드 cancelEnrollment 가 ClassRegistration inactive 처리.
@@ -2396,9 +2438,7 @@ export default function ClassDetailPage() {
                             : MESSAGES.enrollment.monthTabLabel(Number(m.slice(5, 7))),
                         }))}
                         value={activeProductMonth}
-                        onChange={(month) =>
-                          setProductMonthPick({ childId: selectedChildId, month })
-                        }
+                        onChange={setPickedMonth}
                       />
                     )}
                     {products.map((p, idx) => {
@@ -2612,9 +2652,7 @@ export default function ClassDetailPage() {
                     ageIncompatibleChildIds={ageIncompatibleChildIds}
                     notApprovedChildIds={notApprovedChildIds}
                     approvalStatusById={approvalStatusById}
-                    paidChildIds={
-                      new Set(Array.from(paidByChildId.keys()))
-                    }
+                    paidChildIds={paidChildIdsInTab}
                     enrollmentBadgeByChildId={enrollmentBadgeByChildId}
                     multiSelect={isOpenClass}
                     selectedIds={selectedChildIds}
