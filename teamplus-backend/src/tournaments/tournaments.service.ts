@@ -2795,6 +2795,24 @@ export class TournamentsService {
   }
 
   /**
+   * 정산 차단 사유 — 참가선수목록 결제요청 비활성 사유(웹 settle* 문구)와 같은 3갈래.
+   * 경기 없는 대회에 경기 기준 문구를 내면 감독이 기다릴 기준을 알 수 없다.
+   * endDate 는 `@db.Date`(UTC 자정) — 날짜 성분은 getUTC* 로 읽는다.
+   */
+  private settlementBlockedMessage(
+    endDate: Date | null,
+    lastMatchStart: Date | null,
+  ): string {
+    if (lastMatchStart != null) {
+      return "마지막 경기 시작 1시간 후 정산 가능합니다.";
+    }
+    if (endDate == null) {
+      return "경기 일정이나 종료일을 먼저 등록해야 정산할 수 있습니다.";
+    }
+    return `종료일(${endDate.getUTCMonth() + 1}월 ${endDate.getUTCDate()}일)이 지나면 정산할 수 있습니다.`;
+  }
+
+  /**
    * [후불 대회 정산 확정] — 감독/코치가 종료된 후불 대회의 1인당 금액을 입력해
    *   참가자 전원에게 동일 금액을 일괄 청구한다.
    *
@@ -2859,7 +2877,10 @@ export class TournamentsService {
         !this.isTournamentSettleable(tournament, lastMatch._max.scheduledAt)
       ) {
         throw new BadRequestException(
-          "마지막 경기 시작 1시간 후 정산 가능합니다.",
+          this.settlementBlockedMessage(
+            tournament.endDate,
+            lastMatch._max.scheduledAt,
+          ),
         );
       }
     }
