@@ -3544,8 +3544,9 @@ export class AttendanceService {
           where: { status: "active" },
           select: { id: true },
         },
+        // 총 회차 — 취소된 회차는 완료·진행·예정 어디에도 안 잡히므로 분모에서도 뺀다.
         _count: {
-          select: { schedules: true },
+          select: { schedules: { where: { isCancelled: false } } },
         },
       },
     });
@@ -3891,18 +3892,11 @@ export class AttendanceService {
   ) {
     const cls = await this.prisma.class.findUnique({
       where: { id: classId },
-      select: {
-        id: true,
-        registrations: {
-          where: { status: "active" },
-          select: { id: true },
-        },
-      },
+      select: { id: true },
     });
     if (!cls) {
       throw new NotFoundException("수업을 찾을 수 없습니다.");
     }
-    const studentCount = cls.registrations.length;
 
     // scheduledDate(@db.Date) 예정 = 오늘 이후 KST 달력일(gt upcomingLower). Prisma date-only 비교.
     const upcomingLower = kstTodayUtcMidnight();
@@ -3931,13 +3925,31 @@ export class AttendanceService {
       ? items[items.length - 1]!.scheduledDate.toISOString()
       : null;
 
+    // 예정 회차 인원 = 그 회차가 속한 달의 수강 자격자 수 — 완료·진행 회차(getClassScheduleHistory)
+    //   와 같은 기준. 현재 active 등록 수를 쓰면 다음 달분만 신청한 회원이 이번 달 회차에 섞여
+    //   출석부 명단보다 큰 수가 보인다.
+    const eligibleByMonth = new Map<number, number>();
+    await Promise.all(
+      Array.from(
+        new Set(items.map((s) => utcMonthStart(s.scheduledDate).getTime())),
+      ).map(async (key) => {
+        const ids = await eligibleChildIdsForMonth(
+          this.prisma,
+          classId,
+          new Date(key),
+        );
+        eligibleByMonth.set(key, ids.size);
+      }),
+    );
+
     return {
       items: items.map((s) => ({
         scheduleId: s.id,
         scheduledDate: s.scheduledDate.toISOString(),
         startTime: s.startTime,
         endTime: s.endTime,
-        total: studentCount,
+        total:
+          eligibleByMonth.get(utcMonthStart(s.scheduledDate).getTime()) ?? 0,
       })),
       nextCursor,
       hasMore,

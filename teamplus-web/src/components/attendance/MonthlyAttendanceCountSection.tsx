@@ -64,6 +64,11 @@ export function MonthlyAttendanceCountSection({
   }, [load]);
 
   const items = data?.items ?? [];
+  // 안내 문구 — 선불은 "정산 없음", 후불은 "출석 = 정산 기준"(아래 [정산 보기]와 짝).
+  const hint =
+    data?.billingMode === 'POSTPAID'
+      ? MESSAGES.monthlyAttendance.hintPostpaid
+      : MESSAGES.monthlyAttendance.hint;
   // "N/M회" — 분모(해당 월 비취소 일정 수) 있으면 비율 표기. 구 응답은 N회 단독.
   const countLabelOf = (n: number) =>
     data?.totalSessions && data.totalSessions > 0
@@ -162,7 +167,7 @@ export function MonthlyAttendanceCountSection({
         )}
 
         <p className="mt-3 text-card-caption text-it-ink-500 dark:text-rink-300 leading-relaxed">
-          {MESSAGES.monthlyAttendance.hint}
+          {hint}
         </p>
       </section>
     );
@@ -252,7 +257,7 @@ export function MonthlyAttendanceCountSection({
       )}
 
       <p className="mt-3 text-card-caption text-wtext-3 dark:text-rink-300 leading-relaxed">
-        {MESSAGES.monthlyAttendance.hint}
+        {hint}
       </p>
     </section>
   );
