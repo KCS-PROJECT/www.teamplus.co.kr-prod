@@ -32,6 +32,7 @@ import {
   CreateMatchDto,
   UpdateMatchDto,
   RegisterTournamentDto,
+  InitiateTournamentPaymentDto,
   CreateMatchEventDto,
   UpdateMatchEventDto,
   UpsertMatchPeriodDto,
@@ -348,10 +349,13 @@ export class TournamentsController {
     status: 201,
     description: "결제 시작 성공 (orderNumber 발급)",
   })
-  @ApiResponse({ status: 400, description: "금액 불일치 또는 무료 대회" })
+  @ApiResponse({
+    status: 400,
+    description: "입력값 누락·형식 오류, 금액 불일치 또는 무료 대회",
+  })
   async initiateTournamentPayment(
     @Param("id") id: string,
-    @Body() body: { childId: string; amount: number; gamesCount?: number },
+    @Body() body: InitiateTournamentPaymentDto,
     @Request() req: AuthenticatedRequest,
   ) {
     return this.tournamentsService.initiateTournamentPayment(

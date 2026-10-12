@@ -1381,6 +1381,7 @@ export const MESSAGES = {
     tabSettlementAgg: "정산 현황",
     tabTraining: "훈련",
     tabTournament: "대회",
+    tournamentCancelled: "취소된 대회",
     tabUnpaid: "미수금",
     tabSettlement: "정산",
     // 거래 내역 탭 — 결제 1건=1행 목록
@@ -4743,6 +4744,9 @@ export const MESSAGES = {
     total: "총 출석",
     empty: "이번 달 출석 기록이 없어요.",
     hint: "출석 횟수로 수업 참여를 확인할 수 있어요. 선불 수업은 별도 정산이 없습니다.",
+    // 후불 수업 — 출석 횟수가 월말 정산 금액의 기준. 아래 [정산 보기]로 이어진다.
+    hintPostpaid:
+      "출석 횟수가 월말 정산 금액의 기준이 됩니다. 정산 내역은 [정산 보기]에서 확인할 수 있어요.",
   },
   // [Phase B-5-4] 후불 결제 화면 (알림 deep-link 진입)
   postpaidPay: {

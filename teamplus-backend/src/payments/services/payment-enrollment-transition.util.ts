@@ -166,7 +166,7 @@ export function isOrphanAutoRefundRequest(rr: {
  * 있으면 null 을 돌려준다(tx 안에서 unique 위반을 내면 트랜잭션이 abort 되므로 catch 로 대체 불가).
  *
  * 스코프 스냅샷(sourceType·classId·tournamentId·teamId·academyId)은 목록 필터·승인 재검증·
- * 알림 라우팅의 SoT라 학부모 직접 요청(refund-request.service resolveDomainScope)과 같은 형태로 남긴다.
+ * 알림 라우팅의 SoT라 학부모 직접 요청(payment-scope.util resolvePaymentScope)과 같은 형태로 남긴다.
  */
 export async function recordOrphanPaymentRefundRequest(
   tx: Tx,

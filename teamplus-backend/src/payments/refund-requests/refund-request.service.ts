@@ -24,6 +24,8 @@ import {
   RefundExecutionError,
   RefundExecutionContext,
 } from "../services/payment-refund.service";
+import { resolvePaymentScope } from "../services/payment-scope.util";
+import { LEGAL_WITHDRAWAL_DAYS } from "../services/refund-eligibility.util";
 import { CreateRefundRequestDto } from "./dto/create-refund-request.dto";
 import {
   ApproveRefundRequestDto,
@@ -37,11 +39,6 @@ import {
   REFUND_PG_UNCONFIRMED_CODES,
 } from "./refund-request.constants";
 
-/**
- * 법정 청약철회 기간(전자상거래법 §17①) — 결제일 기준 7일.
- * 이 기간 내 + 이용 개시 전이면 전액 환불 대상이다.
- */
-const LEGAL_WITHDRAWAL_DAYS = 7;
 
 /**
  * 환불 요청 접수 상한(결제일 기준, 일).
@@ -67,20 +64,6 @@ const ACTIVE_STATUS_PRIORITY: Record<string, number> = {
   executing: 1,
   execution_failed: 2,
 };
-
-/** 요청 생성 시 스냅샷할 도메인 스코프. */
-interface DomainScope {
-  sourceType:
-    | "CLASS_PREPAID"
-    | "CLASS_POSTPAID"
-    | "TOURNAMENT"
-    | "PICKUP_MATCH";
-  classId: string | null;
-  tournamentId: string | null;
-  teamId: string | null;
-  academyId: string | null;
-  childId: string | null;
-}
 
 /** 응답/알림에 필요한 RefundRequest 필드 select (over-fetch 방지). */
 const RESPONSE_SELECT = {
@@ -189,9 +172,9 @@ export class RefundRequestService {
       );
     }
 
-    // 도메인 판별 (fail-closed) — 지원하지 않는 결제(쇼핑 등)는 422.
-    const domain = await this.resolveDomainScope(payment.id);
-    if (!domain) {
+    // 도메인 판별 (fail-closed) — 환불 엔진과 같은 분류기. 지원하지 않는 결제(쇼핑 등)는 422.
+    const domain = await resolvePaymentScope(this.prisma, payment.id);
+    if (domain.sourceType === "UNKNOWN") {
       throw new UnprocessableEntityException(
         "환불 요청을 지원하지 않는 결제입니다.",
       );
@@ -200,7 +183,11 @@ export class RefundRequestService {
     // 요청 금액은 서버가 산정한다(클라이언트 입력 없음).
     //   법정 청약철회 기간 내 + 이용 개시 전 → 전액,
     //   그 외(기간 경과·이용 개시분) → 이용분을 공제한 비례 환급액.
-    const quote = await this.refundService.computeRefundQuote(payment.id);
+    //   결제 종류는 위에서 판별한 값을 넘겨 분류 쿼리를 반복하지 않는다.
+    const quote = await this.refundService.computeRefundQuote(
+      payment.id,
+      domain,
+    );
     const withinWithdrawal = elapsedDays <= LEGAL_WITHDRAWAL_DAYS;
     const requestedAmount =
       withinWithdrawal && !quote.started
@@ -1143,87 +1130,6 @@ export class RefundRequestService {
   // ══════════════════════════════════════════════════════════════
   //  내부 헬퍼
   // ══════════════════════════════════════════════════════════════
-
-  /** 도메인 판별 + 스코프 스냅샷 (fail-closed). */
-  private async resolveDomainScope(
-    paymentId: string,
-  ): Promise<DomainScope | null> {
-    const enrollment = await this.prisma.enrollment.findFirst({
-      where: { paymentId },
-      select: { classId: true, childId: true },
-    });
-    if (enrollment) {
-      const cls = await this.prisma.class.findUnique({
-        where: { id: enrollment.classId },
-        select: { teamId: true, academyId: true },
-      });
-      return {
-        sourceType: "CLASS_PREPAID",
-        classId: enrollment.classId,
-        tournamentId: null,
-        teamId: cls?.teamId ?? null,
-        academyId: cls?.academyId ?? null,
-        childId: enrollment.childId,
-      };
-    }
-
-    const line = await this.prisma.monthlyPostpaidBillingLine.findFirst({
-      where: { paymentId },
-      select: { userId: true, billing: { select: { classId: true } } },
-    });
-    if (line) {
-      const cls = await this.prisma.class.findUnique({
-        where: { id: line.billing.classId },
-        select: { teamId: true, academyId: true },
-      });
-      return {
-        sourceType: "CLASS_POSTPAID",
-        classId: line.billing.classId,
-        tournamentId: null,
-        teamId: cls?.teamId ?? null,
-        academyId: cls?.academyId ?? null,
-        childId: line.userId,
-      };
-    }
-
-    const reg = await this.prisma.tournamentRegistration.findFirst({
-      where: { paymentId },
-      select: { tournamentId: true, childId: true },
-    });
-    if (reg) {
-      const tournament = await this.prisma.tournament.findUnique({
-        where: { id: reg.tournamentId },
-        select: { teamId: true },
-      });
-      return {
-        sourceType: "TOURNAMENT",
-        classId: null,
-        tournamentId: reg.tournamentId,
-        teamId: tournament?.teamId ?? null,
-        academyId: null,
-        childId: reg.childId,
-      };
-    }
-
-    // 픽업매치 참가비 — 관리 주체가 팀/아카데미가 아니라 주최자(PickupMatch.managerId)라
-    //   스코프 스냅샷 컬럼이 없다. 승인 권한·알림 라우팅은 결제 → 신청 → 매치로 역참조한다.
-    const applicant = await this.prisma.pickupMatchApplicant.findFirst({
-      where: { paymentId },
-      select: { id: true },
-    });
-    if (applicant) {
-      return {
-        sourceType: "PICKUP_MATCH",
-        classId: null,
-        tournamentId: null,
-        teamId: null,
-        academyId: null,
-        childId: null, // 픽업매치는 신청자 본인 참가 — 자녀 컨텍스트 없음.
-      };
-    }
-
-    return null; // 쇼핑 등 — 지원하지 않음(422).
-  }
 
   /** 역할별 소속 범위 필터(SoT = 저장된 team_id/academy_id 스냅샷). */
   private async buildPermissionWhere(

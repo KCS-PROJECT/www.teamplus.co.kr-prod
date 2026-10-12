@@ -110,6 +110,8 @@ export interface TournamentSettlementSummary {
   refundedAmount: number;
   mixedBilling: boolean;
   blockedReasonCode: BlockedReasonCode;
+  /** 취소된 대회 — 돈 흐름(결제·청구·환불)이 있어 목록에 남은 경우에만 true. */
+  cancelled: boolean;
   detailPath: string;
 }
 
@@ -238,6 +240,7 @@ interface TournamentSourceRows {
   rows: EnrichedRow[];
   isPostpaid: boolean;
   tournamentEnded: boolean;
+  cancelled: boolean;
 }
 
 /** 팀 인별 미수금 — 회원 1행(자녀/선수 축). */
@@ -1239,6 +1242,7 @@ export class SettlementSummaryService {
         id: true,
         name: true,
         billingMode: true,
+        status: true,
         endDate: true,
         teamId: true,
         team: { select: { name: true } },
@@ -1274,6 +1278,7 @@ export class SettlementSummaryService {
         ? ("POSTPAID" as const)
         : ("PREPAID" as const);
       const rows: EnrichedRow[] = [];
+      let hasApprovedPayment = false;
       for (const reg of t.registrations) {
         const att = resolveTournamentAttribution({
           registrationPaymentStatus: reg.paymentStatus,
@@ -1291,6 +1296,7 @@ export class SettlementSummaryService {
           continue;
         }
         if (att.yearMonth !== yearMonth) continue;
+        if (reg.payment?.completedAt != null) hasApprovedPayment = true;
         rows.push({
           // 청구 대상 = 자녀(childId) 우선, 없으면 신청자.
           userId: reg.childId ?? reg.userId,
@@ -1311,6 +1317,24 @@ export class SettlementSummaryService {
 
       if (rows.length === 0) continue; // 당월 활동 없는 대회 제외
 
+      // 취소 대회는 이 달 행에 금액(결제·청구·환불·예상액)이나 승인된 결제가 하나라도 있으면
+      //   남긴다 — 결제 대기만 있다가 함께 취소된 대회만 빼서, 숨김이 합계를 바꾸지 않게 한다.
+      //   승인 후 취소된 결제는 RefundLog 없이 CANCELLED 로 귀속돼 금액이 0 이라 따로 본다.
+      const cancelled = t.status === "cancelled";
+      if (
+        cancelled &&
+        !hasApprovedPayment &&
+        rows.every(
+          (r) =>
+            r.paidAmount === 0 &&
+            r.refundedAmount === 0 &&
+            (r.billedAmount ?? 0) === 0 &&
+            (r.estimatedAmount ?? 0) === 0,
+        )
+      ) {
+        continue;
+      }
+
       const tournamentEnded =
         t.endDate != null && t.endDate.getTime() < todayUtcMidnight.getTime();
 
@@ -1324,6 +1348,7 @@ export class SettlementSummaryService {
         rows,
         isPostpaid,
         tournamentEnded,
+        cancelled,
       });
     }
 
@@ -1404,6 +1429,7 @@ export class SettlementSummaryService {
         refundedAmount: agg.refundedAmount,
         mixedBilling: false, // 대회는 단일 결제방식
         blockedReasonCode,
+        cancelled: src.cancelled,
         detailPath: `/tournaments/${src.sourceId}/students`,
       });
     }

@@ -607,6 +607,8 @@ export interface TournamentSettlementSummary {
   refundedAmount: number;
   mixedBilling: boolean;
   blockedReasonCode: SettlementBlockedReasonCode;
+  /** 취소된 대회 — 금액이나 승인된 결제가 있어 목록에 남은 경우에만 true(없는 취소 대회는 응답에서 빠짐). */
+  cancelled: boolean;
   /** 드릴다운 경로 — "/tournaments/{id}/students" (명단·정산 관리 페이지). */
   detailPath: string;
 }

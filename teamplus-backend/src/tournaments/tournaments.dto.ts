@@ -564,6 +564,29 @@ export class RegisterTournamentDto {
   gamesCount!: number;
 }
 
+/** 대회 참가 결제 시작 본문 — 금액은 서버가 feePerGame × gamesCount 로 재검증한다. */
+export class InitiateTournamentPaymentDto {
+  @ApiProperty({ description: "자녀 User ID" })
+  @IsString()
+  childId!: string;
+
+  @ApiProperty({
+    description: "결제 금액(원) — 서버 산식과 일치해야 한다",
+    example: 50000,
+  })
+  @IsInt()
+  @IsPositive()
+  @Type(() => Number)
+  amount!: number;
+
+  @ApiPropertyOptional({ description: "참가 경기 수 (TOTAL_FIXED 는 1)" })
+  @IsOptional()
+  @IsInt()
+  @IsPositive()
+  @Type(() => Number)
+  gamesCount?: number;
+}
+
 export class FeePreviewDto {
   @ApiProperty({ description: "참가 경기 수", example: 3 })
   @IsInt()
