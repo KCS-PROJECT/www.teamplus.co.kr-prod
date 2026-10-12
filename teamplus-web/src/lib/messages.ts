@@ -1381,6 +1381,7 @@ export const MESSAGES = {
     tabSettlementAgg: "정산 현황",
     tabTraining: "훈련",
     tabTournament: "대회",
+    tournamentCancelled: "취소된 대회",
     tabUnpaid: "미수금",
     tabSettlement: "정산",
     // 거래 내역 탭 — 결제 1건=1행 목록

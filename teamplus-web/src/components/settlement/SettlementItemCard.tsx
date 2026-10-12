@@ -36,6 +36,8 @@ export interface SettlementCardData {
   timingParts: string[];
   blockedReasonCode: SettlementBlockedReasonCode;
   detailPath: string;
+  /** 취소된 대회 표시(대회 카드 전용). */
+  cancelled?: boolean;
 }
 
 // ─── 5-state 정산 상태 배지 (it-* 토큰) ──────────────
@@ -152,9 +154,15 @@ export function SettlementItemCard({
           <h3 className="truncate text-[15px] font-bold text-it-ink-800 dark:text-white">
             {data.title}
           </h3>
-          {data.subtitle && (
+          {(data.subtitle || data.cancelled) && (
             <p className="mt-0.5 truncate text-[13px] text-it-ink-500 dark:text-wtext-4">
               {data.subtitle}
+              {data.subtitle && data.cancelled && ' · '}
+              {data.cancelled && (
+                <span className="font-bold text-it-red-600 dark:text-it-red-300">
+                  {MESSAGES.settlement.tournamentCancelled}
+                </span>
+              )}
             </p>
           )}
         </div>

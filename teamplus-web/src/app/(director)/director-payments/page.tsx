@@ -64,6 +64,7 @@ function tournamentToCardData(item: TournamentSettlementSummary): SettlementCard
     timingParts: [],
     blockedReasonCode: item.blockedReasonCode,
     detailPath: item.detailPath,
+    cancelled: item.cancelled,
   };
 }
 
