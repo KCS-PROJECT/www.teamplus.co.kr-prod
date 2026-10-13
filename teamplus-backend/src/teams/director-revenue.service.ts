@@ -265,6 +265,8 @@ export class DirectorRevenueService {
         endDate: reg.tournament.endDate,
         payment: reg.payment,
         tournamentBillingMode: mode,
+        // tournamentStatus 는 넘기지 않는다 — 여기는 예상액을 쓰지 않고(순수납·청구·미수만),
+        //   결제 없는 정산 전 행은 조회 조건(payment isNot null)에서 이미 빠진다.
       });
       const ym = att.yearMonth;
       if (ym === null) continue; // 월귀속 근거 없음 — 집계 제외(팀 허브와 동일).

@@ -1962,7 +1962,7 @@ export class PaymentsService {
     const targets: PaymentManagerTarget[] = [];
     for (const cls of classMap.values()) {
       if (cls.teamId) {
-        // 정규 수업 → 팀 감독/코치. 착지 = 결제 관리(수납 현황) — director/coach 모두 접근 가능.
+        // 정규 수업 → 팀 감독/코치. 착지 = 결제 내역(/director-payments) — director/coach 모두 접근 가능.
         targets.push({
           kind: "team",
           teamId: cls.teamId,

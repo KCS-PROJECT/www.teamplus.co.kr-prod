@@ -106,6 +106,22 @@ function sumRefund(
   return (refundLogs ?? []).reduce((s, r) => s + (r.refundAmount ?? 0), 0);
 }
 
+/**
+ * 환불 terminal 결제의 환불액 — partially_refunded 는 로그 합(부분 환불 정확), 전액 환불은
+ *  로그가 있으면 로그 합, 없으면 결제액. 현재 취소 흐름은 환불 엔진(cancelPayment)이 RefundLog
+ *  를 함께 만들지만, 결제사 전환 전 웹훅 취소 등 옛 데이터는 Payment 만 refunded 이고 로그가
+ *  없어 전액으로 보정한다. 대회 귀속과 거래 내역 요약이 같은 규칙을 쓴다.
+ */
+export function resolveRefundedTerminalAmount(
+  paymentStatus: string | null | undefined,
+  amount: number,
+  refundLogs?: { refundAmount: number | null }[] | null,
+): number {
+  const logSum = sumRefund(refundLogs);
+  if (paymentStatus === "partially_refunded") return logSum;
+  return logSum > 0 ? logSum : amount;
+}
+
 export interface PrepaidAttributionInput {
   /** resolveRowBillingTiming 로 산출한 유효 결제방식. */
   billingTiming: RowBillingTiming;
@@ -259,6 +275,14 @@ export interface TournamentAttributionInput {
     createdAt?: Date | null;
     refundLogs?: { refundAmount: number | null }[] | null;
   } | null;
+  /**
+   * Tournament.status. 취소(cancelled)된 대회의 정산 전(UNSETTLED) 참가는 청구될 일이 없으므로
+   *  예상액을 내지 않는다 — 결제·청구·환불 금액은 그대로(돈이 오간 사실은 보존). 이 함수는
+   *  참가 행을 바꾸지 않으므로, 청구가 나간 적 없는 UNPAID 행은 취소를 되돌리면 예상액이
+   *  돌아온다. 청구 후 취소된 행은 취소 흐름이 미결제·단가 0·결제 취소로 바꿔 두므로 되돌려도
+   *  CANCELLED 로 남는다(의도된 동작 — 재청구는 정산 확정에서 다시). 미전달 시 기존 동작.
+   */
+  tournamentStatus?: string | null;
 }
 
 /**
@@ -269,7 +293,15 @@ export interface TournamentAttributionInput {
 export function resolveTournamentAttribution(
   input: TournamentAttributionInput,
 ): AttributionResult {
-  const { registrationPaymentStatus, amount, endDate, payment, tournamentBillingMode } = input;
+  const {
+    registrationPaymentStatus,
+    amount,
+    endDate,
+    payment,
+    tournamentBillingMode,
+    tournamentStatus,
+  } = input;
+  const tournamentCancelled = tournamentStatus === "cancelled";
   const regStatus = (registrationPaymentStatus ?? "UNPAID").toUpperCase();
   const payStatus = payment?.paymentStatus ?? null;
   const refundLogSum = sumRefund(payment?.refundLogs);
@@ -294,16 +326,11 @@ export function resolveTournamentAttribution(
     billingStatus = "UNSETTLED";
   }
 
-  // 환불액 — partially_refunded 는 실제 로그 합(부분 환불 정확). 그 외 전액 환불 terminal
-  //  (REFUNDED)은 로그가 있으면 로그 합, 없으면 전액으로 해석한다.
-  //  cancelRegistration(tournaments.service) 은 PAID 취소 시 Payment 만 refunded 로 바꾸고
-  //  RefundLog 를 생성하지 않으므로(등록=CANCELLED·refundLogs=[]) 로그 부재 = 전액 환불이다.
-  //  이 보정으로 실제 취소 흐름의 순수납(paidAmount)이 0 이 되어 매출에 잔존하지 않는다.
+  // 환불액 — REFUNDED 는 환불 terminal 규칙(로그 합, 없으면 전액)으로 그 건의 순수납(paidAmount)
+  //  이 0 이 되어 매출에 잔존하지 않는다. 그 외 상태는 로그 합(CANCELLED 는 보통 0).
   const refundedAmount =
-    billingStatus === "REFUNDED" && payStatus !== "partially_refunded"
-      ? refundLogSum > 0
-        ? refundLogSum
-        : amount
+    billingStatus === "REFUNDED"
+      ? resolveRefundedTerminalAmount(payStatus, amount, payment?.refundLogs)
       : refundLogSum;
 
   // 귀속월 — 확정 Payment 우선, 없으면 대회 종료월. 둘 다 없으면 근거 불명.
@@ -329,7 +356,11 @@ export function resolveTournamentAttribution(
   // UNSETTLED(정산 전 UNPAID) 는 예상액으로 표기(대회는 종료 후 단가 확정 전 0).
   //  선불 PENDING(결제 이탈)의 UNSETTLED 는 "곧 청구할 돈"이 아니므로 예상액에서도 제외.
   const estimatedAmount =
-    billingStatus === "UNSETTLED" && regStatus !== "PENDING" ? amount : null;
+    billingStatus === "UNSETTLED" &&
+    regStatus !== "PENDING" &&
+    !tournamentCancelled
+      ? amount
+      : null;
 
   return {
     yearMonth,
@@ -340,4 +371,32 @@ export function resolveTournamentAttribution(
     estimatedAmount,
     attributionUnknown: yearMonth === null,
   };
+}
+
+/** 결제 1건의 귀속월 산정 입력 — 마감·거래 내역 select 가 공유하는 최소 구조. */
+export interface PaymentAttributionMonthInput {
+  completedAt: Date | null;
+  createdAt: Date;
+  monthlyBillingLines: { billing: { yearMonth: string } }[];
+  enrollments: { billingMonth: Date | null }[];
+  tournamentRegistrations: unknown[];
+}
+
+/**
+ * 귀속월(YYYY-MM) — 마감 판정에는 쓰지 않는 표시용 병기값.
+ *  후불=billing.yearMonth, 선불=enrollment.billingMonth, 대회=completedAt KST 월.
+ */
+export function resolvePaymentAttributionMonth(
+  payment: PaymentAttributionMonthInput,
+): string | null {
+  const line = payment.monthlyBillingLines[0];
+  if (line) return line.billing.yearMonth;
+  const enrollment = payment.enrollments[0];
+  if (enrollment?.billingMonth) {
+    return dbDateToKstYearMonth(enrollment.billingMonth);
+  }
+  if (payment.tournamentRegistrations.length > 0) {
+    return instantToKstYearMonth(payment.completedAt ?? payment.createdAt);
+  }
+  return null;
 }

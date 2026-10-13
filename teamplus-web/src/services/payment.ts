@@ -404,7 +404,7 @@ export async function getTeamUnpaidMembers(params: {
 export interface TeamTransactionItem {
   paymentId: string;
   amount: number;
-  /** completed | refunded | partially_refunded | cancelled(실결제 후 취소). */
+  /** completed | refunded | partially_refunded | cancelled(실결제 후 취소) | refund_processing. */
   paymentStatus: string;
   completedAt: string;
   payerName: string | null;
@@ -413,11 +413,25 @@ export interface TeamTransactionItem {
   subjectName: string | null;
   sourceType: 'CLASS' | 'TOURNAMENT' | null;
   billingTiming: 'PREPAID' | 'POSTPAID' | null;
+  /** 청구 귀속 월("YYYY-MM") — 결제일과 다른 달에 청구된 건을 구분. 없으면 null. */
+  attributionMonth: string | null;
+  /** 부분 환불 누계 금액. 환불 없으면 0. */
+  refundedAmount: number;
+}
+
+/** 결제일(완료일) 기준 월 합계 — 서버 미제공 시 null(0 으로 위장하지 않는다). */
+export interface TeamTransactionsSummary {
+  paymentCount: number;
+  paymentAmount: number;
+  refundCount: number;
+  refundAmount: number;
+  netAmount: number;
 }
 
 export interface TeamTransactionsResponse {
   yearMonth: string;
   items: TeamTransactionItem[];
+  summary: TeamTransactionsSummary | null;
   /** 월 내 전체 건수 — items 는 최신순 상한(300)까지만. */
   totalCount: number;
 }
@@ -443,9 +457,26 @@ export async function getTeamTransactions(params: {
   }
 
   const raw = res.data;
+  const rawSummary = raw.summary;
   return {
     yearMonth: raw.yearMonth ?? yearMonth,
-    items: Array.isArray(raw.items) ? raw.items : [],
+    items: Array.isArray(raw.items)
+      ? raw.items.map((item) => ({
+          ...item,
+          attributionMonth: item.attributionMonth ?? null,
+          refundedAmount: toNumber(item.refundedAmount),
+        }))
+      : [],
+    summary:
+      rawSummary && typeof rawSummary === 'object'
+        ? {
+            paymentCount: toNumber(rawSummary.paymentCount),
+            paymentAmount: toNumber(rawSummary.paymentAmount),
+            refundCount: toNumber(rawSummary.refundCount),
+            refundAmount: toNumber(rawSummary.refundAmount),
+            netAmount: toNumber(rawSummary.netAmount),
+          }
+        : null,
     totalCount: toNumber(raw.totalCount),
   };
 }

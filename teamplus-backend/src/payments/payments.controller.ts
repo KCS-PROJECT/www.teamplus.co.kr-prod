@@ -1233,7 +1233,7 @@ export class PaymentsController {
   @ApiOperation({
     summary: "팀 거래 내역",
     description:
-      "선택 월에 완료(환불·취소 포함)된 관리 팀의 결제를 건별·최신순으로 반환합니다.",
+      "선택 월에 완료된 관리 팀의 결제(환불·환불 처리 중·승인 후 취소 포함)를 건별·최신순으로 반환합니다. summary 는 선택 월 전체 결제 요약, items[].attributionMonth 는 귀속 월입니다.",
   })
   @ApiQuery({
     name: "yearMonth",
