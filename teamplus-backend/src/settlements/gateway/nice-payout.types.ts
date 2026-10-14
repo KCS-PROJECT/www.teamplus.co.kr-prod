@@ -1,6 +1,7 @@
 export const NICE_PAYOUT_GATEWAY = Symbol("NICE_PAYOUT_GATEWAY");
 
-export type NicePayoutSid = "0101001" | "0105001";
+/** 0101001 잔액조회 · 0105001 서브몰 등록/수정 · 0102001 지급요청 · 0101002 지급결과조회 */
+export type NicePayoutSid = "0101001" | "0105001" | "0102001" | "0101002";
 
 /** SUCCESS=0000 · TERMINAL=확정 실패(업무 오류) · AMBIGUOUS=결과 불명(무응답·통신·나이스 내부 오류) · CONFIG=우리 설정/구현 결함 */
 export type NicePayoutOutcome = "SUCCESS" | "TERMINAL" | "AMBIGUOUS" | "CONFIG";
@@ -45,4 +46,54 @@ export interface NicePayoutGateway {
   readonly kind: "nice" | "fake";
   getBalance(): Promise<NiceBalanceResult>;
   upsertSubMall(req: NiceSubMallRequest): Promise<NiceSubMallResult>;
+  requestPayout(req: NicePayoutRequestInput): Promise<NicePayoutRequestResult>;
+  queryPayoutResults(
+    req: NicePayoutResultsQuery,
+  ): Promise<NicePayoutResultsResult>;
+}
+
+export interface NicePayoutRequestInput {
+  subId: string;
+  /** 지급일 YYYYMMDD(KST) */
+  settlmntDt: string;
+  /** 원 단위 양수 */
+  settlmntAmt: number;
+  /** Y 면 같은 서브몰·지급일·금액 요청을 나이스가 1103 으로 거절한다 */
+  dupChkYn: "Y" | "N";
+  /** 수취 통장 표기(30바이트) */
+  accntDesc?: string;
+}
+
+export interface NicePayoutRequestResult {
+  outcome: NicePayoutOutcome;
+  meta: NicePayoutCallMeta;
+  /** 나이스 접수번호 — 성공 응답에만 있다. 취소·결과 대조에 쓴다 */
+  seq: string | null;
+}
+
+export interface NicePayoutResultsQuery {
+  /** 지급일 YYYYMMDD(KST) */
+  settlmntDt: string;
+  /** 생략 시 그 지급일 전체 */
+  subId?: string;
+}
+
+/** 결과 조회 한 줄 — 계좌번호·사업자번호는 응답에 있어도 받지 않는다. */
+export interface NicePayoutResultRow {
+  seq: string | null;
+  subId: string;
+  /** 요청 / 성공 / 실패 / 재요청 진행중 / 삭제 (나이스 원문) */
+  statusNm: string;
+  settlmntAmt: number | null;
+  errReason: string | null;
+}
+
+export interface NicePayoutResultsResult {
+  outcome: NicePayoutOutcome;
+  meta: NicePayoutCallMeta;
+  totCnt: number | null;
+  succCnt: number | null;
+  failCnt: number | null;
+  remainAmt: number | null;
+  rows: NicePayoutResultRow[];
 }

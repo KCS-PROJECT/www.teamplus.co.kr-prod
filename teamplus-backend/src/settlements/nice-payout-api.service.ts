@@ -6,6 +6,10 @@ import {
   type NicePayoutCallMeta,
   type NicePayoutGateway,
   type NicePayoutOutcome,
+  type NicePayoutRequestInput,
+  type NicePayoutRequestResult,
+  type NicePayoutResultsQuery,
+  type NicePayoutResultsResult,
   type NiceSubMallRequest,
   type NiceSubMallResult,
 } from "./gateway/nice-payout.types";
@@ -44,6 +48,26 @@ export class NicePayoutApiService {
       subId: req.subId,
       reqType: req.reqType,
     });
+    return result;
+  }
+
+  /** 지급 요청(0102001) — 돈이 나가는 호출. 호출 전제(live·운영자 요청·정산당 1건)는 호출하는 쪽이 보장한다. */
+  async requestPayout(
+    req: NicePayoutRequestInput,
+    ctx: CallContext,
+  ): Promise<NicePayoutRequestResult> {
+    const result = await this.gateway.requestPayout(req);
+    await this.record(result.meta, result.outcome, ctx, { subId: req.subId });
+    return result;
+  }
+
+  /** 지급 결과 조회(0101002) — 지급일 단위. */
+  async queryPayoutResults(
+    req: NicePayoutResultsQuery,
+    ctx: CallContext,
+  ): Promise<NicePayoutResultsResult> {
+    const result = await this.gateway.queryPayoutResults(req);
+    await this.record(result.meta, result.outcome, ctx, { subId: req.subId });
     return result;
   }
 

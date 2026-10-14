@@ -8,6 +8,7 @@ import { useNativeUI } from '@/hooks/useNativeUI';
 import { useNavigation } from '@/hooks/useNavigation';
 import { api } from '@/services/api-client';
 import { MESSAGES } from '@/lib/messages';
+import { formatPayoutScheduled } from '@/lib/settlement-payout';
 
 import { usePageReady } from '@/hooks/usePageReady';
 
@@ -37,6 +38,7 @@ interface SettlementData {
   refundAmount: number;
   netAmount: number;
   status: SettlementStatus;
+  payoutScheduledDate: string | null;
   bankName: string | null;
   bankAccount: string | null;
   accountHolder: string | null;
@@ -53,6 +55,7 @@ interface ApiSettlementDetail {
   refundAmount?: number;
   netAmount?: number;
   status?: string;
+  payoutScheduledDate?: string | null;
   bankName?: string | null;
   bankAccount?: string | null;
   accountHolder?: string | null;
@@ -104,6 +107,7 @@ function mapSettlement(raw: ApiSettlementDetail): SettlementData {
     refundAmount: raw.refundAmount ?? 0,
     netAmount: raw.netAmount ?? 0,
     status: normalizeStatus(raw.status),
+    payoutScheduledDate: raw.payoutScheduledDate ?? null,
     bankName: raw.bankName ?? null,
     bankAccount: raw.bankAccount ?? null,
     accountHolder: raw.accountHolder ?? null,
@@ -417,6 +421,12 @@ export default function SettlementDetailPage() {
     ? MESSAGES.settlements.paidAmountLabel
     : MESSAGES.settlements.receivableLabel;
   // transactions 는 서버가 지급일 내림차순으로 준다 — 첫 payout 이 가장 최근 지급이다.
+  const payoutProgressLine =
+    settlement.status === 'processing'
+      ? formatPayoutScheduled(settlement.payoutScheduledDate)
+      : settlement.status === 'failed'
+        ? MESSAGES.settlements.payoutFailedDetail
+        : '';
   const lastPayout = isPaid ? payouts[0] : undefined;
   const paidDate = lastPayout ? formatDateOnly(lastPayout.transactionDate) : '';
   // 운영자가 메모 없이 지급하면 서버가 기본 문구를 채운다 — 직접 적은 메모만 보여준다.
@@ -459,6 +469,11 @@ export default function SettlementDetailPage() {
             >
               {formatCurrency(settlement.netAmount)}
             </p>
+            {payoutProgressLine && (
+              <p className="mt-1 text-card-meta text-it-ink-500 dark:text-rink-300">
+                {payoutProgressLine}
+              </p>
+            )}
             {paidDate && (
               <p className="mt-1 text-card-meta text-it-ink-500 dark:text-rink-300">
                 {MESSAGES.settlements.paidDateLabel(paidDate)}

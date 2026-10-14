@@ -146,6 +146,29 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * 값이 토큰과 같을 때만 락을 푼다 — TTL 이 지나 다른 실행이 잡은 락을 지우지 않는다.
+   * 연결이 없거나 실패하면 false(락은 TTL 로 풀린다).
+   */
+  async releaseLock(key: string, token: string): Promise<boolean> {
+    if (!this.isConnected) {
+      this.logger.warn("Redis 연결 없음: releaseLock 건너뜀");
+      return false;
+    }
+    try {
+      const released = await this.client.eval(
+        'if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("del", KEYS[1]) end return 0',
+        1,
+        key,
+        token,
+      );
+      return Number(released) === 1;
+    } catch (error) {
+      this.logger.error(`Redis releaseLock 실패 (${key}): ${error.message}`);
+      return false;
+    }
+  }
+
+  /**
    * 값 가져오기
    */
   async get<T = string>(key: string): Promise<T | null> {

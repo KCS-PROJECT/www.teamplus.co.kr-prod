@@ -67,6 +67,7 @@ interface AppSettingsData {
   // 결제
   paymentProvider: string;
   payoutApiMode: PayoutApiMode;
+  payoutDayOfMonth: number;
 }
 
 type PayoutApiMode = "off" | "readonly" | "live";
@@ -115,6 +116,8 @@ function normalizeSettings(
     paymentProvider:
       data?.paymentProvider ?? DEFAULT_SETTINGS.paymentProvider,
     payoutApiMode: data?.payoutApiMode ?? DEFAULT_SETTINGS.payoutApiMode,
+    payoutDayOfMonth:
+      data?.payoutDayOfMonth ?? DEFAULT_SETTINGS.payoutDayOfMonth,
   };
 }
 
@@ -148,6 +151,7 @@ function buildUpdatePayload(
     privacyVersion: settings.privacyVersion.trim(),
     paymentProvider: settings.paymentProvider,
     payoutApiMode: settings.payoutApiMode,
+    payoutDayOfMonth: settings.payoutDayOfMonth,
   };
 }
 
@@ -171,6 +175,7 @@ const DEFAULT_SETTINGS: AppSettingsData = {
   privacyVersion: "1.0",
   paymentProvider: "toss",
   payoutApiMode: "off",
+  payoutDayOfMonth: 15,
 };
 
 type TabId = "operation" | "version" | "auth" | "service" | "payment";
@@ -257,6 +262,7 @@ function AppSettingsContent() {
   const maxLoginAttemptsId = useId();
   const sessionTimeoutId = useId();
   const creditExpireDaysId = useId();
+  const payoutDayOfMonthId = useId();
   const qrExpireMinutesId = useId();
   const supportEmailId = useId();
   const supportPhoneId = useId();
@@ -1008,6 +1014,43 @@ function AppSettingsContent() {
                     {MESSAGES.settings.payoutLiveWarning}
                   </p>
                 )}
+              </div>
+
+              <div className="space-y-2">
+                <label
+                  htmlFor={payoutDayOfMonthId}
+                  className="block text-sm font-medium text-slate-700 dark:text-slate-300"
+                >
+                  {MESSAGES.settings.payoutDayTitle}
+                </label>
+                <div className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+                  <span>{MESSAGES.settings.payoutDayPrefix}</span>
+                  <Input
+                    id={payoutDayOfMonthId}
+                    type="number"
+                    min={1}
+                    max={31}
+                    value={formData.payoutDayOfMonth}
+                    onChange={(e) =>
+                      updateField(
+                        "payoutDayOfMonth",
+                        Math.min(
+                          31,
+                          Math.max(
+                            1,
+                            parseInt(e.target.value) ||
+                              DEFAULT_SETTINGS.payoutDayOfMonth,
+                          ),
+                        ),
+                      )
+                    }
+                    className="h-11 w-24 bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600 dark:text-white"
+                  />
+                  <span>{MESSAGES.settings.payoutDaySuffix}</span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {MESSAGES.settings.payoutDayHint}
+                </p>
               </div>
             </div>
           )}

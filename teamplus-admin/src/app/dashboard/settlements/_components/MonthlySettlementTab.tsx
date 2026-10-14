@@ -55,10 +55,28 @@ import { isoToDateInput } from '@/lib/kst-date';
 import { SettlementDetailDialog, type SettlementStatus } from './SettlementDetailDialog';
 import { getAccountStatusMeta, type AccountStatus } from './accountStatusMeta';
 import { ActionNotice } from './ActionNotice';
+import { PayoutRequestDialog } from './PayoutRequestDialog';
+import { PayoutCheckDialog } from './PayoutCheckDialog';
+import {
+  getPayoutStatusLabelOverride,
+  joinPayoutReasons,
+  type PayoutApiMode,
+  type PayoutRequestInfo,
+} from './payoutRequestMeta';
 
 // ════════════════════════════════════════════════
 // 타입
 // ════════════════════════════════════════════════
+
+interface PayoutRequestDefaults {
+  mode: PayoutApiMode;
+  payoutDayOfMonth: number;
+  defaultPayDate: string;
+  maxItems: number;
+}
+
+/** 지급 요청 버튼 한 번에 담을 수 있는 최대 건수의 기본값 — 서버 defaults 가 오면 그 값을 쓴다. */
+const DEFAULT_PAYOUT_MAX_ITEMS = 10;
 
 interface SettlementListItem {
   id: string;
@@ -70,6 +88,8 @@ interface SettlementListItem {
   refundAmount: number;
   netAmount: number;
   status: SettlementStatus;
+  payoutScheduledDate?: string | null;
+  payoutRequest?: PayoutRequestInfo | null;
   accountStatus?: AccountStatus | null;
   team: { id: string; name: string };
   _count: { details: number };
@@ -190,6 +210,8 @@ interface SettlementSummaryResponse {
   pgFeeRate?: number;
   pending: SettlementSummaryBucket;
   approved: SettlementSummaryBucket;
+  processing: SettlementSummaryBucket;
+  failed: SettlementSummaryBucket;
   paid: SettlementSummaryBucket;
   rejected: { count: number };
 }
@@ -378,6 +400,22 @@ export function MonthlySettlementTab() {
   const [payoutMsg, setPayoutMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const previewSeqRef = useRef(0);
 
+  // 지급대행 모드 — 꺼져 있거나 조회에 실패하면 기존 수동 지급 흐름을 그대로 쓴다.
+  const { data: payoutDefaults } = useQuery({
+    queryKey: ['settlements', 'payout-defaults'],
+    queryFn: () => api.get<PayoutRequestDefaults>('/settlements/payout-requests/defaults'),
+    retry: false,
+    refetchOnWindowFocus: false,
+    staleTime: 60 * 1000,
+  });
+  const payoutMode: PayoutApiMode = payoutDefaults?.mode ?? 'off';
+  const isLiveMode = payoutMode === 'live';
+  const canCheckPayout = payoutMode === 'readonly' || payoutMode === 'live';
+  const maxPayoutItems = payoutDefaults?.maxItems ?? DEFAULT_PAYOUT_MAX_ITEMS;
+  const [selectedPayoutIds, setSelectedPayoutIds] = useState<string[]>([]);
+  const [isPayoutRequestOpen, setIsPayoutRequestOpen] = useState(false);
+  const [isPayoutCheckOpen, setIsPayoutCheckOpen] = useState(false);
+
   // 목록 조회 요청 순번 — 필터를 빠르게 바꿀 때 먼저 보낸 요청이 나중에 도착해
   // 최신 화면을 덮어쓰는 경쟁을 막는다. 응답 시점에 최신 순번이 아니면 버린다.
   const requestSeqRef = useRef(0);
@@ -417,6 +455,11 @@ export function MonthlySettlementTab() {
   useEffect(() => {
     void loadSettlements();
   }, [loadSettlements]);
+
+  // 보이지 않는 페이지·월의 정산이 지급 요청에 섞이지 않도록 목록 조건이 바뀌면 선택을 비운다.
+  useEffect(() => {
+    setSelectedPayoutIds([]);
+  }, [month, page, statusFilter]);
 
   // 월/상태 필터는 값 변경 핸들러(handleMonthChange/handleStatusFilterChange)에서
   // page 를 같은 렌더로 1 리셋한다 — 별도 effect 로 나누면 필터 변경 시
@@ -533,6 +576,28 @@ export function MonthlySettlementTab() {
     }
   };
 
+  const handleTogglePayoutSelect = (id: string, checked: boolean) => {
+    if (!checked) {
+      setSelectedPayoutIds((prev) => prev.filter((x) => x !== id));
+      return;
+    }
+    if (selectedPayoutIds.length >= maxPayoutItems) {
+      setActionMsg({ type: 'error', text: MESSAGES.settlementDynamic.payoutRequestSelectLimit(maxPayoutItems) });
+      return;
+    }
+    setSelectedPayoutIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+  };
+
+  const handlePayoutRequestSubmitted = () => {
+    setSelectedPayoutIds([]);
+    void loadSettlements();
+  };
+
+  const handlePayoutChecked = () => {
+    setActionMsg({ type: 'success', text: MESSAGES.settlement.payoutCheckDone });
+    void loadSettlements();
+  };
+
   const handleViewDetail = (id: string) => {
     setSelectedId(id);
     setIsDetailOpen(true);
@@ -551,11 +616,14 @@ export function MonthlySettlementTab() {
     setPage(1);
   };
 
+  const tableColSpan = isLiveMode ? 10 : 9;
   const approvedCount = monthSummary?.approved.count ?? 0;
   const summaryBuckets = monthSummary
     ? [
         { key: 'pending', label: MESSAGES.settlement.monthSummaryPendingLabel, count: monthSummary.pending.count, net: monthSummary.pending.netAmount },
         { key: 'approved', label: MESSAGES.settlement.monthSummaryApprovedLabel, count: monthSummary.approved.count, net: monthSummary.approved.netAmount },
+        { key: 'processing', label: MESSAGES.settlement.monthSummaryProcessingLabel, count: monthSummary.processing.count, net: monthSummary.processing.netAmount },
+        { key: 'failed', label: MESSAGES.settlement.monthSummaryFailedLabel, count: monthSummary.failed.count, net: monthSummary.failed.netAmount },
         { key: 'paid', label: MESSAGES.settlement.monthSummaryPaidLabel, count: monthSummary.paid.count, net: monthSummary.paid.netAmount },
         { key: 'rejected', label: MESSAGES.settlement.monthSummaryRejectedLabel, count: monthSummary.rejected.count, net: null },
       ]
@@ -594,7 +662,25 @@ export function MonthlySettlementTab() {
             </SelectContent>
           </Select>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {canCheckPayout && (
+            <Button type="button" variant="outline" onClick={() => setIsPayoutCheckOpen(true)} className="h-11">
+              {MESSAGES.settlement.payoutCheckButton}
+            </Button>
+          )}
+          {isLiveMode && (
+            <Button
+              type="button"
+              onClick={() => setIsPayoutRequestOpen(true)}
+              disabled={selectedPayoutIds.length === 0}
+              className="h-11"
+              title={selectedPayoutIds.length === 0 ? MESSAGES.settlement.payoutRequestEmptySelection : undefined}
+            >
+              {selectedPayoutIds.length > 0
+                ? MESSAGES.settlementDynamic.payoutRequestSelected(selectedPayoutIds.length)
+                : MESSAGES.settlement.payoutRequestButton}
+            </Button>
+          )}
           <Button
             type="button"
             variant="outline"
@@ -636,7 +722,7 @@ export function MonthlySettlementTab() {
         ) : !monthSummary && isLoading ? null : summaryTeamCount === 0 ? (
           <p className="text-sm text-slate-500 dark:text-slate-400">{MESSAGES.settlement.monthSummaryNotClosed}</p>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-6 gap-3 text-sm">
+          <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-3 text-sm">
             <div className="rounded-lg bg-slate-50 dark:bg-slate-700/50 px-3 py-2">
               <p className="text-slate-500 dark:text-slate-400">{MESSAGES.settlement.monthSummaryTeamCount}</p>
               <p className="font-bold text-slate-900 dark:text-white tabular-nums">{summaryTeamCount}건</p>
@@ -855,6 +941,11 @@ export function MonthlySettlementTab() {
         <Table>
           <TableHeader>
             <TableRow>
+              {isLiveMode && (
+                <TableHead className="w-10">
+                  <span className="sr-only">{MESSAGES.settlement.payoutRequestSelectAria}</span>
+                </TableHead>
+              )}
               <TableHead>팀</TableHead>
               <TableHead className="text-right">총매출</TableHead>
               <TableHead className="text-right">환불</TableHead>
@@ -869,13 +960,13 @@ export function MonthlySettlementTab() {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-center py-10">
+                <TableCell colSpan={tableColSpan} className="text-center py-10">
                   로딩 중...
                 </TableCell>
               </TableRow>
             ) : rows.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-center py-10 text-slate-500">
+                <TableCell colSpan={tableColSpan} className="text-center py-10 text-slate-500">
                   해당 월 정산 내역이 없습니다.
                 </TableCell>
               </TableRow>
@@ -885,8 +976,26 @@ export function MonthlySettlementTab() {
                 const StatusIcon = statusInfo.icon;
                 const accountMeta = getAccountStatusMeta(row.accountStatus);
                 const fee = (row.platformFee ?? 0) + (row.paymentFee ?? 0);
+                const statusLabel =
+                  getPayoutStatusLabelOverride(row.status, row.payoutScheduledDate) ?? statusInfo.label;
+                const payoutReasons = joinPayoutReasons(row.payoutRequest);
+                const needsAttention = !!(row.payoutRequest?.needsAttention || row.payoutRequest?.needsReview);
+                const canSelectForPayout = row.status === 'approved' || row.status === 'failed';
                 return (
                   <TableRow key={row.id}>
+                    {isLiveMode && (
+                      <TableCell>
+                        {canSelectForPayout && (
+                          <input
+                            type="checkbox"
+                            checked={selectedPayoutIds.includes(row.id)}
+                            onChange={(e) => handleTogglePayoutSelect(row.id, e.target.checked)}
+                            aria-label={`${row.team?.name} ${MESSAGES.settlement.payoutRequestSelectAria}`}
+                            className="w-4 h-4 rounded border-slate-300 text-primary focus:ring-primary"
+                          />
+                        )}
+                      </TableCell>
+                    )}
                     <TableCell className="font-medium text-slate-900 dark:text-white">
                       {row.team?.name}
                     </TableCell>
@@ -907,11 +1016,17 @@ export function MonthlySettlementTab() {
                       {formatAmount(row.netAmount)}
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-1.5 flex-wrap">
+                      <div className="flex items-center gap-1.5 flex-wrap" title={payoutReasons || undefined}>
                         <Badge className={statusInfo.badge}>
                           <StatusIcon className="h-3 w-3 mr-1" aria-hidden="true" />
-                          {statusInfo.label}
+                          {statusLabel}
                         </Badge>
+                        {needsAttention && (
+                          <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                            <AlertTriangle className="h-3 w-3 mr-1" aria-hidden="true" />
+                            {MESSAGES.settlement.needsAttentionBadge}
+                          </Badge>
+                        )}
                         {row.netAmount < 0 && (
                           <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
                             <AlertTriangle className="h-3 w-3 mr-1" aria-hidden="true" />
@@ -1187,9 +1302,23 @@ export function MonthlySettlementTab() {
         </DialogContent>
       </Dialog>
 
+      <PayoutRequestDialog
+        open={isPayoutRequestOpen}
+        onOpenChange={setIsPayoutRequestOpen}
+        settlementIds={selectedPayoutIds}
+        onSubmitted={handlePayoutRequestSubmitted}
+      />
+
+      <PayoutCheckDialog
+        open={isPayoutCheckOpen}
+        onOpenChange={setIsPayoutCheckOpen}
+        onChecked={handlePayoutChecked}
+      />
+
       <SettlementDetailDialog
         open={isDetailOpen}
         settlementId={selectedId}
+        payoutMode={payoutMode}
         onOpenChange={setIsDetailOpen}
         onActionSuccess={(message) => {
           setActionMsg({ type: 'success', text: message });

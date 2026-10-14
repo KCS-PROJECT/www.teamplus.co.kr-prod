@@ -50,7 +50,9 @@ export class UpdateAppSettingsDto {
   @IsString()
   supportPhone?: string;
 
-  @ApiPropertyOptional({ description: "고객센터 운영시간 (예: 평일 09:00~18:00)" })
+  @ApiPropertyOptional({
+    description: "고객센터 운영시간 (예: 평일 09:00~18:00)",
+  })
   @IsOptional()
   @IsString()
   supportHours?: string;
@@ -223,4 +225,17 @@ export class UpdateAppSettingsDto {
   @Min(1, { each: true })
   @Max(31, { each: true })
   settlementDays?: number[];
+
+  @ApiPropertyOptional({
+    description:
+      "팀 정산 나이스 지급 요청 기본 지급일(매월 N일, 1~31 · 29~31 은 짧은 달 말일). 지급 요청 팝업의 초기값이며 운영자가 요청 때 바꿀 수 있다.",
+    minimum: 1,
+    maximum: 31,
+    example: 15,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(31)
+  payoutDayOfMonth?: number;
 }

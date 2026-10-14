@@ -39,7 +39,9 @@ describe("TeamSettlementAccountService", () => {
     commonCode: { findMany: jest.fn() },
     appSettings: { findFirst: jest.fn() },
     nicePayoutApiLog: { findMany: jest.fn(), create: jest.fn() },
+    settlement: { count: jest.fn() },
     $transaction: jest.fn(),
+    $queryRaw: jest.fn(),
   };
   const mockRedis = { get: jest.fn(), set: jest.fn() };
   const mockPayoutApi = { upsertSubMall: jest.fn(), getBalance: jest.fn() };
@@ -110,6 +112,7 @@ describe("TeamSettlementAccountService", () => {
       payoutApiMode: "off",
     });
     mockPrisma.nicePayoutApiLog.findMany.mockResolvedValue([]);
+    mockPrisma.settlement.count.mockResolvedValue(0);
     mockPrisma.$transaction.mockImplementation(
       (cb: (tx: typeof mockPrisma) => Promise<unknown>) => cb(mockPrisma),
     );

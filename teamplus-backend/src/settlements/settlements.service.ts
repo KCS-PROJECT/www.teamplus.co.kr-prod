@@ -13,6 +13,12 @@ import {
   SettlementEntryType,
   SettlementSourceType,
 } from "@prisma/client";
+import {
+  PAYOUT_REQUEST_VIEW_SELECT,
+  payoutScheduledDateOf,
+  toAdminPayoutRequestView,
+} from "./utils/payout-request-view.util";
+import { markSettlementPaidInTx } from "./utils/settlement-paid.util";
 import { ConfigService } from "@nestjs/config";
 import { createHash } from "crypto";
 import { PrismaService } from "@/prisma/prisma.service";
@@ -130,6 +136,12 @@ const SETTLEMENT_LIST_SELECT = {
     },
   },
   _count: { select: { details: true } },
+  // 가장 최근 나이스 지급 요청 1건 — 지급 예정일(전 역할)과 운영자용 상태 표시에 쓴다.
+  payoutRequests: {
+    select: PAYOUT_REQUEST_VIEW_SELECT,
+    orderBy: { requestedAt: "desc" as const },
+    take: 1,
+  },
 } satisfies Prisma.SettlementSelect;
 
 const SETTLEMENT_DETAIL_SELECT = {
@@ -180,7 +192,17 @@ const SETTLEMENT_DETAIL_SELECT = {
     },
     orderBy: { transactionDate: "desc" as const },
   },
+  payoutRequests: {
+    select: PAYOUT_REQUEST_VIEW_SELECT,
+    orderBy: { requestedAt: "desc" as const },
+  },
 } satisfies Prisma.SettlementSelect;
+
+/** 수동 "지급 완료" 처리를 받을 수 있는 상태 — 지급 예정과, 나이스 지급이 실패해 다른 방법으로 보낸 뒤 닫는 경우. */
+const MANUAL_PAYOUT_FROM: readonly SettlementStatus[] = [
+  SETTLEMENT_STATUS.APPROVED,
+  SETTLEMENT_STATUS.FAILED,
+];
 
 @Injectable()
 export class SettlementsService {
@@ -275,14 +297,26 @@ export class SettlementsService {
       this.prisma.settlement.count({ where }),
     ]);
 
+    const isAdmin = isAdminRole(requester.userType);
+    const today = kstTodayUtcMidnight();
     return {
       // 계좌 상태는 team 객체에 섞지 않고 행 최상위에 둔다(team 응답은 {id, name} 계약 유지).
-      data: settlements.map(({ team, ...row }) => {
+      data: settlements.map(({ team, payoutRequests, ...row }) => {
         const { settlementAccount, ...teamInfo } = team;
+        const latest = payoutRequests[0] ?? null;
         return {
           ...row,
           team: teamInfo,
           accountStatus: settlementAccount?.status ?? null,
+          // 진행 중인 나이스 지급 요청의 지급 예정일 — 감독·코치도 본다(사유·접수번호는 운영자만).
+          payoutScheduledDate: payoutScheduledDateOf(latest),
+          ...(isAdmin
+            ? {
+                payoutRequest: latest
+                  ? toAdminPayoutRequestView(latest, today)
+                  : null,
+              }
+            : {}),
         };
       }),
       meta: {
@@ -390,10 +424,23 @@ export class SettlementsService {
 
     const isAdmin = isAdminRole(requester.userType);
     const { settlementAccount, ...team } = settlement.team;
+    const { payoutRequests, ...settlementRow } = settlement;
+    const today = kstTodayUtcMidnight();
+    const payoutView = {
+      payoutScheduledDate: payoutScheduledDateOf(payoutRequests[0] ?? null),
+      ...(isAdmin
+        ? {
+            payoutRequests: payoutRequests.map((r) =>
+              toAdminPayoutRequestView(r, today),
+            ),
+          }
+        : {}),
+    };
     // COACH 는 은행 정보 열람 대상이 아니다 — 감독(DIRECTOR)은 마스킹 표시.
     if (requester.userType === "COACH") {
       return {
-        ...settlement,
+        ...settlementRow,
+        ...payoutView,
         team,
         bankName: null,
         bankAccount: null,
@@ -417,7 +464,8 @@ export class SettlementsService {
       return isAdmin ? plain : maskBankAccount(plain);
     };
     return {
-      ...settlement,
+      ...settlementRow,
+      ...payoutView,
       team,
       // 지급 시점 스냅샷(지급 전에는 비어 있다).
       bankAccount: displayAccount(settlement.bankAccount),
@@ -719,9 +767,10 @@ export class SettlementsService {
   }
 
   /**
-   * 정산 지급 — approved → paid. 팀 정산 계좌가 나이스 등록 완료(REGISTERED)여야 하며,
-   * 그 계좌를 정산 행에 스냅샷으로 남긴다. 성공 시에만 SettlementTransaction(payout) 기록 + Detail 상태 동기화.
-   * 순지급액 0원은 보낼 돈이 없어 계좌 없이 완료 처리한다. approved 가 아니면 계좌보다 상태 오류를 먼저 안내한다.
+   * 정산 수동 지급 완료 — approved|failed → paid(운영자가 나이스 관리자 또는 다른 방법으로 이체한 뒤 닫는다).
+   * 팀 정산 계좌가 나이스 등록 완료(REGISTERED)여야 하며, 그 계좌를 정산 행에 스냅샷으로 남긴다.
+   * 성공 시에만 SettlementTransaction(payout) 기록 + Detail 상태 동기화 — 나이스 지급 결과(paid)와 같은 기록이다.
+   * 순지급액 0원은 보낼 돈이 없어 계좌 없이 완료 처리한다. 지급 가능 상태가 아니면 계좌보다 상태 오류를 먼저 안내한다.
    */
   async payout(
     id: string,
@@ -737,16 +786,15 @@ export class SettlementsService {
       throw new NotFoundException("정산 정보를 찾을 수 없습니다.");
     }
     const teamId = target.teamId;
+    const payable = MANUAL_PAYOUT_FROM.includes(
+      target.status as SettlementStatus,
+    );
 
     const account =
-      target.status === SETTLEMENT_STATUS.APPROVED && target.netAmount > 0
+      payable && target.netAmount > 0
         ? await this.accountService.getPayoutAccount(teamId)
         : null;
-    if (
-      target.status === SETTLEMENT_STATUS.APPROVED &&
-      target.netAmount > 0 &&
-      account?.status !== "REGISTERED"
-    ) {
+    if (payable && target.netAmount > 0 && account?.status !== "REGISTERED") {
       throw this.accountNotRegistered();
     }
     // 운영자가 확인 화면에서 본 계좌와 지금 계좌가 다르면(그 사이 수정·재등록) 스냅샷이 어긋나므로 막는다.
@@ -759,63 +807,56 @@ export class SettlementsService {
       throw this.accountChanged();
     }
 
-    const updated = await this.transition(
-      id,
-      teamId,
-      SETTLEMENT_STATUS.APPROVED,
-      SETTLEMENT_STATUS.PAID,
-      {
-        status: SETTLEMENT_STATUS.PAID,
-        completedAt: new Date(),
-        ...(account
-          ? {
-              bankName: account.bankName,
-              bankAccount: account.bankAccount,
-              accountHolder: account.accountHolder,
-            }
-          : {}),
-      },
-      { id: true, status: true, completedAt: true, netAmount: true },
-      async (tx, settlement) => {
-        await tx.settlementDetail.updateMany({
-          where: { settlementId: id },
-          data: { status: SettlementDetailStatus.PAID },
-        });
-        await tx.settlementTransaction.create({
-          data: {
-            settlementId: id,
-            transactionType: "payout",
-            amount: settlement.netAmount,
-            description: note ?? "정산 지급 완료",
-            // @db.Date — KST 달력일. completedAt(instant)의 UTC 날짜부를 쓰면 KST 심야(00~09시) 완료 건이 전일로 기록됨.
-            transactionDate: kstTodayUtcMidnight(),
+    // 미리 읽은 계좌가 그대로일 때만 지급한다 — 그 사이 감독이 계좌를 고쳤거나 운영자가
+    //   등록을 해제·초기화했다면 스냅샷이 틀어지므로 막는다(팀 lock 안의 단일 updateMany 로 판정).
+    //   계좌 없이 진행하는 경로(0원·지급 불가 상태)는 금액이 0원 이하로 유지될 때만 통과한다.
+    const guardWhere: Prisma.SettlementWhereInput = account
+      ? {
+          netAmount: { gt: 0 },
+          team: {
+            settlementAccount: {
+              is: { status: "REGISTERED", updatedAt: account.updatedAt },
+            },
           },
+        }
+      : { netAmount: 0 };
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      await acquireSettlementCloseLock(tx, teamId);
+      const paid = await markSettlementPaidInTx(tx, {
+        settlementId: id,
+        expectedFrom: MANUAL_PAYOUT_FROM,
+        extraWhere: guardWhere,
+        account,
+        description: note ?? "정산 지급 완료",
+      });
+      if (!paid) {
+        const current = await tx.settlement.findUnique({
+          where: { id },
+          select: { status: true, netAmount: true },
         });
-      },
-      {
-        // 미리 읽은 계좌가 그대로일 때만 지급한다 — 그 사이 감독이 계좌를 고쳤거나 운영자가
-        //   등록을 해제·초기화했다면 스냅샷이 틀어지므로 막는다(팀 lock 안의 단일 updateMany 로 판정).
-        //   계좌 없이 진행하는 경로(0원·비approved)는 금액이 0원 이하로 유지될 때만 통과한다.
-        where: account
-          ? {
-              netAmount: { gt: 0 },
-              team: {
-                settlementAccount: {
-                  is: { status: "REGISTERED", updatedAt: account.updatedAt },
-                },
-              },
-            }
-          : { netAmount: 0 },
-        onFail: (current) => {
+        if (!current) {
+          throw new NotFoundException("정산 정보를 찾을 수 없습니다.");
+        }
+        if (MANUAL_PAYOUT_FROM.includes(current.status as SettlementStatus)) {
+          // 상태는 맞는데 계좌·금액 조건만 어긋난 경우.
           if (current.netAmount < 0) {
-            return new BadRequestException(
+            throw new BadRequestException(
               "순지급액이 음수인 정산은 지급할 수 없습니다. 다음 달 정산에서 처리하세요.",
             );
           }
-          return account ? this.accountChanged() : this.accountNotRegistered();
-        },
-      },
-    );
+          throw account ? this.accountChanged() : this.accountNotRegistered();
+        }
+        assertTransition(current.status, SETTLEMENT_STATUS.PAID);
+        throw new BadRequestException(
+          `현재 상태(${current.status})에서는 처리할 수 없습니다.`,
+        );
+      }
+      return tx.settlement.findUniqueOrThrow({
+        where: { id },
+        select: { id: true, status: true, completedAt: true, netAmount: true },
+      });
+    });
 
     this.logger.log(
       `정산 지급 완료: settlementId=${id}, adminId=${adminId}, amount=${updated.netAmount}`,
@@ -827,6 +868,7 @@ export class SettlementsService {
    * 정산 현황 요약(상태별 groupBy) — ADMIN 전용, 정산 센터 대시보드 카드.
    * month 는 선택 — 생략하면 전체 기간, 지정하면 그 월(YYYY-MM)만 집계한다.
    * rejected 는 count 만 제공(금액 집계 의미 없음 — netAmount 0으로 반려됨).
+   * processing(지급 요청 진행 중)·failed(지급 실패)는 approved 와 같은 "아직 지급 안 된 돈"이라 따로 집계한다.
    */
   async getSettlementsSummary(month?: string) {
     if (month !== undefined) this.assertValidMonthFormat(month);
@@ -850,6 +892,8 @@ export class SettlementsService {
       pgFeeRate: PG_FEE_RATE,
       pending: pick(SETTLEMENT_STATUS.PENDING),
       approved: pick(SETTLEMENT_STATUS.APPROVED),
+      processing: pick(SETTLEMENT_STATUS.PROCESSING),
+      failed: pick(SETTLEMENT_STATUS.FAILED),
       paid: pick(SETTLEMENT_STATUS.PAID),
       rejected: { count: pick(SETTLEMENT_STATUS.REJECTED).count },
     };

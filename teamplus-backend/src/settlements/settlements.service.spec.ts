@@ -135,10 +135,12 @@ describe("SettlementsService", () => {
             name: "팀1",
             settlementAccount: { status: "REGISTERED" },
           },
+          payoutRequests: [],
         },
         {
           id: "s-2",
           team: { id: "team-2", name: "팀2", settlementAccount: null },
+          payoutRequests: [],
         },
       ]);
       mockPrisma.settlement.count.mockResolvedValue(2);
@@ -148,6 +150,51 @@ describe("SettlementsService", () => {
       expect(result.data[0].team).toEqual({ id: "team-1", name: "팀1" });
       expect(result.data[0].accountStatus).toBe("REGISTERED");
       expect(result.data[1].accountStatus).toBeNull();
+      expect(result.data[0].payoutScheduledDate).toBeNull();
+      expect(result.data[0].payoutRequest).toBeNull();
+    });
+
+    it("진행 중인 나이스 지급 요청이 있으면 지급 예정일은 모두 보고, 접수번호·사유는 ADMIN 만 본다", async () => {
+      const row = {
+        id: "s-1",
+        teamId: "team-1",
+        team: { id: "team-1", name: "팀1", settlementAccount: null },
+        payoutRequests: [
+          {
+            id: "pr-1",
+            status: "REQUESTED",
+            settlementDate: new Date("2026-11-16T00:00:00.000Z"),
+            amount: 500000,
+            niceSeq: "SEQ1",
+            resCode: "0000",
+            resMsg: "",
+            requestError: null,
+            niceStatusNm: null,
+            errReason: null,
+            needsReview: false,
+            checkCount: 0,
+            requestedAt: new Date("2026-11-10T01:00:00.000Z"),
+            confirmedAt: null,
+            lastCheckedAt: null,
+            teamName: "팀1",
+          },
+        ],
+      };
+      mockPrisma.settlement.findMany.mockResolvedValue([row]);
+      mockPrisma.settlement.count.mockResolvedValue(1);
+      const asAdmin = await service.getSettlements({}, admin);
+      expect(asAdmin.data[0].payoutScheduledDate).toBe("2026-11-16");
+      expect(asAdmin.data[0].payoutRequest).toEqual(
+        expect.objectContaining({ id: "pr-1", niceSeq: "SEQ1" }),
+      );
+      expect(asAdmin.data[0]).not.toHaveProperty("payoutRequests");
+
+      mockResourceAccess.resolveTeamScope.mockResolvedValue(["team-1"]);
+      mockPrisma.settlement.findMany.mockResolvedValue([row]);
+      const asDirector = await service.getSettlements({}, director);
+      expect(asDirector.data[0].payoutScheduledDate).toBe("2026-11-16");
+      expect(asDirector.data[0]).not.toHaveProperty("payoutRequest");
+      expect(JSON.stringify(asDirector.data[0])).not.toContain("SEQ1");
     });
 
     it("목록 select 는 계좌 관련 필드(bankName·bankAccount·accountHolder)를 조회하지 않는다", async () => {
@@ -266,6 +313,7 @@ describe("SettlementsService", () => {
       transactions: [],
       manager: null,
       team: { id: "team-1", name: "Test Team", settlementAccount: null },
+      payoutRequests: [],
     };
 
     const withTeamAccount = () => ({
@@ -1011,6 +1059,12 @@ describe("SettlementsService", () => {
           _sum: { netAmount: 30000 },
         },
         { status: "approved", _count: { _all: 2 }, _sum: { netAmount: 20000 } },
+        {
+          status: "processing",
+          _count: { _all: 1 },
+          _sum: { netAmount: 15000 },
+        },
+        { status: "failed", _count: { _all: 1 }, _sum: { netAmount: 5000 } },
         { status: "paid", _count: { _all: 1 }, _sum: { netAmount: 10000 } },
         { status: "rejected", _count: { _all: 1 }, _sum: { netAmount: 0 } },
       ]);
@@ -1027,6 +1081,8 @@ describe("SettlementsService", () => {
         pgFeeRate: PG_FEE_RATE,
         pending: { count: 3, netAmount: 30000 },
         approved: { count: 2, netAmount: 20000 },
+        processing: { count: 1, netAmount: 15000 },
+        failed: { count: 1, netAmount: 5000 },
         paid: { count: 1, netAmount: 10000 },
         rejected: { count: 1 },
       });
@@ -1041,6 +1097,8 @@ describe("SettlementsService", () => {
         pgFeeRate: PG_FEE_RATE,
         pending: { count: 0, netAmount: 0 },
         approved: { count: 0, netAmount: 0 },
+        processing: { count: 0, netAmount: 0 },
+        failed: { count: 0, netAmount: 0 },
         paid: { count: 0, netAmount: 0 },
         rejected: { count: 0 },
       });
@@ -1070,6 +1128,8 @@ describe("SettlementsService", () => {
         pgFeeRate: PG_FEE_RATE,
         pending: { count: 0, netAmount: 0 },
         approved: { count: 0, netAmount: 0 },
+        processing: { count: 0, netAmount: 0 },
+        failed: { count: 0, netAmount: 0 },
         paid: { count: 0, netAmount: 0 },
         rejected: { count: 0 },
       });
