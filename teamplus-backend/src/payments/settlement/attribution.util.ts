@@ -287,7 +287,8 @@ export interface TournamentAttributionInput {
 
 /**
  * [R3] 대회 후불 월귀속·상태·순수납(팀 API 전용).
- *  귀속월 = 정산 확정 Payment 의 completedAt/createdAt KST월, 미확정(UNPAID·Payment 없음)은 대회 endDate 월.
+ *  귀속월 = 대회 endDate 월(청구가 속한 달 — 훈련의 billingMonth 와 같은 축). 일정 미정(endDate null)
+ *  이면 Payment completedAt/createdAt KST월로 폴백하고, 둘 다 없으면 근거 불명.
  *  상태: registration paymentStatus 기준(연결 Payment 환불 terminal 우선).
  */
 export function resolveTournamentAttribution(
@@ -333,14 +334,15 @@ export function resolveTournamentAttribution(
       ? resolveRefundedTerminalAmount(payStatus, amount, payment?.refundLogs)
       : refundLogSum;
 
-  // 귀속월 — 확정 Payment 우선, 없으면 대회 종료월. 둘 다 없으면 근거 불명.
+  // 귀속월 — 대회 종료월. 한 대회의 참가 건이 결제 시점에 따라 여러 달로 흩어지지 않게 한다.
+  //  일정 미정 대회만 결제 시각으로 폴백한다(기간 확정 시 종료월로 이동).
   let yearMonth: string | null;
-  if (payment?.completedAt != null) {
+  if (endDate != null) {
+    yearMonth = dbDateToKstYearMonth(endDate);
+  } else if (payment?.completedAt != null) {
     yearMonth = instantToKstYearMonth(payment.completedAt);
   } else if (payment?.createdAt != null) {
     yearMonth = instantToKstYearMonth(payment.createdAt);
-  } else if (endDate != null) {
-    yearMonth = dbDateToKstYearMonth(endDate);
   } else {
     yearMonth = null;
   }
@@ -379,12 +381,19 @@ export interface PaymentAttributionMonthInput {
   createdAt: Date;
   monthlyBillingLines: { billing: { yearMonth: string } }[];
   enrollments: { billingMonth: Date | null }[];
-  tournamentRegistrations: unknown[];
+  /**
+   * 대회 종료월 귀속에 tournament.endDate 가 필요하다. 조회에 없으면 결제 시각으로 폴백한다.
+   *  다른 필드만 select 한 호출측도 받도록 인덱스 시그니처를 둔다.
+   */
+  tournamentRegistrations: {
+    tournament?: { endDate?: Date | null; [field: string]: unknown } | null;
+  }[];
 }
 
 /**
  * 귀속월(YYYY-MM) — 마감 판정에는 쓰지 않는 표시용 병기값.
- *  후불=billing.yearMonth, 선불=enrollment.billingMonth, 대회=completedAt KST 월.
+ *  후불=billing.yearMonth, 선불=enrollment.billingMonth,
+ *  대회=tournament.endDate 월(resolveTournamentAttribution 과 동일 축), 일정 미정이면 completedAt KST 월.
  */
 export function resolvePaymentAttributionMonth(
   payment: PaymentAttributionMonthInput,
@@ -395,7 +404,10 @@ export function resolvePaymentAttributionMonth(
   if (enrollment?.billingMonth) {
     return dbDateToKstYearMonth(enrollment.billingMonth);
   }
-  if (payment.tournamentRegistrations.length > 0) {
+  const registration = payment.tournamentRegistrations[0];
+  if (registration) {
+    const endDate = registration.tournament?.endDate;
+    if (endDate != null) return dbDateToKstYearMonth(endDate);
     return instantToKstYearMonth(payment.completedAt ?? payment.createdAt);
   }
   return null;

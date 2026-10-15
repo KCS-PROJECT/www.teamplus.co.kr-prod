@@ -57,6 +57,7 @@ function tournamentToCardData(item: TournamentSettlementSummary): SettlementCard
     blockedReasonCode: item.blockedReasonCode,
     detailPath: item.detailPath,
     cancelled: item.cancelled,
+    datesTbd: item.datesTbd,
   };
 }
 

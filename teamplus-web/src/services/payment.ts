@@ -640,6 +640,8 @@ export interface TournamentSettlementSummary {
   blockedReasonCode: SettlementBlockedReasonCode;
   /** 취소된 대회 — 금액이나 승인된 결제가 있어 목록에 남은 경우에만 true(없는 취소 대회는 응답에서 빠짐). */
   cancelled: boolean;
+  /** 일정 미정(종료일 없음) 대회 — 이번 달 화면에만 모여 나온다. */
+  datesTbd?: boolean;
   /** 드릴다운 경로 — "/tournaments/{id}/students" (명단·정산 관리 페이지). */
   detailPath: string;
 }

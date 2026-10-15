@@ -7,7 +7,6 @@ import { PendingMemberItemProps } from '@/components/dashboard/PendingMemberItem
 import { dashboardService, type DirectorDashboardApiData } from '@/services/dashboard';
 import { api } from '@/services/api-client';
 import { devWarn } from '@/lib/logger';
-import { MESSAGES } from '@/lib/messages';
 
 export interface TeamStats {
   attendanceRate: number;
@@ -124,16 +123,6 @@ function buildPriorityTasks(
       href: '/statistics',
     });
   }
-
-  // 기본 항목: 항상 표시
-  tasks.push({
-    icon: 'credit_card',
-    iconBg: 'bg-blue-50 dark:bg-blue-900/20',
-    iconColor: 'text-primary dark:text-blue-400',
-    title: MESSAGES.settlement.dashboardUnpaidTitle,
-    subtitle: MESSAGES.settlement.dashboardUnpaidSubtitle,
-    href: '/director-payments/collections',
-  });
 
   return tasks;
 }

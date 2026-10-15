@@ -114,6 +114,8 @@ export interface TournamentSettlementSummary {
   blockedReasonCode: BlockedReasonCode;
   /** 취소된 대회 — 돈 흐름(결제·청구·환불)이 있어 목록에 남은 경우에만 true. */
   cancelled: boolean;
+  /** 일정 미정(종료일 없음) 대회 — 이번 달 화면에만 모아 보여준다. */
+  datesTbd: boolean;
   detailPath: string;
 }
 
@@ -243,6 +245,8 @@ interface TournamentSourceRows {
   isPostpaid: boolean;
   tournamentEnded: boolean;
   cancelled: boolean;
+  endDate: Date | null;
+  createdAt: Date;
 }
 
 /** 팀 인별 미수금 — 회원 1행(자녀/선수 축). */
@@ -567,6 +571,7 @@ export class SettlementSummaryService {
     }
 
     const now = Date.now();
+    const currentYm = resolveSettlementYearMonth();
     const { lineWhere, regWhere } = this.overdueWheres(
       scopeTeamIds,
       this.overdueCutoff(),
@@ -595,7 +600,7 @@ export class SettlementSummaryService {
           userId: true,
           childId: true,
           payment: { select: { amount: true, createdAt: true } },
-          tournament: { select: { name: true } },
+          tournament: { select: { name: true, endDate: true } },
           child: { select: { firstName: true, lastName: true } },
           user: { select: { firstName: true, lastName: true } },
         },
@@ -646,7 +651,10 @@ export class SettlementSummaryService {
           sourceType: "TOURNAMENT",
           sourceId: reg.tournamentId,
           sourceName: reg.tournament?.name ?? "-",
-          yearMonth: instantToKstYearMonth(billedAt),
+          // 상세(getTeamUnpaidMembers)가 납부 현황과 같은 대회 귀속월로 조회하도록 — 종료월, 일정 미정이면 이번 달.
+          yearMonth: reg.tournament?.endDate
+            ? dbDateToKstYearMonth(reg.tournament.endDate)
+            : currentYm,
           billedAt,
           overdueDays: Math.max(
             0,
@@ -1245,6 +1253,8 @@ export class SettlementSummaryService {
    * [핵심 SoT] 대회 목록 → 소스별 귀속 행(EnrichedRow) 배치 빌더(팀 API 전용).
    *  배치 1쿼리(대회+참가+연결 Payment). **선불·후불 대회 모두 포함**(Codex HIGH-2).
    *  소계·인별 미수금이 이 결과를 공유(§2-0 불변식). 당월 활동 없는 대회(rows 0)는 제외.
+   *  일정 미정(종료일 없음) 대회는 귀속월을 정할 수 없어 KST 이번 달 요청에만 전부 넣는다
+   *  (결제 유무 무관). 순서: 일정 있는 대회 종료일 늦은 순 → 일정 미정 대회 생성일 최신순.
    */
   private async buildTournamentSourceRows(
     tournamentIds: string[],
@@ -1253,6 +1263,7 @@ export class SettlementSummaryService {
     if (tournamentIds.length === 0) return [];
 
     const todayUtcMidnight = kstTodayUtcMidnight();
+    const isCurrentMonth = yearMonth === resolveSettlementYearMonth();
 
     const tournaments = await this.prisma.tournament.findMany({
       where: { id: { in: tournamentIds } },
@@ -1262,6 +1273,7 @@ export class SettlementSummaryService {
         billingMode: true,
         status: true,
         endDate: true,
+        createdAt: true,
         teamId: true,
         team: { select: { name: true } },
         registrations: {
@@ -1287,7 +1299,6 @@ export class SettlementSummaryService {
       },
     });
 
-    let attributionUnknownCount = 0;
     const sources: TournamentSourceRows[] = [];
 
     for (const t of tournaments) {
@@ -1298,6 +1309,8 @@ export class SettlementSummaryService {
       const rows: EnrichedRow[] = [];
       let hasApprovedPayment = false;
       const cancelled = t.status === "cancelled";
+      const datesTbd = t.endDate == null;
+      if (datesTbd && !isCurrentMonth) continue;
       for (const reg of t.registrations) {
         const att = resolveTournamentAttribution({
           registrationPaymentStatus: reg.paymentStatus,
@@ -1307,15 +1320,7 @@ export class SettlementSummaryService {
           tournamentBillingMode: t.billingMode,
           tournamentStatus: t.status,
         });
-        if (att.attributionUnknown) {
-          // 일정 미정(endDate null) 대회의 미확정 건은 정상 상태(기간 확정 시 귀속) —
-          //   이상치 경고 카운트에서 분리해 진짜 귀속 불명만 warn 에 남긴다.
-          if (t.endDate != null) {
-            attributionUnknownCount++;
-          }
-          continue;
-        }
-        if (att.yearMonth !== yearMonth) continue;
+        if (!datesTbd && att.yearMonth !== yearMonth) continue;
         // 취소 대회의 정산 전 참가는 청구될 일이 없다 — 인원·정산 상태·막힘 사유 계산에서도
         //   제외해 "정산 필요" 신호가 취소 대회에 뜨지 않게 한다(돈이 오간 행만 남긴다).
         if (cancelled && att.billingStatus === "UNSETTLED") continue;
@@ -1371,16 +1376,20 @@ export class SettlementSummaryService {
         isPostpaid,
         tournamentEnded,
         cancelled,
+        endDate: t.endDate,
+        createdAt: t.createdAt,
       });
     }
 
-    if (attributionUnknownCount > 0) {
-      this.logger.warn(
-        `[정산 소계] 대회 월귀속 근거 없는 참가 ${attributionUnknownCount}건 — 집계 제외. yearMonth=${yearMonth}`,
-      );
-    }
-
-    return sources;
+    return sources.sort((a, b) => {
+      const aTbd = a.endDate == null;
+      const bTbd = b.endDate == null;
+      if (aTbd !== bTbd) return aTbd ? 1 : -1;
+      const diff = aTbd
+        ? (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0)
+        : (b.endDate?.getTime() ?? 0) - (a.endDate?.getTime() ?? 0);
+      return diff !== 0 ? diff : a.sourceId.localeCompare(b.sourceId);
+    });
   }
 
   /**
@@ -1453,6 +1462,7 @@ export class SettlementSummaryService {
         mixedBilling: false, // 대회는 단일 결제방식
         blockedReasonCode,
         cancelled: src.cancelled,
+        datesTbd: src.endDate == null,
         detailPath: `/tournaments/${src.sourceId}/students`,
       });
     }
@@ -2011,7 +2021,9 @@ export class SettlementSummaryService {
           },
           tournamentRegistrations: {
             select: {
-              tournament: { select: { name: true, billingMode: true } },
+              tournament: {
+                select: { name: true, billingMode: true, endDate: true },
+              },
               child: { select: { firstName: true, lastName: true } },
             },
             orderBy: { tournamentId: "asc" },

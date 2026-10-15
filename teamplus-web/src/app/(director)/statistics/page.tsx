@@ -248,6 +248,11 @@ export default function StatisticsPage() {
             data={data}
             segment={segment}
             onSegmentChange={setSegment}
+            collectionsHref={
+              scope === "month"
+                ? `/director-payments/collections?yearMonth=${anchor}`
+                : "/director-payments/collections"
+            }
           />
         )}
       </main>
@@ -262,10 +267,13 @@ function StatisticsContent({
   data,
   segment,
   onSegmentChange,
+  collectionsHref,
 }: {
   data: DirectorRevenueResponse;
   segment: RevenueSegment;
   onSegmentChange: (s: RevenueSegment) => void;
+  /** 납부 현황 진입 — 월간 보기면 보던 달을 들고 간다. */
+  collectionsHref: string;
 }) {
   const { hero, series, classRevenue, postpaidStatus, memberSummary, memberTrend } =
     data;
@@ -411,7 +419,7 @@ function StatisticsContent({
             )}
           </div>
           <NavLink
-            href="/director-payments/collections"
+            href={collectionsHref}
             className="mt-4 flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl bg-it-blue-500 px-4 text-card-body font-bold text-white transition-colors hover:bg-it-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40 active:brightness-95 motion-reduce:transition-none"
           >
             <Icon name="payments" className="text-[18px]" aria-hidden="true" />

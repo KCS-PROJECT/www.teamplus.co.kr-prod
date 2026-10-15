@@ -1451,10 +1451,10 @@ export const MESSAGES = {
     blockedTournamentNotEnded: "대회가 끝나면 정산할 수 있어요.",
     blockedBillingTimingUnassigned: "결제 방식이 정해지지 않은 인원이 있어요.",
     // 빈 상태
-    emptyTraining: "해당 월에 정산할 훈련이 없습니다.",
-    emptyTournament: "해당 월에 정산할 대회가 없습니다.",
+    emptyTraining: "정산할 훈련이 없습니다.",
+    emptyTournament: "정산할 대회가 없습니다.",
     // 정산 집계 탭 — 훈련·대회 모두 없을 때만 통합 표기(한쪽만 없으면 섹션 자체 숨김)
-    emptySettlement: "해당 월에 정산할 내역이 없습니다.",
+    emptySettlement: "정산할 내역이 없습니다.",
     // 접근성 라벨 (하드코딩 금지 — aria-label)
     ariaCenter: "감독 정산 센터",
     // 로드 실패 / 재시도 (금융 화면 — 실패를 0/빈 결과로 위장 금지)
@@ -1485,9 +1485,6 @@ export const MESSAGES = {
     collectionsCheck: (m: number) => `${m}월분 납부 확인`,
     txnRefundProcessing: "환불 처리 중",
     txnPartialRefund: (amount: string) => `환불 ${amount}원`,
-    // 감독 대시보드 할 일 — 납부 현황 진입
-    dashboardUnpaidTitle: "미수금 확인",
-    dashboardUnpaidSubtitle: "이번 달 미결제 현황 확인",
     // 정산 집계 탭 하단 — 월별 지급 정산(/settlements) 바로가기
     // 미수금 탭 — 빈 상태 / 로드 실패
     emptyUnpaid: "미수금이 없습니다.",
