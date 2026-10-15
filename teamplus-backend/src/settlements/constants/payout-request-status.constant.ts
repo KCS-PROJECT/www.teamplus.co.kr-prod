@@ -40,12 +40,6 @@ export function isActivePayoutRequestStatus(status: string): boolean {
  */
 export const PAYOUT_REQUESTING_STALE_MS = 60_000;
 
-/** 결과 조회에서 이 횟수 이상 "요청" 상태로 남아 있으면 운영자 확인 대상으로 표시한다. */
-export const PAYOUT_CHECK_ATTENTION_COUNT = 3;
-
-/** 지급일이 지났는데 결과 목록에 없는 건은 이 횟수 이상 확인한 뒤에만 "접수되지 않음"으로 닫는다. */
-export const PAYOUT_NOT_FOUND_CONFIRM_COUNT = 2;
-
 /** 결과 조회 statusNm(나이스 원문) → 요청 상태. 모르는 값은 pending 으로 두고 운영자 확인을 켠다. */
 export type PayoutResultKind =
   | "SUCCEEDED"

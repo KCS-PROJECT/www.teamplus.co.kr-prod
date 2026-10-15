@@ -26,6 +26,13 @@ export interface PayoutRequestInfo {
   requestDetail: string | null;
   errReason: string | null;
   needsReview: boolean;
+  /** needsReview 를 켠 이유(끈 뒤에도 이력으로 남는다) */
+  reviewReason?: string | null;
+  reviewReasonLabel?: string | null;
+  /** 운영자가 확인 완료한 시각·이름·메모 — 자동으로 꺼진 경우는 null */
+  reviewedAt?: string | null;
+  reviewedByName?: string | null;
+  reviewMemo?: string | null;
   needsAttention: boolean;
   checkCount: number;
   requestedAt: string | null;
@@ -110,4 +117,47 @@ export function joinPayoutReasons(request: PayoutRequestInfo | null | undefined)
   return [request.statusLabel, request.errReason, request.requestDetail]
     .filter((part): part is string => !!part)
     .join(' · ');
+}
+
+/**
+ * 월 정산 탭의 단계 — 상태 필터와 같다. 한 단계에는 일괄 작업이 하나뿐이라 체크박스의 뜻이 화면 안에서 바뀌지 않는다.
+ *   승인 대기(pending) → 승인 · 지급 대기(approved)·지급 실패(failed) → 지급 요청 · 그 외 → 조회만.
+ */
+export type SettlementStage =
+  | 'all'
+  | 'pending'
+  | 'approved'
+  | 'processing'
+  | 'failed'
+  | 'paid'
+  | 'rejected'
+  /** 확인 필요 — needsReview 요청이나 열린 지급 이상 건이 있는 정산. 작업은 상세 팝업의 확인 완료뿐이라 일괄 작업은 없다 */
+  | 'review';
+export type StageAction = 'approve' | 'payout';
+
+export function getStageAction(stage: SettlementStage): StageAction | null {
+  if (stage === 'pending') return 'approve';
+  if (stage === 'approved' || stage === 'failed') return 'payout';
+  return null;
+}
+
+export interface SelectableSettlementRow {
+  status: string;
+  netAmount: number;
+  payoutRequest?: PayoutRequestInfo | null;
+  /** 서버가 정산의 모든 지급 요청을 보고 센 "운영자 확인 필요" 요청 수 — 최신 요청 1건만 오는 payoutRequest 보다 우선한다. */
+  reviewOpenCount?: number;
+}
+
+/**
+ * 단계 안에서 이 행만 작업에서 빠지는 이유 — 없으면 null.
+ *   상태 자체로 자명한 경우는 단계가 이미 걸러 주므로, 겉으로 드러나지 않는 두 가지만 행에 적는다.
+ */
+export function getRowExclusion(row: SelectableSettlementRow, action: StageAction): string | null {
+  if (action === 'approve') {
+    return row.netAmount < 0 ? MESSAGES.settlement.rowExcludedNegative : null;
+  }
+  // 운영자 확인이 필요한 지급 요청(실패 건의 나이스 재진행·이중 지급 의심 등)이 남은 정산 — 서버도 요청을 거르지만 화면에서 미리 보여 준다.
+  const underReview = (row.reviewOpenCount ?? 0) > 0 || row.payoutRequest?.needsReview === true;
+  return underReview ? MESSAGES.settlement.rowExcludedReview : null;
 }

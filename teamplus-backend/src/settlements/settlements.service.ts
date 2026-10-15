@@ -40,11 +40,7 @@ import { QuerySettlementDetailsDto } from "./dto/query-settlement-details.dto";
 import { acquireSettlementCloseLock } from "./utils/settlement-locks.util";
 import { toCsvBuffer } from "./utils/csv.util";
 import { aggregateDetailsBySource } from "./utils/settlement-detail-summary.util";
-import {
-  decryptOrRaw,
-  formatBusinessNumber,
-  maskBankAccount,
-} from "./utils/account-mask.util";
+import { decryptOrRaw, maskBankAccount } from "./utils/account-mask.util";
 import {
   TeamSettlementAccountService,
   isSubMallRegistrationInProgress,
@@ -57,6 +53,14 @@ import {
   type PayoutFileExclusion,
 } from "./utils/nice-account-state.util";
 import { NicePayoutApiService } from "./nice-payout-api.service";
+import { SettlementPayoutResultService } from "./settlement-payout-result.service";
+import {
+  DUPLICATE_SUSPECT_REVIEW_REASONS,
+  PAYOUT_REVIEW_REASON,
+} from "./constants/payout-review.constant";
+
+/** 나이스 결과 조회 전문 ID — 호출 기록에서 마지막 조회 시각을 읽을 때 쓴다. */
+const NICE_PAYOUT_RESULT_SID = "0101002";
 import { PG_FEE_RATE } from "./constants/pg-fee.constant";
 import { resolvePayoutApiMode } from "./payout-mode.util";
 import { describePayoutApiModes } from "./constants/payout-mode.constant";
@@ -66,13 +70,6 @@ import { describePayoutCallForOperator } from "./gateway/payout-res-code.util";
 export function escapeLikePattern(value: string): string {
   return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
 }
-
-const ACCOUNT_STATUS_LABEL: Record<string, string> = {
-  REGISTERED: "등록완료",
-  SUBMITTED: "등록확인중",
-  FAILED: "등록실패",
-  NONE: "미등록",
-};
 
 /** 명세 CSV 안전 상한 — 팀·월 단위라 통상 수백 건 이하. */
 const DETAIL_EXPORT_MAX_ROWS = 10000;
@@ -135,7 +132,13 @@ const SETTLEMENT_LIST_SELECT = {
       settlementAccount: { select: { status: true } },
     },
   },
-  _count: { select: { details: true } },
+  _count: {
+    select: {
+      details: true,
+      // 운영자 확인이 필요한 지급 요청 수(상태 무관) — 최신 요청이 다른 것(REJECTED 등)이어도 어드민이 알아야 한다.
+      payoutRequests: { where: { needsReview: true } },
+    },
+  },
   // 가장 최근 나이스 지급 요청 1건 — 지급 예정일(전 역할)과 운영자용 상태 표시에 쓴다.
   payoutRequests: {
     select: PAYOUT_REQUEST_VIEW_SELECT,
@@ -204,6 +207,32 @@ const MANUAL_PAYOUT_FROM: readonly SettlementStatus[] = [
   SETTLEMENT_STATUS.FAILED,
 ];
 
+/**
+ * 운영자 확인이 필요한 지급 요청(결과 조회가 needsReview 를 켠 건, 상태 무관) — 이 건이 있는 정산은 어떤 경로로도 다시 지급하지 않는다.
+ * 지급 요청 서비스의 claim 판정과 같은 조건이다.
+ */
+const OPEN_REVIEW_REQUEST = { needsReview: true } as const;
+
+/** 운영자 확인이 필요한 정산 — 목록 필터(needsReview=true)와 요약 집계가 같은 조건을 쓴다. */
+const NEEDS_REVIEW_WHERE: Prisma.SettlementWhereInput = {
+  payoutRequests: { some: OPEN_REVIEW_REQUEST },
+};
+
+export type SettlementApproveOutcome = "APPROVED" | "SKIPPED" | "ERROR";
+export type SettlementApproveSkipReason =
+  | "NOT_PENDING"
+  | "NET_NEGATIVE"
+  | "SETTLEMENT_NOT_FOUND"
+  | "DUPLICATE_ITEM";
+
+export interface SettlementApproveItemResult {
+  settlementId: string;
+  teamName: string | null;
+  outcome: SettlementApproveOutcome;
+  reasonCode: SettlementApproveSkipReason | null;
+  reason: string | null;
+}
+
 @Injectable()
 export class SettlementsService {
   private readonly logger = new Logger(SettlementsService.name);
@@ -215,6 +244,7 @@ export class SettlementsService {
     private readonly payoutApi: NicePayoutApiService,
     private readonly redis: RedisService,
     private readonly config: ConfigService,
+    private readonly payoutResultService: SettlementPayoutResultService,
   ) {}
 
   getPayoutModes() {
@@ -252,6 +282,7 @@ export class SettlementsService {
       status,
       month,
       teamId,
+      needsReview,
       startDate,
       endDate,
       page = 1,
@@ -263,6 +294,7 @@ export class SettlementsService {
     // 관리자급은 전체 팀이 범위라 IN 목록을 만들지 않고 teamId 지정 시에만 필터한다.
     if (isAdminRole(requester.userType)) {
       if (teamId) where.teamId = teamId;
+      if (needsReview) Object.assign(where, NEEDS_REVIEW_WHERE);
     } else {
       const scopeTeamIds = await this.resourceAccess.resolveTeamScope(
         requester,
@@ -299,13 +331,28 @@ export class SettlementsService {
 
     const isAdmin = isAdminRole(requester.userType);
     const today = kstTodayUtcMidnight();
+    // 이중 지급 의심(재요청 중복·같은 팀 이중 성공) 요청이 켜진 정산 — 이 페이지의 정산만 한 번에 읽는다(N+1 없음).
+    const duplicateSuspectIds = new Set<string>();
+    if (isAdmin && settlements.length > 0) {
+      const suspects = await this.prisma.settlementPayoutRequest.findMany({
+        where: {
+          settlementId: { in: settlements.map((s) => s.id) },
+          needsReview: true,
+          reviewReason: { in: [...DUPLICATE_SUSPECT_REVIEW_REASONS] },
+        },
+        select: { settlementId: true },
+        distinct: ["settlementId"],
+      });
+      for (const s of suspects) duplicateSuspectIds.add(s.settlementId);
+    }
     return {
       // 계좌 상태는 team 객체에 섞지 않고 행 최상위에 둔다(team 응답은 {id, name} 계약 유지).
-      data: settlements.map(({ team, payoutRequests, ...row }) => {
+      data: settlements.map(({ team, payoutRequests, _count, ...row }) => {
         const { settlementAccount, ...teamInfo } = team;
         const latest = payoutRequests[0] ?? null;
         return {
           ...row,
+          _count: { details: _count.details },
           team: teamInfo,
           accountStatus: settlementAccount?.status ?? null,
           // 진행 중인 나이스 지급 요청의 지급 예정일 — 감독·코치도 본다(사유·접수번호는 운영자만).
@@ -315,6 +362,10 @@ export class SettlementsService {
                 payoutRequest: latest
                   ? toAdminPayoutRequestView(latest, today)
                   : null,
+                /** 운영자 확인이 필요한 지급 요청 수 — 0보다 크면 지급 요청·수동 완료가 막힌 정산 */
+                reviewOpenCount: _count.payoutRequests,
+                /** 확인 필요 사유 중 돈이 두 번 나갔을 수 있는 것이 있음 */
+                duplicateSuspected: duplicateSuspectIds.has(row.id),
               }
             : {}),
         };
@@ -681,6 +732,16 @@ export class SettlementsService {
   /** 정산 승인 — pending → approved, 소속 Detail 상태도 함께 동기화 */
   async approve(id: string, adminId: string, note?: string) {
     const teamId = await this.resolveTeamId(id);
+    return this.approveWithTeam(id, teamId, adminId, note);
+  }
+
+  /** approve 본체 — 일괄 승인이 미리 읽은 teamId 로 건별 조회를 아끼려고 나눈다. 규칙은 단건과 같다. */
+  private async approveWithTeam(
+    id: string,
+    teamId: string,
+    adminId: string,
+    note?: string,
+  ) {
     const updated = await this.transition(
       id,
       teamId,
@@ -707,8 +768,12 @@ export class SettlementsService {
       },
       {
         where: { netAmount: { gte: 0 } },
-        message:
-          "순지급액이 음수인 정산은 승인할 수 없습니다. 다음 달 정산에서 처리하세요.",
+        onFail: () =>
+          new BadRequestException({
+            message:
+              "순지급액이 음수인 정산은 승인할 수 없습니다. 다음 달 정산에서 처리하세요.",
+            errorCode: "SETTLEMENT_NET_NEGATIVE",
+          }),
       },
     );
 
@@ -716,6 +781,112 @@ export class SettlementsService {
       `정산 승인: settlementId=${id}, adminId=${adminId}${note ? `, note=${note}` : ""}`,
     );
     return updated;
+  }
+
+  /**
+   * 정산 일괄 승인 — 건마다 approve 를 그대로 거친다(음수 불가·pending 만·명세 동기화·승인자 기록).
+   * 건별로 별도 트랜잭션이라 한 건의 실패가 다른 건을 되돌리지 않는다. 묶음 트랜잭션은 두지 않는다 —
+   * 여러 팀 lock 을 한 트랜잭션에서 잡으면 재마감과 lock 순서가 엇갈려 교착할 수 있다.
+   */
+  async approveBatch(ids: string[], adminId: string, note?: string) {
+    const uniqueIds = [...new Set(ids)];
+    const heads = await this.prisma.settlement.findMany({
+      where: { id: { in: uniqueIds } },
+      select: { id: true, teamId: true, team: { select: { name: true } } },
+    });
+    const headById = new Map(heads.map((h) => [h.id, h]));
+
+    const results: SettlementApproveItemResult[] = [];
+    const seen = new Set<string>();
+    for (const id of ids) {
+      const head = headById.get(id);
+      const teamName = head?.team.name ?? null;
+      if (seen.has(id)) {
+        results.push({
+          settlementId: id,
+          teamName,
+          outcome: "SKIPPED",
+          reasonCode: "DUPLICATE_ITEM",
+          reason: "같은 정산이 두 번 들어 있음",
+        });
+        continue;
+      }
+      seen.add(id);
+      try {
+        if (!head) throw new NotFoundException("정산 정보를 찾을 수 없습니다.");
+        await this.approveWithTeam(id, head.teamId, adminId, note);
+        results.push({
+          settlementId: id,
+          teamName,
+          outcome: "APPROVED",
+          reasonCode: null,
+          reason: null,
+        });
+      } catch (error) {
+        results.push(this.classifyApproveFailure(id, teamName, error));
+      }
+    }
+
+    const count = (outcome: SettlementApproveOutcome) =>
+      results.filter((r) => r.outcome === outcome).length;
+    this.logger.log(
+      `정산 일괄 승인: items=${ids.length}, approved=${count("APPROVED")}, skipped=${count("SKIPPED")}, errored=${count("ERROR")}, adminId=${adminId}`,
+    );
+    return {
+      results,
+      summary: {
+        approved: count("APPROVED"),
+        skipped: count("SKIPPED"),
+        errored: count("ERROR"),
+      },
+    };
+  }
+
+  /** approve 의 예외를 건별 결과로 바꾼다 — 메시지 문자열이 아니라 예외 종류와 errorCode 로 가른다. */
+  private classifyApproveFailure(
+    settlementId: string,
+    teamName: string | null,
+    error: unknown,
+  ): SettlementApproveItemResult {
+    if (error instanceof NotFoundException) {
+      return {
+        settlementId,
+        teamName,
+        outcome: "SKIPPED",
+        reasonCode: "SETTLEMENT_NOT_FOUND",
+        reason: error.message,
+      };
+    }
+    if (error instanceof BadRequestException) {
+      const body = error.getResponse();
+      const errorCode =
+        typeof body === "object" && body !== null
+          ? (body as { errorCode?: string }).errorCode
+          : undefined;
+      return {
+        settlementId,
+        teamName,
+        outcome: "SKIPPED",
+        reasonCode:
+          errorCode === "SETTLEMENT_NET_NEGATIVE"
+            ? "NET_NEGATIVE"
+            : "NOT_PENDING",
+        reason: error.message,
+      };
+    }
+    this.logger.error(
+      `정산 승인 처리 오류: settlementId=${settlementId}, ${
+        error instanceof Error ? error.message : "unknown"
+      }`,
+    );
+    return {
+      settlementId,
+      teamName,
+      outcome: "ERROR",
+      reasonCode: null,
+      reason:
+        "처리 중 오류가 났습니다. 목록을 새로고침해 이 정산의 상태를 확인해주세요.",
+    };
   }
 
   /**
@@ -790,6 +961,18 @@ export class SettlementsService {
       target.status as SettlementStatus,
     );
 
+    // 수동 완료할 수 있는 정산(failed·approved)은 실패로 닫은 지급 건을 나이스 쪽에서 재요청했는지 먼저 맞춘다(지급 요청 경로와
+    //   같은 가드 — 그런 건이 없는 정산은 결과 서비스가 바로 빈 집합을 돌려준다). API 를 쓰지 않는 off 모드는 조회할 수
+    //   없어 건너뛴다 — 그때는 운영자가 나이스 화면을 직접 확인하는 수동 운영 규칙에 맡긴다.
+    if (payable) {
+      const mode = await resolvePayoutApiMode(this.prisma, this.redis);
+      if (mode !== "off") {
+        const unverified =
+          await this.payoutResultService.verifyFailedSettlements([id], adminId);
+        if (unverified.has(id)) throw this.payoutReopenUnverified();
+      }
+    }
+
     const account =
       payable && target.netAmount > 0
         ? await this.accountService.getPayoutAccount(teamId)
@@ -810,8 +993,13 @@ export class SettlementsService {
     // 미리 읽은 계좌가 그대로일 때만 지급한다 — 그 사이 감독이 계좌를 고쳤거나 운영자가
     //   등록을 해제·초기화했다면 스냅샷이 틀어지므로 막는다(팀 lock 안의 단일 updateMany 로 판정).
     //   계좌 없이 진행하는 경로(0원·지급 불가 상태)는 금액이 0원 이하로 유지될 때만 통과한다.
+    //   운영자 확인이 필요한 지급 요청(needsReview — 실패 건의 나이스 재진행·이중 지급 의심 등)이 있으면 수동 완료도 막는다 — 두 번 나간다.
+    const notUnderReview: Prisma.SettlementWhereInput = {
+      payoutRequests: { none: OPEN_REVIEW_REQUEST },
+    };
     const guardWhere: Prisma.SettlementWhereInput = account
       ? {
+          ...notUnderReview,
           netAmount: { gt: 0 },
           team: {
             settlementAccount: {
@@ -819,7 +1007,7 @@ export class SettlementsService {
             },
           },
         }
-      : { netAmount: 0 };
+      : { ...notUnderReview, netAmount: 0 };
 
     const updated = await this.prisma.$transaction(async (tx) => {
       await acquireSettlementCloseLock(tx, teamId);
@@ -844,6 +1032,22 @@ export class SettlementsService {
             throw new BadRequestException(
               "순지급액이 음수인 정산은 지급할 수 없습니다. 다음 달 정산에서 처리하세요.",
             );
+          }
+          const underReview = await tx.settlementPayoutRequest.count({
+            where: { settlementId: id, ...OPEN_REVIEW_REQUEST },
+          });
+          if (underReview > 0) {
+            // 실패 건의 나이스 재진행은 확인 완료로 풀리지 않는다 — 안내를 따로 한다.
+            const reopened = await tx.settlementPayoutRequest.count({
+              where: {
+                settlementId: id,
+                ...OPEN_REVIEW_REQUEST,
+                reviewReason: PAYOUT_REVIEW_REASON.REOPENED_IN_PROGRESS,
+              },
+            });
+            throw reopened > 0
+              ? this.payoutReviewReopened()
+              : this.payoutReviewOpen();
           }
           throw account ? this.accountChanged() : this.accountNotRegistered();
         }
@@ -872,12 +1076,33 @@ export class SettlementsService {
    */
   async getSettlementsSummary(month?: string) {
     if (month !== undefined) this.assertValidMonthFormat(month);
-    const grouped = await this.prisma.settlement.groupBy({
-      by: ["status"],
-      where: month ? { settlementMonth: month } : {},
-      _count: { _all: true },
-      _sum: { netAmount: true },
-    });
+    const monthWhere: Prisma.SettlementWhereInput = month
+      ? { settlementMonth: month }
+      : {};
+    const [grouped, reviewCount, lastSucceeded, lastFailed] = await Promise.all(
+      [
+        this.prisma.settlement.groupBy({
+          by: ["status"],
+          where: monthWhere,
+          _count: { _all: true },
+          _sum: { netAmount: true },
+        }),
+        this.prisma.settlement.count({
+          where: { ...monthWhere, ...NEEDS_REVIEW_WHERE },
+        }),
+        // 나이스 결과 조회 호출 기록에서 마지막 성공·실패 시각 — 배치가 언제 마지막으로 돌았는지 보여 준다.
+        this.prisma.nicePayoutApiLog.findFirst({
+          where: { sid: NICE_PAYOUT_RESULT_SID, outcome: "SUCCESS" },
+          select: { createdAt: true },
+          orderBy: { createdAt: "desc" },
+        }),
+        this.prisma.nicePayoutApiLog.findFirst({
+          where: { sid: NICE_PAYOUT_RESULT_SID, outcome: { not: "SUCCESS" } },
+          select: { createdAt: true },
+          orderBy: { createdAt: "desc" },
+        }),
+      ],
+    );
     const byStatus = new Map(grouped.map((g) => [g.status, g]));
     const pick = (status: SettlementStatus) => {
       const g = byStatus.get(status);
@@ -896,76 +1121,14 @@ export class SettlementsService {
       failed: pick(SETTLEMENT_STATUS.FAILED),
       paid: pick(SETTLEMENT_STATUS.PAID),
       rejected: { count: pick(SETTLEMENT_STATUS.REJECTED).count },
+      /** 운영자 확인이 필요한 지급 요청이 있는 정산 수 */
+      review: { count: reviewCount },
+      /** 나이스 결과 조회의 마지막 성공·실패 시각 */
+      payoutCheck: {
+        lastSucceededAt: lastSucceeded?.createdAt ?? null,
+        lastFailedAt: lastFailed?.createdAt ?? null,
+      },
     };
-  }
-
-  /**
-   * 지급 대상 CSV(ADMIN 전용) — approved·순지급액 양수 정산만. 운영자가 나이스 관리자에서 수동 지급할 때 쓴다.
-   * 계좌는 현재 팀 정산 계좌(복호화 평문)에서 읽고, 미등록·확인 전 팀도 빈칸과 상태로 포함해 누락을 드러낸다.
-   * 수식 주입 방지 등 이스케이프는 toCsvBuffer(csv.util) 공용 처리.
-   */
-  async getPayoutExport(month: string): Promise<Buffer> {
-    this.assertValidMonthFormat(month);
-    const [settlements, bankNames] = await Promise.all([
-      this.prisma.settlement.findMany({
-        where: {
-          settlementMonth: month,
-          status: SETTLEMENT_STATUS.APPROVED,
-          netAmount: { gt: 0 }, // 음수·0원 행은 지급 대상이 아니다.
-        },
-        select: {
-          netAmount: true,
-          team: {
-            select: {
-              name: true,
-              teamCode: true,
-              settlementAccount: {
-                select: {
-                  status: true,
-                  businessNumber: true,
-                  bankCode: true,
-                  bankAccount: true,
-                  accountHolder: true,
-                },
-              },
-            },
-          },
-        },
-        orderBy: { team: { name: "asc" } },
-      }),
-      this.accountService.loadBankNames(),
-    ]);
-
-    const headers = [
-      "팀명",
-      "팀코드",
-      "정산월",
-      "사업자등록번호",
-      "은행코드",
-      "은행명",
-      "계좌번호",
-      "예금주",
-      "순지급액",
-      "계좌상태",
-    ];
-
-    const rows = settlements.map((s) => {
-      const account = s.team.settlementAccount;
-      return [
-        s.team.name ?? "",
-        s.team.teamCode ?? "",
-        month,
-        formatBusinessNumber(decryptOrRaw(account?.businessNumber)) ?? "",
-        account?.bankCode ?? "",
-        account ? (bankNames.get(account.bankCode) ?? account.bankCode) : "",
-        decryptOrRaw(account?.bankAccount) ?? "",
-        account?.accountHolder ?? "",
-        String(s.netAmount ?? 0),
-        ACCOUNT_STATUS_LABEL[account?.status ?? "NONE"],
-      ];
-    });
-
-    return toCsvBuffer(headers, rows);
   }
 
   /**
@@ -1265,7 +1428,31 @@ export class SettlementsService {
     });
   }
 
-  /** summary/payout-export 의 필수 month 쿼리 파라미터 형식 검증(YYYY-MM). */
+  private payoutReviewOpen() {
+    return new ConflictException({
+      message:
+        "이 정산에 확인이 필요한 지급 건이 있습니다. 지급 요청 이력에서 확인 완료 처리한 뒤 지급해주세요.",
+      errorCode: "PAYOUT_REVIEW_OPEN",
+    });
+  }
+
+  private payoutReviewReopened() {
+    return new ConflictException({
+      message:
+        "이 정산의 실패한 지급 건이 나이스에서 다시 진행 중입니다. 나이스에서 실패·삭제로 바뀌기 전까지는 지급할 수 없습니다. 나이스 화면에서 처리해주세요.",
+      errorCode: "PAYOUT_REVIEW_REOPENED",
+    });
+  }
+
+  private payoutReopenUnverified() {
+    return new ConflictException({
+      message:
+        "실패한 지급 건의 나이스 상태를 확인하지 못했습니다. 잠시 후 다시 시도해주세요.",
+      errorCode: "PAYOUT_REOPEN_UNVERIFIED",
+    });
+  }
+
+  /** summary 등 필수 month 쿼리 파라미터 형식 검증(YYYY-MM). */
   private assertValidMonthFormat(month: string | undefined): void {
     if (!month || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
       throw new BadRequestException(

@@ -10,19 +10,12 @@
  * 4. Tone & Manner: MESSAGES 상수, 한글 버튼 라벨
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { MESSAGES } from '@/lib/messages';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import {
   Dialog,
   DialogContent,
@@ -56,12 +49,16 @@ import { SettlementDetailDialog, type SettlementStatus } from './SettlementDetai
 import { getAccountStatusMeta, type AccountStatus } from './accountStatusMeta';
 import { ActionNotice } from './ActionNotice';
 import { PayoutRequestDialog } from './PayoutRequestDialog';
-import { PayoutCheckDialog } from './PayoutCheckDialog';
+import { PayoutConfirmBox, PayoutDialogSection, PayoutSummaryTiles } from './payoutDialogParts';
+import { isoToKstDateTimeLabel } from '@/lib/kst-date';
 import {
   getPayoutStatusLabelOverride,
+  getRowExclusion,
+  getStageAction,
   joinPayoutReasons,
   type PayoutApiMode,
   type PayoutRequestInfo,
+  type SettlementStage,
 } from './payoutRequestMeta';
 
 // ════════════════════════════════════════════════
@@ -90,6 +87,10 @@ interface SettlementListItem {
   status: SettlementStatus;
   payoutScheduledDate?: string | null;
   payoutRequest?: PayoutRequestInfo | null;
+  /** 운영자 확인이 필요한 지급 요청 수 — 0보다 크면 지급 요청·수동 완료가 막힌 정산(ADMIN) */
+  reviewOpenCount?: number;
+  /** 확인 필요 사유 중 돈이 두 번 나갔을 수 있는 것이 있음(ADMIN) */
+  duplicateSuspected?: boolean;
   accountStatus?: AccountStatus | null;
   team: { id: string; name: string };
   _count: { details: number };
@@ -206,6 +207,19 @@ interface SettlementSummaryBucket {
   netAmount: number;
 }
 
+interface ApproveBatchResultRow {
+  settlementId: string;
+  teamName: string | null;
+  outcome: 'APPROVED' | 'SKIPPED' | 'ERROR';
+  reasonCode: string | null;
+  reason: string | null;
+}
+
+interface ApproveBatchResponse {
+  results: ApproveBatchResultRow[];
+  summary: { approved: number; skipped: number; errored: number };
+}
+
 interface SettlementSummaryResponse {
   pgFeeRate?: number;
   pending: SettlementSummaryBucket;
@@ -214,6 +228,15 @@ interface SettlementSummaryResponse {
   failed: SettlementSummaryBucket;
   paid: SettlementSummaryBucket;
   rejected: { count: number };
+  /** 그 달에서 운영자 확인이 필요한 지급 요청이 있는 정산 수 */
+  review?: { count: number };
+  /** 나이스 결과 조회의 마지막 성공·실패 시각 */
+  payoutCheck?: { lastSucceededAt: string | null; lastFailedAt: string | null };
+}
+
+/** 확인 필요 탭의 건수 — 그 달에서 운영자 확인이 필요한 지급 요청이 있는 정산 수. */
+function reviewCountOf(summary: SettlementSummaryResponse | null): number {
+  return summary?.review?.count ?? 0;
 }
 
 const STATUS_META: Record<
@@ -369,9 +392,20 @@ function NiceBalanceCard() {
   );
 }
 
+/** 월을 열 때 들어갈 단계 — 순서대로 첫 번째 할 일이 있는 단계, 없으면 전체(조회용). */
+function getStartStage(summary: SettlementSummaryResponse): SettlementStage {
+  if (reviewCountOf(summary) > 0) return 'review';
+  if (summary.pending.count > 0) return 'pending';
+  if (summary.approved.count > 0) return 'approved';
+  if (summary.failed.count > 0) return 'failed';
+  if (summary.processing.count > 0) return 'processing';
+  return 'all';
+}
+
 export function MonthlySettlementTab() {
   const [month, setMonth] = useState(getDefaultMonth());
-  const [statusFilter, setStatusFilter] = useState<string>('all');
+  // 단계 = 상태 필터. 월 현황 카드로 고르며, 한 단계에는 일괄 작업이 하나뿐이다.
+  const [statusFilter, setStatusFilter] = useState<SettlementStage>('all');
   const [rows, setRows] = useState<SettlementListItem[]>([]);
   const [meta, setMeta] = useState<SettlementListMeta | null>(null);
   const [page, setPage] = useState(1);
@@ -388,7 +422,6 @@ export function MonthlySettlementTab() {
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
-  const [isCsvDownloading, setIsCsvDownloading] = useState(false);
 
   const [isPayoutOpen, setIsPayoutOpen] = useState(false);
   const [payDate, setPayDate] = useState('');
@@ -401,7 +434,7 @@ export function MonthlySettlementTab() {
   const previewSeqRef = useRef(0);
 
   // 지급대행 모드 — 꺼져 있거나 조회에 실패하면 기존 수동 지급 흐름을 그대로 쓴다.
-  const { data: payoutDefaults } = useQuery({
+  const { data: payoutDefaults, isLoading: isPayoutModeLoading } = useQuery({
     queryKey: ['settlements', 'payout-defaults'],
     queryFn: () => api.get<PayoutRequestDefaults>('/settlements/payout-requests/defaults'),
     retry: false,
@@ -410,11 +443,21 @@ export function MonthlySettlementTab() {
   });
   const payoutMode: PayoutApiMode = payoutDefaults?.mode ?? 'off';
   const isLiveMode = payoutMode === 'live';
-  const canCheckPayout = payoutMode === 'readonly' || payoutMode === 'live';
   const maxPayoutItems = payoutDefaults?.maxItems ?? DEFAULT_PAYOUT_MAX_ITEMS;
-  const [selectedPayoutIds, setSelectedPayoutIds] = useState<string[]>([]);
+  // 체크박스 선택 — 지금 단계에서 작업할 수 있는 행만 담긴다.
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  // 다음 단계로 넘어가며 미리 체크해 둘 정산 id — 목록이 새로 오면 한 번 쓰고 비운다.
+  const preselectRef = useRef<string[] | null>(null);
+  // 월을 처음 열 때 한 번, 할 일이 있는 첫 단계 탭으로 들어간다. 운영자가 탭을 고르면 끈다.
+  const autoStageRef = useRef(true);
+  // 시작 단계를 정하느라 먼저 읽은 현황 — 바로 이어지는 목록 조회가 한 번 재사용한다.
+  const prefetchedSummaryRef = useRef<{ month: string; data: SettlementSummaryResponse } | null>(null);
+  // 방금 승인한 정산 id — 상단 [지급 대기 n건 지급 요청] 버튼으로 넘어갈 때 그 행을 체크해 둔다.
+  const lastApprovedIdsRef = useRef<string[]>([]);
   const [isPayoutRequestOpen, setIsPayoutRequestOpen] = useState(false);
-  const [isPayoutCheckOpen, setIsPayoutCheckOpen] = useState(false);
+  const [isApproveConfirmOpen, setIsApproveConfirmOpen] = useState(false);
+  const [isApproving, setIsApproving] = useState(false);
+  const [approveResult, setApproveResult] = useState<ApproveBatchResponse | null>(null);
 
   // 목록 조회 요청 순번 — 필터를 빠르게 바꿀 때 먼저 보낸 요청이 나중에 도착해
   // 최신 화면을 덮어쓰는 경쟁을 막는다. 응답 시점에 최신 순번이 아니면 버린다.
@@ -425,20 +468,49 @@ export function MonthlySettlementTab() {
     setIsLoading(true);
     setLoadError(null);
     try {
+      // 월을 처음 열 때는 현황을 먼저 읽어 할 일이 있는 첫 단계로 들어간다 — 전체 목록을 받았다가 버리지 않는다.
+      if (autoStageRef.current) {
+        autoStageRef.current = false;
+        const summary = await api
+          .get<SettlementSummaryResponse>('/settlements/summary', { params: { month } })
+          .catch(() => null);
+        if (seq !== requestSeqRef.current) return;
+        // 이어지는 목록 조회가 현황을 다시 읽지 않게 넘겨 둔다.
+        if (summary) prefetchedSummaryRef.current = { month, data: summary };
+        const startStage = summary ? getStartStage(summary) : 'all';
+        if (startStage !== statusFilter) {
+          setStatusFilter(startStage);
+          return; // 단계가 바뀌면 이 함수가 다시 만들어져 그 단계의 목록을 읽는다
+        }
+      }
+      const prefetched =
+        prefetchedSummaryRef.current?.month === month ? prefetchedSummaryRef.current.data : null;
+      prefetchedSummaryRef.current = null;
       const params: Record<string, string | number> = { month, page, pageSize: PAGE_SIZE };
-      if (statusFilter !== 'all') params.status = statusFilter;
+      // 확인 필요 탭은 상태가 아니라 "운영자 확인이 필요한 지급 요청이 있음" 조건이다.
+      if (statusFilter === 'review') params.needsReview = 'true';
+      else if (statusFilter !== 'all') params.status = statusFilter;
       let summaryFailed = false;
       const [listRes, summaryRes] = await Promise.all([
         api.get<{ data: SettlementListItem[]; meta: SettlementListMeta }>('/settlements', { params }),
-        api
-          .get<SettlementSummaryResponse>('/settlements/summary', { params: { month } })
-          .catch(() => {
-            summaryFailed = true;
-            return null;
-          }),
+        prefetched
+          ? Promise.resolve(prefetched)
+          : api
+              .get<SettlementSummaryResponse>('/settlements/summary', { params: { month } })
+              .catch(() => {
+                summaryFailed = true;
+                return null;
+              }),
       ]);
       if (seq !== requestSeqRef.current) return; // 늦게 도착한 응답 — 무시
-      setRows(listRes.data ?? []);
+      const nextRows = listRes.data ?? [];
+      setRows(nextRows);
+      // 다음 단계로 넘어오며 넘겨받은 id 가 있으면 그걸 체크하고, 아니면 화면에서 사라진 정산만 선택에서 뺀다.
+      const preselect = preselectRef.current;
+      preselectRef.current = null;
+      setSelectedIds((prev) =>
+        (preselect ?? prev).filter((id) => nextRows.some((r) => r.id === id)),
+      );
       setMeta(listRes.meta ?? null);
       setMonthSummary(summaryRes);
       setMonthSummaryFailed(summaryFailed);
@@ -456,12 +528,13 @@ export function MonthlySettlementTab() {
     void loadSettlements();
   }, [loadSettlements]);
 
-  // 보이지 않는 페이지·월의 정산이 지급 요청에 섞이지 않도록 목록 조건이 바뀌면 선택을 비운다.
+  // 보이지 않는 페이지·월의 정산이 승인·지급 요청에 섞이지 않도록 목록 조건이 바뀌면 선택과 일괄 승인 결과를 비운다.
   useEffect(() => {
-    setSelectedPayoutIds([]);
+    setSelectedIds([]);
+    setApproveResult(null);
   }, [month, page, statusFilter]);
 
-  // 월/상태 필터는 값 변경 핸들러(handleMonthChange/handleStatusFilterChange)에서
+  // 월/단계는 값 변경 핸들러(handleMonthChange/handleGoToStage)에서
   // page 를 같은 렌더로 1 리셋한다 — 별도 effect 로 나누면 필터 변경 시
   // (이전 page 로 1회) + (page=1 로 1회) 총 2회 조회가 나가 응답 순서가 뒤섞일 수 있다.
 
@@ -484,20 +557,6 @@ export function MonthlySettlementTab() {
       setActionMsg({ type: 'error', text: extractErrorMessage(error, MESSAGES.settlement.closeError) });
     } finally {
       setIsClosing(false);
-    }
-  };
-
-  const handleDownloadCsv = async () => {
-    setIsCsvDownloading(true);
-    try {
-      await api.downloadFile(
-        `/settlements/payout-export?month=${encodeURIComponent(month)}`,
-        MESSAGES.settlementDynamic.csvFileName(month),
-      );
-    } catch (error) {
-      setActionMsg({ type: 'error', text: extractErrorMessage(error, MESSAGES.settlement.csvDownloadError) });
-    } finally {
-      setIsCsvDownloading(false);
     }
   };
 
@@ -576,26 +635,74 @@ export function MonthlySettlementTab() {
     }
   };
 
-  const handleTogglePayoutSelect = (id: string, checked: boolean) => {
-    if (!checked) {
-      setSelectedPayoutIds((prev) => prev.filter((x) => x !== id));
-      return;
+  const handleToggleSelect = (id: string, checked: boolean) => {
+    setSelectedIds((prev) => {
+      if (!checked) return prev.filter((x) => x !== id);
+      return prev.includes(id) ? prev : [...prev, id];
+    });
+  };
+
+  // 머리 행 체크박스 — 이 페이지에서 지금 단계의 작업을 할 수 있는 행 전체.
+  const handleToggleAll = (checked: boolean, eligibleIds: string[]) => {
+    setSelectedIds((prev) => {
+      if (!checked) return prev.filter((id) => !eligibleIds.includes(id));
+      const merged = new Set(prev);
+      eligibleIds.forEach((id) => merged.add(id));
+      return [...merged];
+    });
+  };
+
+  const handleApproveBatch = async (ids: string[]) => {
+    if (ids.length === 0) return;
+    setIsApproving(true);
+    try {
+      const res = await api.post<ApproveBatchResponse>('/settlements/approve-batch', { ids });
+      setIsApproveConfirmOpen(false);
+      setApproveResult(res);
+      setActionMsg({
+        type: res.summary.approved > 0 ? 'success' : 'error',
+        text: MESSAGES.settlementDynamic.approveBatchResult(
+          res.summary.approved,
+          res.summary.skipped + res.summary.errored,
+        ),
+      });
+      lastApprovedIdsRef.current = res.results
+        .filter((r) => r.outcome === 'APPROVED')
+        .map((r) => r.settlementId);
+      void loadSettlements();
+    } catch (error) {
+      setIsApproveConfirmOpen(false);
+      setActionMsg({ type: 'error', text: extractErrorMessage(error, MESSAGES.settlement.approveBatchError) });
+    } finally {
+      setIsApproving(false);
     }
-    if (selectedPayoutIds.length >= maxPayoutItems) {
-      setActionMsg({ type: 'error', text: MESSAGES.settlementDynamic.payoutRequestSelectLimit(maxPayoutItems) });
-      return;
-    }
-    setSelectedPayoutIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
   };
 
   const handlePayoutRequestSubmitted = () => {
-    setSelectedPayoutIds([]);
+    setSelectedIds([]);
     void loadSettlements();
   };
 
-  const handlePayoutChecked = () => {
-    setActionMsg({ type: 'success', text: MESSAGES.settlement.payoutCheckDone });
-    void loadSettlements();
+  // 단계 탭으로 옮긴다. 방금 승인한 행을 넘겨받으면 그 행을 체크해 둔다 — 승인한 건을 그대로 지급 요청으로 잇는다.
+  const handleGoToStage = (stage: SettlementStage, preselectIds: string[] = []) => {
+    autoStageRef.current = false;
+    // 이미 그 단계의 첫 페이지면 목록이 다시 조회되지 않는다 — 넘겨받은 행은 바로 체크하고 남겨 두지 않는다.
+    if (stage === statusFilter && page === 1) {
+      if (preselectIds.length > 0) {
+        setSelectedIds(preselectIds.filter((id) => rows.some((r) => r.id === id)));
+      }
+      return;
+    }
+    preselectRef.current = preselectIds;
+    setStatusFilter(stage);
+    setPage(1);
+  };
+
+  // 상단의 다음 작업 버튼 — 그 단계 탭으로 들어간다. 지급 대기로 갈 때는 방금 승인한 행을 체크해 둔다.
+  const handleNextAction = (stage: SettlementStage) => {
+    const preselect = stage === 'approved' ? lastApprovedIdsRef.current : [];
+    lastApprovedIdsRef.current = [];
+    handleGoToStage(stage, preselect);
   };
 
   const handleViewDetail = (id: string) => {
@@ -606,19 +713,29 @@ export function MonthlySettlementTab() {
   // 필터 변경 시 같은 렌더에서 page 를 1로 리셋 — 별도 effect 의 2회 조회 경쟁을 방지한다.
   const handleMonthChange = (nextMonth: string) => {
     setMonth(nextMonth);
+    // 다른 달은 그 달의 할 일이 있는 첫 단계부터 시작한다(현황을 읽은 뒤 정한다).
+    setStatusFilter('all');
+    autoStageRef.current = true;
+    lastApprovedIdsRef.current = [];
     setPage(1);
     // 마감 결과는 방금 실행한 월의 보고서라 다른 월 목록 위에 남기지 않는다.
     setCloseResult(null);
   };
 
-  const handleStatusFilterChange = (nextStatus: string) => {
-    setStatusFilter(nextStatus);
-    setPage(1);
-  };
-
-  const tableColSpan = isLiveMode ? 10 : 9;
-  const approvedCount = monthSummary?.approved.count ?? 0;
-  const summaryBuckets = monthSummary
+  const stageAction = getStageAction(statusFilter);
+  const tableColSpan = stageAction ? 10 : 9;
+  // 지금 단계에서 작업할 수 있는 행 — 음수 대기·나이스 재진행 중 건은 행에 사유를 적고 체크박스를 두지 않는다.
+  const rowExclusions = new Map(
+    rows.map((r) => [r.id, stageAction ? getRowExclusion(r, stageAction) : null] as const),
+  );
+  const eligibleRows = rows.filter((r) => rowExclusions.get(r.id) === null);
+  const eligibleIds = eligibleRows.map((r) => r.id);
+  const selectedRows = eligibleRows.filter((r) => selectedIds.includes(r.id));
+  const selectedTotal = selectedRows.reduce((sum, r) => sum + r.netAmount, 0);
+  const payableOverLimit = stageAction === 'payout' && selectedRows.length > maxPayoutItems;
+  const allChecked = eligibleRows.length > 0 && eligibleRows.every((r) => selectedIds.includes(r.id));
+  const skippedApproveRows = approveResult?.results.filter((r) => r.outcome !== 'APPROVED') ?? [];
+  const summaryBuckets: { key: SettlementStage; label: string; count: number; net: number | null }[] = monthSummary
     ? [
         { key: 'pending', label: MESSAGES.settlement.monthSummaryPendingLabel, count: monthSummary.pending.count, net: monthSummary.pending.netAmount },
         { key: 'approved', label: MESSAGES.settlement.monthSummaryApprovedLabel, count: monthSummary.approved.count, net: monthSummary.approved.netAmount },
@@ -630,6 +747,94 @@ export function MonthlySettlementTab() {
     : [];
   const summaryTeamCount = summaryBuckets.reduce((sum, b) => sum + b.count, 0);
   const summaryTotalNet = summaryBuckets.reduce((sum, b) => sum + (b.net ?? 0), 0);
+  const stageBucket = summaryBuckets.find((b) => b.key === statusFilter);
+  const stageLabel =
+    statusFilter === 'review'
+      ? MESSAGES.settlement.stageReviewLabel
+      : (stageBucket?.label ?? MESSAGES.settlement.stageAllLabel);
+  const stageTotal = stageBucket?.count ?? meta?.total ?? rows.length;
+  const stageNet = stageBucket?.net ?? null;
+  const reviewCount = reviewCountOf(monthSummary);
+  const lastCheck = monthSummary?.payoutCheck ?? null;
+  const lastCheckFailedRecently =
+    !!lastCheck?.lastFailedAt &&
+    (!lastCheck.lastSucceededAt || lastCheck.lastFailedAt > lastCheck.lastSucceededAt);
+  // 그 달의 다음 작업 — 순서대로 첫 번째 할 일. 지금 그 단계에 있으면 작업 바가 맡으므로 버튼을 숨긴다.
+  const nextAction = (() => {
+    if (!monthSummary || summaryTeamCount === 0) return null;
+    const s = monthSummary;
+    // 돈이 두 번 나갔을 수 있는 일은 승인·지급 요청보다 먼저다.
+    const review = reviewCountOf(s);
+    if (review > 0) {
+      return { stage: 'review' as const, label: MESSAGES.settlementDynamic.nextActionReview(review) };
+    }
+    if (s.pending.count > 0) {
+      return { stage: 'pending' as const, label: MESSAGES.settlementDynamic.nextActionApprove(s.pending.count) };
+    }
+    if (s.approved.count > 0) {
+      return {
+        stage: 'approved' as const,
+        label: isLiveMode
+          ? MESSAGES.settlementDynamic.nextActionPayout(s.approved.count)
+          : MESSAGES.settlementDynamic.nextActionPayoutManual(s.approved.count),
+      };
+    }
+    if (s.failed.count > 0) {
+      return { stage: 'failed' as const, label: MESSAGES.settlementDynamic.nextActionFailed(s.failed.count) };
+    }
+    return null;
+  })();
+  const showNextAction = nextAction !== null && nextAction.stage !== statusFilter;
+
+  // 단계 탭 — 순서 있는 네 단계는 번호·화살표로 잇고, 지급 실패·반려·전체는 오른쪽에 둔다.
+  const orderedStages: SettlementStage[] = ['pending', 'approved', 'processing', 'paid'];
+  const sideStages: SettlementStage[] = ['failed', 'rejected'];
+  const renderStageTab = (key: SettlementStage, order?: number) => {
+    const active = statusFilter === key;
+    const bucket = summaryBuckets.find((b) => b.key === key);
+    const isReview = key === 'review';
+    const label = isReview
+      ? MESSAGES.settlement.stageReviewLabel
+      : (bucket?.label ?? MESSAGES.settlement.stageAllLabel);
+    const count = isReview ? reviewCount : (bucket?.count ?? summaryTeamCount);
+    // 확인 필요 탭은 건수가 있을 때만 빨갛다 — 돈이 두 번 나갔을 수 있는 일은 눈에 띄어야 한다.
+    const tone = isReview && count > 0 ? 'alert' : 'default';
+    const className =
+      tone === 'alert'
+        ? active
+          ? 'bg-red-600 text-white'
+          : 'bg-red-50 text-red-700 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-300 dark:hover:bg-red-900/40'
+        : active
+          ? 'bg-primary text-white'
+          : 'bg-slate-50 text-slate-700 hover:bg-slate-100 dark:bg-slate-700/50 dark:text-slate-200 dark:hover:bg-slate-700';
+    return (
+      <button
+        key={key}
+        type="button"
+        aria-pressed={active}
+        onClick={() => handleGoToStage(key)}
+        className={`inline-flex h-10 items-center gap-2 rounded-lg px-3 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary ${className}`}
+      >
+        {order !== undefined && (
+          <span
+            className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-xs tabular-nums ${
+              active ? 'bg-white/20' : 'bg-slate-200 dark:bg-slate-600'
+            }`}
+          >
+            {order}
+          </span>
+        )}
+        <span>{label}</span>
+        <span
+          className={`rounded-full px-2 text-xs tabular-nums ${
+            active ? 'bg-white/20' : 'bg-white text-slate-700 dark:bg-slate-800 dark:text-slate-200'
+          }`}
+        >
+          {count}
+        </span>
+      </button>
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -638,7 +843,7 @@ export function MonthlySettlementTab() {
       <NiceBalanceCard />
 
       {/* 월 선택 + 마감 */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+      <div className="flex flex-col xl:flex-row xl:items-center gap-3 justify-between">
         <div className="flex items-center gap-3">
           <Input
             type="month"
@@ -647,57 +852,23 @@ export function MonthlySettlementTab() {
             className="h-11 w-40"
             aria-label="정산 월 선택"
           />
-          <Select value={statusFilter} onValueChange={handleStatusFilterChange}>
-            <SelectTrigger className="h-11 w-32">
-              <SelectValue placeholder="상태" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">전체 상태</SelectItem>
-              <SelectItem value="pending">{MESSAGES.settlement.statusPending}</SelectItem>
-              <SelectItem value="approved">{MESSAGES.settlement.statusApproved}</SelectItem>
-              <SelectItem value="processing">{MESSAGES.settlement.statusProcessing}</SelectItem>
-              <SelectItem value="paid">{MESSAGES.settlement.statusPaid}</SelectItem>
-              <SelectItem value="rejected">{MESSAGES.settlement.statusRejected}</SelectItem>
-              <SelectItem value="failed">{MESSAGES.settlement.statusFailed}</SelectItem>
-            </SelectContent>
-          </Select>
+          {summaryTeamCount > 0 && (
+            <p className="text-sm text-slate-600 dark:text-slate-300 tabular-nums whitespace-nowrap">
+              {MESSAGES.settlementDynamic.monthTeamsSummary(summaryTeamCount, formatAmount(summaryTotalNet))}
+            </p>
+          )}
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {canCheckPayout && (
-            <Button type="button" variant="outline" onClick={() => setIsPayoutCheckOpen(true)} className="h-11">
-              {MESSAGES.settlement.payoutCheckButton}
-            </Button>
-          )}
-          {isLiveMode && (
-            <Button
-              type="button"
-              onClick={() => setIsPayoutRequestOpen(true)}
-              disabled={selectedPayoutIds.length === 0}
-              className="h-11"
-              title={selectedPayoutIds.length === 0 ? MESSAGES.settlement.payoutRequestEmptySelection : undefined}
-            >
-              {selectedPayoutIds.length > 0
-                ? MESSAGES.settlementDynamic.payoutRequestSelected(selectedPayoutIds.length)
-                : MESSAGES.settlement.payoutRequestButton}
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {/* 다음 작업 버튼은 맨 왼쪽 — 오른쪽 정렬이라 나타나고 사라져도 나머지 버튼 자리가 움직이지 않는다 */}
+          {showNextAction && nextAction && (
+            <Button type="button" onClick={() => handleNextAction(nextAction.stage)} className="h-11">
+              {nextAction.label}
+              <ChevronRight className="h-4 w-4 ml-1" aria-hidden="true" />
             </Button>
           )}
           <Button
             type="button"
-            variant="outline"
-            onClick={handleDownloadCsv}
-            disabled={isCsvDownloading || approvedCount === 0}
-            className="h-11"
-            title={approvedCount === 0 ? MESSAGES.settlement.csvDownloadEmpty : undefined}
-          >
-            <Download className="h-4 w-4 mr-2" aria-hidden="true" />
-            {MESSAGES.settlement.csvDownload}
-          </Button>
-          <Button type="button" variant="outline" onClick={handleOpenPayout} className="h-11">
-            <Download className="h-4 w-4 mr-2" aria-hidden="true" />
-            {MESSAGES.settlement.payoutFileButton}
-          </Button>
-          <Button
-            type="button"
+            variant={summaryTeamCount > 0 ? 'outline' : 'default'}
             onClick={() => setIsCloseConfirmOpen(true)}
             disabled={isClosing}
             className="h-11"
@@ -707,11 +878,33 @@ export function MonthlySettlementTab() {
         </div>
       </div>
 
-      {/* 월 정산 현황 — 마감 여부와 무관하게 선택한 월의 저장된 정산 상태를 항상 표시 */}
-      <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-5 space-y-3">
-        <h3 className="font-bold text-slate-900 dark:text-white">
-          {MESSAGES.settlementDynamic.monthSummaryTitle(month)}
-        </h3>
+      {/* 일괄 승인 결과 — 건너뛴 건의 사유를 남겨 둔다(안내 띠는 4초 뒤 사라지므로) */}
+      {approveResult && skippedApproveRows.length > 0 && (
+        <div className="rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-900/20 p-4 space-y-2">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm font-bold text-amber-800 dark:text-amber-300">
+              {MESSAGES.settlement.approveBatchSkippedTitle} ·{' '}
+              {MESSAGES.settlementDynamic.approveBatchResult(
+                approveResult.summary.approved,
+                approveResult.summary.skipped + approveResult.summary.errored,
+              )}
+            </p>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setApproveResult(null)}>
+              {MESSAGES.settlement.close}
+            </Button>
+          </div>
+          <ul className="space-y-1">
+            {skippedApproveRows.map((r) => (
+              <li key={r.settlementId} className="text-sm text-amber-800 dark:text-amber-300">
+                {r.teamName ?? r.settlementId} — {r.reason ?? r.outcome}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* 단계 탭 — 누르면 그 상태만 보이고 작업 바가 그 단계의 작업 하나를 보여 준다. 전체는 조회용 */}
+      <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3 space-y-2">
         {monthSummaryFailed ? (
           <div className="flex items-center justify-between gap-3 rounded-lg bg-red-50 dark:bg-red-900/20 px-3 py-2">
             <p className="text-sm text-red-700 dark:text-red-400">{MESSAGES.settlement.monthSummaryLoadError}</p>
@@ -722,32 +915,41 @@ export function MonthlySettlementTab() {
         ) : !monthSummary && isLoading ? null : summaryTeamCount === 0 ? (
           <p className="text-sm text-slate-500 dark:text-slate-400">{MESSAGES.settlement.monthSummaryNotClosed}</p>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-3 text-sm">
-            <div className="rounded-lg bg-slate-50 dark:bg-slate-700/50 px-3 py-2">
-              <p className="text-slate-500 dark:text-slate-400">{MESSAGES.settlement.monthSummaryTeamCount}</p>
-              <p className="font-bold text-slate-900 dark:text-white tabular-nums">{summaryTeamCount}건</p>
-            </div>
-            <div className="rounded-lg bg-slate-50 dark:bg-slate-700/50 px-3 py-2">
-              <p className="text-slate-500 dark:text-slate-400">{MESSAGES.settlement.monthSummaryTotalNet}</p>
-              <p className="font-bold text-slate-900 dark:text-white tabular-nums">{formatAmount(summaryTotalNet)}</p>
-            </div>
-            {summaryBuckets.map((b) => (
-              <div key={b.key} className="rounded-lg bg-slate-50 dark:bg-slate-700/50 px-3 py-2">
-                <p className="text-slate-500 dark:text-slate-400">{b.label}</p>
-                <p className="font-bold text-slate-900 dark:text-white tabular-nums">{b.count}건</p>
-                {b.net !== null && (
-                  <p className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">{formatAmount(b.net)}</p>
-                )}
-              </div>
+          <div role="group" aria-label={MESSAGES.settlement.stageTabsAria} className="flex flex-wrap items-center gap-2">
+            {orderedStages.map((key, i) => (
+              <Fragment key={key}>
+                {i > 0 && <ChevronRight className="h-4 w-4 shrink-0 text-slate-300 dark:text-slate-600" aria-hidden="true" />}
+                {renderStageTab(key, i + 1)}
+              </Fragment>
             ))}
-            {(monthSummary?.pgFeeRate ?? 0) > 0 && (
-              <p className="col-span-full text-xs text-slate-500 dark:text-slate-400">
-                {MESSAGES.settlementDynamic.pgFeeRateNotice(formatRatePercent(monthSummary?.pgFeeRate ?? 0))}
-              </p>
+            <span className="flex flex-wrap items-center gap-2 sm:ml-auto">
+              {renderStageTab('review')}
+              {sideStages.map((key) => renderStageTab(key))}
+              {renderStageTab('all')}
+            </span>
+          </div>
+        )}
+        {summaryTeamCount > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+            {(monthSummary?.pgFeeRate ?? 0) > 0 ? (
+              <p>{MESSAGES.settlementDynamic.pgFeeRateNotice(formatRatePercent(monthSummary?.pgFeeRate ?? 0))}</p>
+            ) : (
+              <span />
             )}
+            {/* 결과 반영은 배치가 한다 — 운영자는 마지막으로 나이스를 읽은 시각만 본다 */}
+            <p className="tabular-nums">
+              {MESSAGES.settlement.lastCheckLabel}{' '}
+              {lastCheck?.lastSucceededAt
+                ? isoToKstDateTimeLabel(lastCheck.lastSucceededAt)
+                : MESSAGES.settlement.lastCheckNever}
+              {lastCheckFailedRecently && (
+                <span className="ml-2 text-amber-700 dark:text-amber-400">{MESSAGES.settlement.lastCheckFailedNote}</span>
+              )}
+            </p>
           </div>
         )}
       </div>
+
 
       {/* 마감 결과 — 방금 실행한 마감의 보고서(월 변경 시 초기화) */}
       {closeResult && (() => {
@@ -936,14 +1138,85 @@ export function MonthlySettlementTab() {
         </div>
       )}
 
+      {/* 작업 바 — 작업이 있는 단계(승인 대기·지급 대기·지급 실패)에서만, 그 단계의 작업 하나만 보여 준다 */}
+      {stageAction && (
+        <div
+          role="toolbar"
+          aria-label={stageLabel}
+          className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-4 py-3"
+        >
+          <p className="text-sm text-slate-600 dark:text-slate-300 min-w-0 flex-1" aria-live="polite">
+            {MESSAGES.settlementDynamic.stageSelected(
+              stageLabel,
+              stageTotal,
+              stageNet === null ? null : formatAmount(stageNet),
+              selectedRows.length,
+            )}
+          </p>
+          {stageAction === 'approve' && (
+            <Button
+              type="button"
+              onClick={() => setIsApproveConfirmOpen(true)}
+              disabled={isApproving || selectedRows.length === 0}
+              className="h-11"
+            >
+              {MESSAGES.settlementDynamic.approveSelected(selectedRows.length)}
+            </Button>
+          )}
+          {stageAction === 'payout' &&
+            (isLiveMode ? (
+              <Button
+                type="button"
+                onClick={() => setIsPayoutRequestOpen(true)}
+                disabled={selectedRows.length === 0 || payableOverLimit}
+                className="h-11"
+                title={payableOverLimit ? MESSAGES.settlementDynamic.payoutRequestSelectLimit(maxPayoutItems) : undefined}
+              >
+                {statusFilter === 'failed'
+                  ? MESSAGES.settlementDynamic.payoutRetrySelected(selectedRows.length)
+                  : MESSAGES.settlementDynamic.payoutRequestSelected(selectedRows.length)}
+              </Button>
+            ) : (
+              // live 가 아니면 지급은 나이스 관리자에 엑셀을 올려서 한다 — live 에서는 숨겨 API 요청과 겹치지 않게 한다.
+              !isPayoutModeLoading && (
+                <Button type="button" variant="outline" onClick={handleOpenPayout} className="h-11">
+                  <Download className="h-4 w-4 mr-2" aria-hidden="true" />
+                  {MESSAGES.settlement.payoutFileButton}
+                </Button>
+              )
+            ))}
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setSelectedIds([])}
+            disabled={selectedRows.length === 0}
+          >
+            {MESSAGES.settlement.clearSelection}
+          </Button>
+          {payableOverLimit && isLiveMode && (
+            <p className="basis-full text-sm text-amber-700 dark:text-amber-400">
+              {MESSAGES.settlementDynamic.payoutRequestSelectLimit(maxPayoutItems)}
+            </p>
+          )}
+        </div>
+      )}
+
       {/* 팀별 정산 목록 */}
       <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
         <Table>
           <TableHeader>
             <TableRow>
-              {isLiveMode && (
+              {stageAction && (
                 <TableHead className="w-10">
-                  <span className="sr-only">{MESSAGES.settlement.payoutRequestSelectAria}</span>
+                  <input
+                    type="checkbox"
+                    checked={allChecked}
+                    disabled={eligibleRows.length === 0}
+                    onChange={(e) => handleToggleAll(e.target.checked, eligibleIds)}
+                    aria-label={MESSAGES.settlement.selectAllAria}
+                    className="w-4 h-4 rounded border-slate-300 text-primary focus:ring-primary disabled:opacity-40"
+                  />
                 </TableHead>
               )}
               <TableHead>팀</TableHead>
@@ -980,24 +1253,42 @@ export function MonthlySettlementTab() {
                   getPayoutStatusLabelOverride(row.status, row.payoutScheduledDate) ?? statusInfo.label;
                 const payoutReasons = joinPayoutReasons(row.payoutRequest);
                 const needsAttention = !!(row.payoutRequest?.needsAttention || row.payoutRequest?.needsReview);
-                const canSelectForPayout = row.status === 'approved' || row.status === 'failed';
+                const exclusion = rowExclusions.get(row.id) ?? null;
                 return (
                   <TableRow key={row.id}>
-                    {isLiveMode && (
+                    {stageAction && (
                       <TableCell>
-                        {canSelectForPayout && (
+                        {exclusion === null ? (
                           <input
                             type="checkbox"
-                            checked={selectedPayoutIds.includes(row.id)}
-                            onChange={(e) => handleTogglePayoutSelect(row.id, e.target.checked)}
-                            aria-label={`${row.team?.name} ${MESSAGES.settlement.payoutRequestSelectAria}`}
+                            checked={selectedIds.includes(row.id)}
+                            onChange={(e) => handleToggleSelect(row.id, e.target.checked)}
+                            aria-label={`${row.team?.name} ${MESSAGES.settlement.selectRowAria}`}
                             className="w-4 h-4 rounded border-slate-300 text-primary focus:ring-primary"
                           />
+                        ) : (
+                          <span className="text-slate-400" aria-hidden="true">
+                            —
+                          </span>
                         )}
                       </TableCell>
                     )}
                     <TableCell className="font-medium text-slate-900 dark:text-white">
-                      {row.team?.name}
+                      <span className="inline-flex flex-wrap items-center gap-1.5">
+                        {row.team?.name}
+                        {row.duplicateSuspected ? (
+                          <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300 px-1.5 py-0 text-[11px]">
+                            {MESSAGES.settlement.duplicateSuspectBadge}
+                          </Badge>
+                        ) : (row.reviewOpenCount ?? 0) > 0 ? (
+                          <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 px-1.5 py-0 text-[11px]">
+                            {MESSAGES.settlement.reviewOpenBadge}
+                          </Badge>
+                        ) : null}
+                      </span>
+                      {exclusion && (
+                        <p className="mt-0.5 text-xs font-normal text-amber-700 dark:text-amber-400">{exclusion}</p>
+                      )}
                     </TableCell>
                     <TableCell className="text-right tabular-nums text-slate-900 dark:text-white">
                       {formatAmount(row.totalRevenue)}
@@ -1106,41 +1397,42 @@ export function MonthlySettlementTab() {
         </DialogContent>
       </Dialog>
 
-      {/* 나이스 지급 엑셀 다이얼로그 */}
+      {/* 나이스 지급 엑셀 다이얼로그 — 지급 요청 팝업과 같은 조각(구역·타일·확인 상자)으로 짠다 */}
       <Dialog open={isPayoutOpen} onOpenChange={handleClosePayout}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{MESSAGES.settlement.payoutFileTitle}</DialogTitle>
             <DialogDescription>{MESSAGES.settlement.payoutFileDescription}</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <label htmlFor="payout-pay-date" className="text-sm font-medium text-slate-900 dark:text-white">
-                {MESSAGES.settlement.payoutDateLabel}
-              </label>
-              <Input
-                id="payout-pay-date"
-                type="date"
-                value={payDate}
-                onChange={(e) => handlePayDateChange(e.target.value)}
-                className="h-11 w-44"
-              />
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  setPayoutMsg(null);
-                  void loadPayoutPreview(payDate);
-                }}
-                disabled={isPreviewLoading || !payDate}
-                className="h-11"
-              >
-                {MESSAGES.settlement.payoutPreviewButton}
-              </Button>
-            </div>
-
-            <p className="text-xs text-slate-500 dark:text-slate-400">{MESSAGES.settlement.payoutDeadlineNotice}</p>
+            <PayoutDialogSection title={MESSAGES.settlement.payoutConditionTitle}>
+              <div className="flex flex-wrap items-center gap-2">
+                <label htmlFor="payout-pay-date" className="text-sm font-medium text-slate-900 dark:text-white">
+                  {MESSAGES.settlement.payoutDateLabel}
+                </label>
+                <Input
+                  id="payout-pay-date"
+                  type="date"
+                  value={payDate}
+                  onChange={(e) => handlePayDateChange(e.target.value)}
+                  className="h-11 w-44"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setPayoutMsg(null);
+                    void loadPayoutPreview(payDate);
+                  }}
+                  disabled={isPreviewLoading || !payDate}
+                  className="h-11"
+                >
+                  {MESSAGES.settlement.payoutPreviewButton}
+                </Button>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400">{MESSAGES.settlement.payoutDeadlineNotice}</p>
+            </PayoutDialogSection>
 
             {isPreviewLoading && (
               <p className="text-sm text-slate-500 dark:text-slate-400">{MESSAGES.settlement.payoutPreviewLoading}</p>
@@ -1153,92 +1445,95 @@ export function MonthlySettlementTab() {
             )}
 
             {payoutPreview && (
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <h4 className="text-sm font-bold text-slate-900 dark:text-white">
-                    {MESSAGES.settlement.payoutIncludedTitle}
-                  </h4>
+              <>
+                <PayoutSummaryTiles
+                  tiles={[
+                    {
+                      key: 'teams',
+                      label: MESSAGES.settlement.payoutSummaryTeams,
+                      value: `${payoutPreview.includedCount}건`,
+                    },
+                    {
+                      key: 'total',
+                      label: MESSAGES.settlement.payoutSummaryTotal,
+                      value: formatAmount(payoutPreview.includedTotal),
+                    },
+                    {
+                      key: 'paid',
+                      label: MESSAGES.settlement.payoutSummaryPaidThisMonth,
+                      value: `${payoutPreview.paidThisMonth?.count ?? 0}건`,
+                      note:
+                        (payoutPreview.paidThisMonth?.count ?? 0) > 0
+                          ? formatAmount(payoutPreview.paidThisMonth?.netAmount ?? 0)
+                          : undefined,
+                    },
+                  ]}
+                />
+
+                <PayoutDialogSection
+                  title={MESSAGES.settlement.payoutIncludedTitle}
+                  count={payoutPreview.included.length}
+                  flush={payoutPreview.included.length > 0}
+                >
                   {payoutPreview.included.length === 0 ? (
                     <p className="text-sm text-slate-500 dark:text-slate-400">
                       {MESSAGES.settlement.payoutIncludedEmpty}
                     </p>
                   ) : (
-                    <div className="rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>{MESSAGES.settlement.payoutColTeam}</TableHead>
-                            <TableHead>{MESSAGES.settlement.payoutColSubId}</TableHead>
-                            <TableHead className="text-right">{MESSAGES.settlement.payoutColAmount}</TableHead>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>{MESSAGES.settlement.payoutColTeam}</TableHead>
+                          <TableHead>{MESSAGES.settlement.payoutColSubId}</TableHead>
+                          <TableHead className="text-right">{MESSAGES.settlement.payoutColAmount}</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {payoutPreview.included.map((item) => (
+                          <TableRow key={item.settlementId}>
+                            <TableCell className="font-medium text-slate-900 dark:text-white">{item.teamName}</TableCell>
+                            <TableCell className="tabular-nums text-slate-500 dark:text-slate-400">{item.subMallId}</TableCell>
+                            <TableCell className="text-right tabular-nums text-slate-900 dark:text-white">
+                              {formatAmount(item.netAmount)}
+                            </TableCell>
                           </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {payoutPreview.included.map((item) => (
-                            <TableRow key={item.settlementId}>
-                              <TableCell className="font-medium text-slate-900 dark:text-white">{item.teamName}</TableCell>
-                              <TableCell className="tabular-nums text-slate-500 dark:text-slate-400">{item.subMallId}</TableCell>
-                              <TableCell className="text-right tabular-nums text-slate-900 dark:text-white">
-                                {formatAmount(item.netAmount)}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
+                        ))}
+                      </TableBody>
+                    </Table>
                   )}
-                  <p className="text-sm font-bold text-slate-900 dark:text-white tabular-nums">
-                    {MESSAGES.settlementDynamic.payoutTeamsTotal(
-                      payoutPreview.includedCount,
-                      formatAmount(payoutPreview.includedTotal),
-                    )}
-                  </p>
-                </div>
+                </PayoutDialogSection>
 
                 {payoutPreview.excluded.length > 0 && (
-                  <div className="space-y-2">
-                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">
-                      {MESSAGES.settlement.payoutExcludedTitle}
-                    </h4>
-                    <div className="rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>{MESSAGES.settlement.payoutColTeam}</TableHead>
-                            <TableHead className="text-right">{MESSAGES.settlement.payoutColExcludedAmount}</TableHead>
-                            <TableHead>{MESSAGES.settlement.payoutColReason}</TableHead>
+                  <PayoutDialogSection
+                    title={MESSAGES.settlement.payoutExcludedTitle}
+                    count={payoutPreview.excluded.length}
+                    flush
+                    collapsible
+                    footer={`${MESSAGES.settlement.payoutSummaryExcludedTotal} ${formatAmount(payoutPreview.excludedTotal)}`}
+                  >
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>{MESSAGES.settlement.payoutColTeam}</TableHead>
+                          <TableHead className="text-right">{MESSAGES.settlement.payoutColExcludedAmount}</TableHead>
+                          <TableHead>{MESSAGES.settlement.payoutColReason}</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {payoutPreview.excluded.map((item) => (
+                          <TableRow key={item.settlementId}>
+                            <TableCell className="font-medium text-slate-900 dark:text-white">{item.teamName}</TableCell>
+                            <TableCell className="text-right tabular-nums text-slate-900 dark:text-white">
+                              {formatAmount(item.netAmount)}
+                            </TableCell>
+                            <TableCell className="text-slate-500 dark:text-slate-400 whitespace-normal">
+                              {item.reason}
+                            </TableCell>
                           </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {payoutPreview.excluded.map((item) => (
-                            <TableRow key={item.settlementId}>
-                              <TableCell className="font-medium text-slate-900 dark:text-white">{item.teamName}</TableCell>
-                              <TableCell className="text-right tabular-nums text-slate-900 dark:text-white">
-                                {formatAmount(item.netAmount)}
-                              </TableCell>
-                              <TableCell className="text-slate-500 dark:text-slate-400 whitespace-normal">
-                                {item.reason}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                    <p className="text-sm text-slate-500 dark:text-slate-400 tabular-nums">
-                      {MESSAGES.settlementDynamic.payoutTeamsTotal(
-                        payoutPreview.excludedCount,
-                        formatAmount(payoutPreview.excludedTotal),
-                      )}
-                    </p>
-                  </div>
-                )}
-
-                {(payoutPreview.paidThisMonth?.count ?? 0) > 0 && (
-                  <p className="text-sm text-slate-500 dark:text-slate-400 tabular-nums">
-                    {MESSAGES.settlementDynamic.payoutPaidThisMonth(
-                      payoutPreview.paidThisMonth?.count ?? 0,
-                      formatAmount(payoutPreview.paidThisMonth?.netAmount ?? 0),
-                    )}
-                  </p>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </PayoutDialogSection>
                 )}
 
                 <div className="flex items-start gap-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 p-3" role="alert">
@@ -1246,18 +1541,12 @@ export function MonthlySettlementTab() {
                   <p className="text-sm text-amber-700 dark:text-amber-400">{MESSAGES.settlement.payoutFileWarning}</p>
                 </div>
 
-                <label className="flex items-start gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={payoutConfirmed}
-                    onChange={(e) => setPayoutConfirmed(e.target.checked)}
-                    className="mt-0.5 w-4 h-4 rounded border-slate-300 text-primary focus:ring-primary"
-                  />
-                  <span className="text-sm text-slate-700 dark:text-slate-300">
-                    {MESSAGES.settlement.payoutFileConfirmCheckbox}
-                  </span>
-                </label>
-              </div>
+                <PayoutConfirmBox
+                  checked={payoutConfirmed}
+                  onChange={setPayoutConfirmed}
+                  label={MESSAGES.settlement.payoutFileConfirmCheckbox}
+                />
+              </>
             )}
 
             {payoutMsg && (
@@ -1302,17 +1591,43 @@ export function MonthlySettlementTab() {
         </DialogContent>
       </Dialog>
 
+      {/* 선택 승인 확인 다이얼로그 */}
+      <Dialog open={isApproveConfirmOpen} onOpenChange={(open) => !isApproving && setIsApproveConfirmOpen(open)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{MESSAGES.settlement.approveBatchTitle}</DialogTitle>
+            <DialogDescription>
+              {MESSAGES.settlementDynamic.approveBatchConfirmBody(selectedRows.length, formatAmount(selectedTotal))}
+            </DialogDescription>
+          </DialogHeader>
+          <ul className="max-h-60 overflow-y-auto space-y-1 text-sm text-slate-700 dark:text-slate-300">
+            {selectedRows.map((r) => (
+              <li key={r.id} className="flex items-center justify-between gap-3">
+                <span>{r.team?.name}</span>
+                <span className="tabular-nums">{formatAmount(r.netAmount)}</span>
+              </li>
+            ))}
+          </ul>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setIsApproveConfirmOpen(false)} disabled={isApproving}>
+              {MESSAGES.settlement.cancel}
+            </Button>
+            <Button
+              type="button"
+              onClick={() => void handleApproveBatch(selectedRows.map((r) => r.id))}
+              disabled={isApproving || selectedRows.length === 0}
+            >
+              {isApproving ? MESSAGES.settlement.approveBatchSubmitting : MESSAGES.settlement.approveBatchSubmit}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <PayoutRequestDialog
         open={isPayoutRequestOpen}
         onOpenChange={setIsPayoutRequestOpen}
-        settlementIds={selectedPayoutIds}
+        settlementIds={stageAction === 'payout' ? selectedRows.map((r) => r.id) : []}
         onSubmitted={handlePayoutRequestSubmitted}
-      />
-
-      <PayoutCheckDialog
-        open={isPayoutCheckOpen}
-        onOpenChange={setIsPayoutCheckOpen}
-        onChecked={handlePayoutChecked}
       />
 
       <SettlementDetailDialog

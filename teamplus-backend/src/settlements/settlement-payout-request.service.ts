@@ -11,6 +11,7 @@ import { PAYOUT_REQUEST_STATUS } from "./constants/payout-request-status.constan
 import type { PayoutApiMode } from "./constants/payout-mode.constant";
 import { resolvePayoutApiMode } from "./payout-mode.util";
 import { NicePayoutApiService } from "./nice-payout-api.service";
+import { SettlementPayoutResultService } from "./settlement-payout-result.service";
 import {
   TeamSettlementAccountService,
   isSubMallRegistrationInProgress,
@@ -31,6 +32,7 @@ import type {
   PayoutRequestItemDto,
 } from "./dto/payout-request.dto";
 import { PAYOUT_REQUEST_MAX_ITEMS } from "./dto/payout-request.dto";
+import { PAYOUT_REVIEW_REASON } from "./constants/payout-review.constant";
 
 export const DEFAULT_PAYOUT_DAY_OF_MONTH = 15;
 
@@ -51,7 +53,10 @@ export type PayoutRequestExclusion =
   | "NET_NOT_POSITIVE"
   | "ACCOUNT_CHANGED"
   | "SETTLEMENT_CHANGED"
-  | "DUPLICATE_ITEM";
+  | "DUPLICATE_ITEM"
+  | "PAYOUT_REVIEW_OPEN"
+  | "PAYOUT_REVIEW_REOPENED"
+  | "FAILED_REQUEST_UNVERIFIED";
 
 export const PAYOUT_REQUEST_EXCLUSION_REASON: Readonly<
   Record<PayoutRequestExclusion, string>
@@ -64,6 +69,12 @@ export const PAYOUT_REQUEST_EXCLUSION_REASON: Readonly<
   ACCOUNT_CHANGED: "미리보기 이후 팀 계좌가 바뀜 — 다시 확인해주세요",
   SETTLEMENT_CHANGED: "미리보기 이후 정산이 바뀜 — 다시 확인해주세요",
   DUPLICATE_ITEM: "같은 정산이 두 번 들어 있음",
+  PAYOUT_REVIEW_OPEN:
+    "확인이 필요한 지급 건이 있음 — 상세에서 확인 완료 처리 뒤 요청해주세요",
+  PAYOUT_REVIEW_REOPENED:
+    "실패한 지급 건이 나이스에서 다시 진행 중 — 나이스에서 실패·삭제로 바뀌기 전까지는 요청할 수 없습니다. 나이스 화면에서 처리해주세요",
+  FAILED_REQUEST_UNVERIFIED:
+    "실패한 지급 건의 나이스 상태를 확인하지 못함 — 잠시 후 다시 요청해주세요",
 };
 
 export type PayoutRequestOutcome =
@@ -126,11 +137,29 @@ const SETTLEMENT_TARGET_SELECT = {
       },
     },
   },
+  // 실패로 닫았고 접수번호가 있는 요청 — 재요청 전에 그 지급일을 나이스에 다시 조회한다.
+  payoutRequests: {
+    where: {
+      status: PAYOUT_REQUEST_STATUS.FAILED,
+      niceSeq: { not: null },
+    },
+    select: { settlementDate: true, needsReview: true, reviewReason: true },
+  },
+  // 운영자 확인이 필요한 요청 수(상태 무관) — 하나라도 있으면 요청하지 않는다.
+  _count: {
+    select: { payoutRequests: { where: { needsReview: true } } },
+  },
 } satisfies Prisma.SettlementSelect;
 
 type SettlementTarget = Prisma.SettlementGetPayload<{
   select: typeof SETTLEMENT_TARGET_SELECT;
 }>;
+
+/** 건너뛴 건의 응답에 실을 팀명·금액. */
+interface SettlementHead {
+  teamName: string | null;
+  amount: number;
+}
 
 /** 수취 통장에 찍히는 표기 — "팀플러스 N월 정산". */
 export function buildAccntDesc(settlementMonth: string): string {
@@ -153,6 +182,7 @@ export class SettlementPayoutRequestService {
     private readonly redis: RedisService,
     private readonly payoutApi: NicePayoutApiService,
     private readonly accountService: TeamSettlementAccountService,
+    private readonly resultService: SettlementPayoutResultService,
   ) {}
 
   /** 팝업 초기값 — 현재 모드, 앱 설정 "매월 N일", 그로부터 계산한 기본 지급일. */
@@ -248,7 +278,9 @@ export class SettlementPayoutRequestService {
       const account = verdict.account;
       included.push({
         ...base,
-        isRetry: s.status === SETTLEMENT_STATUS.FAILED,
+        // 미리보기는 나이스를 부르지 않는다 — 실패로 닫은 건이 남은 정산(isRetry)의 재요청 여부는 요청할 때 확인한다.
+        isRetry:
+          s.status === SETTLEMENT_STATUS.FAILED || s.payoutRequests.length > 0,
         subMallId: verdict.subMallId,
         bankName: bankNames.get(account.bankCode) ?? account.bankCode,
         bankAccountMasked: maskBankAccount(decryptOrRaw(account.bankAccount)),
@@ -285,21 +317,36 @@ export class SettlementPayoutRequestService {
     const payDateCompact = assertNicePayDate(dto.payDate);
     const settlementDate = dateOnlyToUtc(dto.payDate);
     const bankNames = await this.accountService.loadBankNames();
+    // 재요청 전 가드 — 지급 실패 정산의 실패 건을 나이스와 다시 맞춘 뒤 요청한다(나이스 화면 재요청과의 이중 지급 차단).
+    //   확인 표시(needsReview)가 켜지면 claim 의 판정이 PAYOUT_REVIEW_OPEN 으로 건너뛴다. 결과 조회의 Redis 락은
+    //   이 단계에서 잡고 놓으며 claim 의 팀 lock 과 겹치지 않는다. 확인하지 못한 정산은 FAILED_REQUEST_UNVERIFIED.
+    const unverified = await this.resultService.verifyFailedSettlements(
+      dto.items.map((i) => i.settlementId),
+      adminId,
+    );
+    // 건너뛴 건에도 팀명·금액을 돌려주기 위한 머리 정보 — claim 전에 한 번만 읽는다(판정은 claim 안에서 다시 읽은 값으로 한다).
+    const heads = await this.loadHeads(dto.items.map((i) => i.settlementId));
 
     const results: PayoutRequestItemResult[] = [];
     const seen = new Set<string>();
     for (const item of dto.items) {
+      const head = heads.get(item.settlementId);
       if (seen.has(item.settlementId)) {
-        results.push(
-          this.skipped(item.settlementId, null, null, "DUPLICATE_ITEM"),
-        );
+        results.push(this.skipped(item.settlementId, head, "DUPLICATE_ITEM"));
         continue;
       }
       seen.add(item.settlementId);
+      if (unverified.has(item.settlementId)) {
+        results.push(
+          this.skipped(item.settlementId, head, "FAILED_REQUEST_UNVERIFIED"),
+        );
+        continue;
+      }
       try {
         results.push(
           await this.requestOne(
             item,
+            head,
             payDateCompact,
             settlementDate,
             adminId,
@@ -347,6 +394,7 @@ export class SettlementPayoutRequestService {
 
   private async requestOne(
     item: PayoutRequestItemDto,
+    head: SettlementHead | undefined,
     payDateCompact: string,
     settlementDate: Date,
     adminId: string,
@@ -365,19 +413,14 @@ export class SettlementPayoutRequestService {
       );
     } catch (error) {
       if (error instanceof PayoutSkip) {
-        return this.skipped(item.settlementId, null, null, error.reasonCode);
+        return this.skipped(item.settlementId, head, error.reasonCode);
       }
       // 부분 유니크 인덱스(정산당 진행 중 1건) 위반 — 같은 정산을 동시에 요청한 경쟁이다.
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === "P2002"
       ) {
-        return this.skipped(
-          item.settlementId,
-          null,
-          null,
-          "PAYOUT_IN_PROGRESS",
-        );
+        return this.skipped(item.settlementId, head, "PAYOUT_IN_PROGRESS");
       }
       throw error;
     }
@@ -605,6 +648,20 @@ export class SettlementPayoutRequestService {
             : "NOT_PAYABLE_STATUS",
       };
     }
+    // 운영자 확인이 필요한 지급 건이 있으면 또 보내지 않는다. 실패 건의 나이스 재진행은 확인 완료로 풀리지 않아(다음 조회가 다시 켬)
+    //   안내가 달라 사유를 나눈다 — 그 밖의 사유(이중 지급 의심·금액 불일치 등)는 확인 완료로 푼다.
+    if (
+      s.payoutRequests.some(
+        (r) =>
+          r.needsReview &&
+          r.reviewReason === PAYOUT_REVIEW_REASON.REOPENED_IN_PROGRESS,
+      )
+    ) {
+      return { exclusion: "PAYOUT_REVIEW_REOPENED" };
+    }
+    if (s._count.payoutRequests > 0) {
+      return { exclusion: "PAYOUT_REVIEW_OPEN" };
+    }
     if (s.netAmount <= 0) return { exclusion: "NET_NOT_POSITIVE" };
     const account = s.team.settlementAccount;
     const classified = classifyPayoutFileAccount(
@@ -624,16 +681,31 @@ export class SettlementPayoutRequestService {
     return { exclusion: null, subMallId: classified.subMallId, account };
   }
 
+  /** 건너뛴 건의 팀명·금액 — 요청 전에 한 번 읽어 둔 머리 정보. */
+  private async loadHeads(
+    settlementIds: readonly string[],
+  ): Promise<Map<string, SettlementHead>> {
+    const rows = await this.prisma.settlement.findMany({
+      where: { id: { in: [...new Set(settlementIds)] } },
+      select: { id: true, netAmount: true, team: { select: { name: true } } },
+    });
+    return new Map(
+      rows.map((r) => [
+        r.id,
+        { teamName: r.team.name ?? null, amount: r.netAmount },
+      ]),
+    );
+  }
+
   private skipped(
     settlementId: string,
-    teamName: string | null,
-    amount: number | null,
+    head: SettlementHead | undefined,
     reasonCode: PayoutRequestExclusion,
   ): PayoutRequestItemResult {
     return {
       settlementId,
-      teamName,
-      amount,
+      teamName: head?.teamName ?? null,
+      amount: head?.amount ?? null,
       outcome: "SKIPPED",
       requestId: null,
       niceSeq: null,

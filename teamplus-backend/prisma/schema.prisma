@@ -241,6 +241,7 @@ model User {
   submittedTeamSettlementAccounts  TeamSettlementAccount[]   @relation("TeamSettlementAccountSubmitter")
   registeredTeamSettlementAccounts TeamSettlementAccount[]   @relation("TeamSettlementAccountRegistrar")
   settlementPayoutRequests         SettlementPayoutRequest[] @relation("SettlementPayoutRequester")
+  reviewedPayoutRequests           SettlementPayoutRequest[] @relation("SettlementPayoutReviewer")
 
   // 크레딧 조정 (관리자)
   creditAdjustments CreditTransaction[] @relation("CreditAdjuster")
@@ -4597,12 +4598,17 @@ model SettlementPayoutRequest {
   confirmedAt      DateTime? @map("confirmed_at") @db.Timestamptz(3) /// 종결 상태가 된 시각
   lastCheckedAt    DateTime? @map("last_checked_at") @db.Timestamptz(3) /// 결과 조회가 이 건을 마지막으로 본 시각
   checkCount       Int       @default(0) @map("check_count") /// 결과 조회에서 아직 안 끝난 채로 본 횟수
-  needsReview      Boolean   @default(false) @map("needs_review") /// 결과를 자동으로 짝 맞출 수 없어 운영자 확인이 필요함
+  needsReview      Boolean   @default(false) @map("needs_review") /// 운영자 확인이 필요함(사유는 reviewReason) — 켜진 동안 그 정산의 지급 요청·수동 완료가 막힌다
+  reviewReason     String?   @map("review_reason") @db.VarChar(30) /// MATCH_AMBIGUOUS|UNKNOWN_STATUS|REOPENED_IN_PROGRESS|REOPENED_DUPLICATE|DUPLICATE_SUCCESS|AMOUNT_MISMATCH
+  reviewedAt       DateTime? @map("reviewed_at") @db.Timestamptz(3) /// 운영자가 확인 완료한 시각(자동으로 꺼진 경우는 null)
+  reviewedById     String?   @map("reviewed_by_id")
+  reviewMemo       String?   @map("review_memo") @db.VarChar(500)
   updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   settlement  Settlement @relation(fields: [settlementId], references: [id], onDelete: Restrict)
   team        Team?      @relation(fields: [teamId], references: [id], onDelete: SetNull)
   requestedBy User?      @relation("SettlementPayoutRequester", fields: [requestedById], references: [id], onDelete: SetNull)
+  reviewedBy  User?      @relation("SettlementPayoutReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
 
   @@index([settlementId, requestedAt])
   @@index([settlementDate, status])

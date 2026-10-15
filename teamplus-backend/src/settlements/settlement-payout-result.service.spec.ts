@@ -11,10 +11,20 @@ describe("SettlementPayoutResultService", () => {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mockPrisma: any = {
-    settlementPayoutRequest: { findMany: jest.fn(), updateMany: jest.fn() },
-    settlement: { updateMany: jest.fn(), findUniqueOrThrow: jest.fn() },
+    settlementPayoutRequest: {
+      findMany: jest.fn(),
+      findUnique: jest.fn(),
+      updateMany: jest.fn(),
+    },
+    settlement: {
+      findMany: jest.fn(),
+      findUnique: jest.fn(),
+      updateMany: jest.fn(),
+      findUniqueOrThrow: jest.fn(),
+    },
     settlementDetail: { updateMany: jest.fn() },
     settlementTransaction: { create: jest.fn() },
+    teamSettlementAccount: { findMany: jest.fn() },
     appSettings: { findFirst: jest.fn() },
     $queryRaw: jest.fn(),
     $transaction: jest.fn(),
@@ -37,23 +47,35 @@ describe("SettlementPayoutResultService", () => {
       niceSeq: string | null;
       checkCount: number;
       requestedAt: Date;
+      lastCheckedAt: Date | null;
+      needsReview: boolean;
       amount: number;
       subMallId: string;
+      settlementId: string;
+      settlementStatus: string;
     }> = {},
   ) => ({
     id: overrides.id ?? "pr-1",
-    settlementId: "s-1",
+    settlementId: overrides.settlementId ?? "s-1",
     teamId: "team-1",
+    teamName: "블리자드",
+    settlementMonth: "2026-09",
     subMallId: overrides.subMallId ?? "SUB-1",
+    settlementDate: SETTLEMENT_DATE,
     amount: overrides.amount ?? 500000,
     niceSeq: overrides.niceSeq === undefined ? "SEQ-1" : overrides.niceSeq,
     status: overrides.status ?? "REQUESTED",
     checkCount: overrides.checkCount ?? 0,
+    needsReview: overrides.needsReview ?? false,
     requestedAt: overrides.requestedAt ?? new Date("2026-10-13T01:00:00.000Z"),
+    lastCheckedAt: overrides.lastCheckedAt ?? null,
     bankName: "신한은행",
     bankAccount: "enc:cipher",
     accountHolder: "블리자드하키",
-    settlement: { teamId: "team-1" },
+    settlement: {
+      teamId: "team-1",
+      status: overrides.settlementStatus ?? "processing",
+    },
   });
 
   const row = (
@@ -95,6 +117,7 @@ describe("SettlementPayoutResultService", () => {
     service = module.get(SettlementPayoutResultService);
 
     jest.clearAllMocks();
+    mockPrisma.teamSettlementAccount.findMany.mockResolvedValue([]);
     // KST 2026-10-15 16:10 — 지급일 당일 결과 조회 시각.
     setNow("2026-10-15T16:10:00+09:00");
     mockRedis.get.mockResolvedValue(null);
@@ -106,6 +129,9 @@ describe("SettlementPayoutResultService", () => {
       (cb: (tx: typeof mockPrisma) => Promise<unknown>) => cb(mockPrisma),
     );
     mockPrisma.$queryRaw.mockResolvedValue(undefined);
+    mockPrisma.settlementPayoutRequest.findUnique.mockResolvedValue({
+      status: "FAILED",
+    });
     mockPrisma.settlementPayoutRequest.updateMany.mockResolvedValue({
       count: 1,
     });
@@ -196,7 +222,7 @@ describe("SettlementPayoutResultService", () => {
     expect(r.succeeded).toBe(0);
   });
 
-  it("실패로 닫은 요청의 접수번호가 나이스에서 '재요청 진행중'·'성공'으로 바뀌면 상태는 두고 확인 필요만 켠다", async () => {
+  it("실패로 닫은 요청의 접수번호가 나이스에서 '재요청 진행중'으로 보이면 상태는 두고 확인 필요만 켠다", async () => {
     mockPrisma.settlementPayoutRequest.findMany.mockResolvedValue([
       activeRequest({ id: "failed", status: "FAILED", niceSeq: "SEQ-1" }),
       activeRequest({ id: "live", status: "REQUESTED", niceSeq: "SEQ-2" }),
@@ -209,12 +235,17 @@ describe("SettlementPayoutResultService", () => {
     expect(r.pending).toBe(1);
     expect(r.needsReview).toBe(1);
     const flag = mockPrisma.settlementPayoutRequest.updateMany.mock.calls.find(
-      (c: [{ where: { id: string } }]) => c[0].where.id === "failed",
+      (c: [{ where: { id: string }; data: { needsReview?: boolean } }]) =>
+        c[0].where.id === "failed" && c[0].data.needsReview === true,
     );
+    // 운영자가 한 번 확인 완료한 요청(reviewedAt)은 다시 켜지 않는다 — 조건부 갱신으로 판정한다.
     expect(flag?.[0]).toEqual(
       expect.objectContaining({
-        where: { id: "failed", status: "FAILED", needsReview: false },
-        data: expect.objectContaining({ needsReview: true }),
+        where: { id: "failed", needsReview: false },
+        data: expect.objectContaining({
+          needsReview: true,
+          reviewReason: "REOPENED_IN_PROGRESS",
+        }),
       }),
     );
     expect(mockPrisma.settlement.updateMany).not.toHaveBeenCalled();
@@ -373,30 +404,50 @@ describe("SettlementPayoutResultService", () => {
     );
     const r = await service.checkByAdmin(PAY_DATE, "admin-1");
     expect(r.needsReview).toBe(1);
-    const req = mockPrisma.settlementPayoutRequest.updateMany.mock.calls[0][0];
-    expect(req.data).toEqual(
+    const calls = mockPrisma.settlementPayoutRequest.updateMany.mock.calls;
+    // 확인 기록(횟수)과 확인 필요 켜기는 같은 팀 lock 트랜잭션 안의 두 갱신이다.
+    expect(calls[0][0].data).toEqual(
+      expect.objectContaining({ checkCount: { increment: 1 } }),
+    );
+    expect(calls[1][0]).toEqual(
       expect.objectContaining({
-        needsReview: true,
-        checkCount: { increment: 1 },
+        where: {
+          id: "pr-1",
+          needsReview: false,
+          // 확인 완료한 요청은 같은 사유로만 다시 켜지 않는다.
+          OR: [
+            { reviewedAt: null },
+            { reviewReason: null },
+            { reviewReason: { not: expect.any(String) } },
+          ],
+        },
+        data: expect.objectContaining({
+          needsReview: true,
+          reviewReason: "MATCH_AMBIGUOUS",
+        }),
       }),
     );
-    expect(req.data.status).toBeUndefined();
+    expect(calls[0][0].data.status).toBeUndefined();
     expect(mockPrisma.settlement.updateMany).not.toHaveBeenCalled();
   });
 
-  it("목록에 없는 건은 지급일 당일에는 확인 횟수만 올리고, 지급일이 지나고 두 번째 확인부터 NOT_FOUND 로 닫아 approved 복귀", async () => {
+  it("목록에 없는 건은 지급일 당일에는 확인 기록만 남기고, 지급일 다음 날 0시 이후 조회에서 이미 한 번 없음을 본 뒤에야 NOT_FOUND 로 닫아 approved 복귀", async () => {
     mockPrisma.settlementPayoutRequest.findMany.mockResolvedValue([
-      activeRequest({ checkCount: 1 }),
+      activeRequest({
+        checkCount: 5,
+        // 지급일 다음 날 09:05(KST) 아침 대사에서 이미 한 번 없음을 봤다.
+        lastCheckedAt: new Date("2026-10-16T00:05:00.000Z"),
+      }),
     ]);
     mockPayoutApi.queryPayoutResults.mockResolvedValue(niceResult([]));
 
-    // 지급일 당일 — 아직 닫지 않는다.
+    // 지급일 당일 — 확인 횟수와 무관하게 닫지 않는다(하루 8번 돌아도 당일엔 종결하지 않는다).
     const sameDay = await service.checkByAdmin(PAY_DATE, "admin-1");
     expect(sameDay.pending).toBe(1);
     expect(sameDay.notFound).toBe(0);
     expect(mockPrisma.settlement.updateMany).not.toHaveBeenCalled();
 
-    // 다음 날, checkCount 1 → 2.
+    // 다음 날 — 지급일 다음 날 0시 이후에 본 기록이 있으므로 닫는다.
     setNow("2026-10-16T16:10:00+09:00");
     const nextDay = await service.checkByAdmin(PAY_DATE, "admin-1");
     expect(nextDay.notFound).toBe(1);
@@ -408,15 +459,203 @@ describe("SettlementPayoutResultService", () => {
     });
   });
 
-  it("지급일이 지났어도 첫 확인(checkCount 0)에서는 닫지 않는다", async () => {
+  it("지급일이 지났어도 지급일 다음 날 이후에 본 기록이 없으면(지급일 당일에만 봤거나 처음 봄) 닫지 않는다", async () => {
     setNow("2026-10-16T16:10:00+09:00");
     mockPrisma.settlementPayoutRequest.findMany.mockResolvedValue([
-      activeRequest({ checkCount: 0 }),
+      // 지급일 당일 19:30(KST)까지 여러 번 봤지만 다음 날에는 아직 안 봤다.
+      activeRequest({
+        checkCount: 8,
+        lastCheckedAt: new Date("2026-10-15T10:30:00.000Z"),
+      }),
+      activeRequest({ id: "pr-2", settlementId: "s-2", niceSeq: "SEQ-9" }),
     ]);
     mockPayoutApi.queryPayoutResults.mockResolvedValue(niceResult([]));
     const r = await service.checkByAdmin(PAY_DATE, "admin-1");
     expect(r.notFound).toBe(0);
-    expect(r.pending).toBe(1);
+    expect(r.pending).toBe(2);
+  });
+
+  it("응답 미확인 정리(unconfirmedOnly) — UNCONFIRMED 만 보고 접수번호를 확보해 REQUESTED 로 올리되 확인 횟수·종결·실패 재맞춤·이상 감지는 하지 않는다", async () => {
+    setNow("2026-10-13T09:05:00+09:00");
+    mockPrisma.settlementPayoutRequest.findMany
+      .mockResolvedValueOnce([{ settlementDate: SETTLEMENT_DATE }])
+      .mockResolvedValueOnce([
+        activeRequest({ id: "lost", status: "UNCONFIRMED", niceSeq: null }),
+        activeRequest({
+          id: "ok",
+          status: "REQUESTED",
+          niceSeq: "SEQ-2",
+          amount: 777,
+        }),
+        activeRequest({
+          id: "gone",
+          status: "UNCONFIRMED",
+          niceSeq: null,
+          amount: 123,
+          settlementId: "s-3",
+        }),
+        activeRequest({
+          id: "failed",
+          status: "FAILED",
+          niceSeq: "SEQ-3",
+          settlementStatus: "failed",
+        }),
+      ]);
+    mockPayoutApi.queryPayoutResults.mockResolvedValue(
+      niceResult([
+        row("SEQ-1", "요청"),
+        row("SEQ-2", "요청", null, 777),
+        row("SEQ-3", "재요청 진행중"),
+        row("SEQ-X", "성공", null, 999, "SUB-EXT"),
+      ]),
+    );
+    await service.settleUnconfirmedRequests();
+    const calls = mockPrisma.settlementPayoutRequest.updateMany.mock.calls;
+    // 응답 유실 요청은 같은 서브몰·금액의 "요청" 행과 짝이 맞아 접수번호를 얻고 REQUESTED 가 된다. 확인 횟수는 올리지 않는다.
+    const lost = calls.find(
+      (c: [{ where: { id?: string } }]) => c[0].where.id === "lost",
+    );
+    expect(lost?.[0].data).toEqual(
+      expect.objectContaining({ status: "REQUESTED", niceSeq: "SEQ-1" }),
+    );
+    expect(lost?.[0].data.checkCount).toBeUndefined();
+    // 이미 접수된 요청과 실패로 닫은 요청은 건드리지 않는다.
+    expect(
+      calls.some((c: [{ where: { id?: string } }]) => c[0].where.id === "ok"),
+    ).toBe(false);
+    expect(
+      calls.some(
+        (c: [{ where: { id?: string } }]) => c[0].where.id === "failed",
+      ),
+    ).toBe(false);
+    // 목록에 없는 응답 유실 요청은 종결하지도, 확인 기록을 남기지도 않는다.
+    expect(
+      calls.some((c: [{ where: { id?: string } }]) => c[0].where.id === "gone"),
+    ).toBe(false);
+    expect(mockPrisma.settlement.updateMany).not.toHaveBeenCalled();
+    // 외부 지급처럼 보이는 행이 있어도 이 배치는 확인 필요를 켜지 않는다.
+    expect(
+      calls.some(
+        (c: [{ data: { reviewReason?: string } }]) =>
+          c[0].data.reviewReason !== undefined,
+      ),
+    ).toBe(false);
+  });
+
+  it("응답 미확인 정리 — 해당 요청이 없으면 나이스를 부르지 않는다", async () => {
+    mockPrisma.settlementPayoutRequest.findMany.mockResolvedValueOnce([]);
+    await service.settleUnconfirmedRequests();
+    expect(mockPayoutApi.queryPayoutResults).not.toHaveBeenCalled();
+  });
+
+  it("나이스 '데이터 없음(1104)'은 어느 경로에서도 빈 목록이다 — 지급일 다음 날 이후에 본 기록이 있는 요청은 미접수로 닫힌다(수동 조회도 502 아님)", async () => {
+    setNow("2026-10-16T16:10:00+09:00");
+    mockPrisma.settlementPayoutRequest.findMany.mockResolvedValue([
+      activeRequest({ lastCheckedAt: new Date("2026-10-16T00:05:00.000Z") }),
+    ]);
+    mockPayoutApi.queryPayoutResults.mockResolvedValue({
+      outcome: "TERMINAL",
+      meta: {
+        sid: "0101002",
+        resCode: "1104",
+        resMsg: "요청 데이터 없음",
+        error: null,
+      },
+      totCnt: 0,
+      succCnt: 0,
+      failCnt: 0,
+      remainAmt: null,
+      rows: [],
+    });
+    const r = await service.checkByAdmin(PAY_DATE, "admin-1");
+    expect(r.queried).toBe(true);
+    expect(r.error).toBeNull();
+    expect(r.notFound).toBe(1);
+  });
+
+  it("아침 대사 — 전 영업일은 우리 요청이 없어도 한 번 조회하고, 나이스가 '데이터 없음(1104)'이면 오류가 아니라 빈 목록으로 다룬다", async () => {
+    // 2026-10-19(월) 09:05 — 전 영업일은 10-16(금).
+    setNow("2026-10-19T09:05:00+09:00");
+    mockPrisma.settlementPayoutRequest.findMany
+      .mockResolvedValueOnce([]) // 끝나지 않은 요청·확인 필요 건 없음
+      .mockResolvedValueOnce([]); // 10-16 요청 없음
+    mockPayoutApi.queryPayoutResults.mockResolvedValue({
+      outcome: "TERMINAL",
+      meta: {
+        sid: "0101002",
+        resCode: "1104",
+        resMsg: "요청 데이터 없음",
+        error: null,
+      },
+      totCnt: 0,
+      succCnt: 0,
+      failCnt: 0,
+      remainAmt: null,
+      rows: [],
+    });
+    await service.reconcilePreviousBusinessDay();
+    expect(mockPayoutApi.queryPayoutResults).toHaveBeenCalledTimes(1);
+    expect(mockPayoutApi.queryPayoutResults.mock.calls[0][0]).toEqual({
+      settlmntDt: "20261016",
+    });
+    expect(
+      mockPrisma.settlementPayoutRequest.updateMany,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("아침 대사 — 전 영업일에 우리 기록에 없는 접수번호가 보이면 외부 지급으로 세고(로그), 요청 행은 건드리지 않는다", async () => {
+    setNow("2026-10-16T09:05:00+09:00");
+    mockPrisma.settlementPayoutRequest.findMany
+      .mockResolvedValueOnce([]) // 끝나지 않은 요청 없음
+      .mockResolvedValueOnce([]) // 10-15 요청 없음(check 안)
+      .mockResolvedValueOnce([]); // 대조용 재조회
+    mockPayoutApi.queryPayoutResults.mockResolvedValue(
+      niceResult([row("SEQ-EXT", "성공", null, 300000, "SUB-9")]),
+    );
+    await service.reconcilePreviousBusinessDay();
+    expect(mockPayoutApi.queryPayoutResults).toHaveBeenCalledWith(
+      { settlmntDt: "20261015" },
+      { requestedBy: null },
+    );
+    expect(
+      mockPrisma.settlementPayoutRequest.updateMany,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("대조 — 접수번호는 우리 것인데 나이스 금액이 다르면 그 요청에 금액 불일치 확인 필요를 켠다(팀 lock 안, 이미 확인 완료한 요청은 제외)", async () => {
+    mockPrisma.settlementPayoutRequest.findMany
+      .mockResolvedValueOnce([activeRequest({ amount: 500000 })]) // check 안
+      .mockResolvedValueOnce([
+        {
+          ...activeRequest({ amount: 500000 }),
+          settlement: { teamId: "team-1" },
+        },
+      ]); // 대조용 재조회
+    mockPayoutApi.queryPayoutResults.mockResolvedValue(
+      niceResult([row("SEQ-1", "성공", null, 400000)]),
+    );
+    const r = await service.checkByAdmin(PAY_DATE, "admin-1");
+    expect(r.succeeded).toBe(1);
+    expect(r.needsReview).toBe(1);
+    const flag = mockPrisma.settlementPayoutRequest.updateMany.mock.calls.find(
+      (c: [{ data: { reviewReason?: string } }]) =>
+        c[0].data.reviewReason === "AMOUNT_MISMATCH",
+    );
+    expect(flag?.[0]).toEqual(
+      expect.objectContaining({
+        where: {
+          id: "pr-1",
+          needsReview: false,
+          // 확인 완료한 요청은 같은 사유로만 다시 켜지 않는다.
+          OR: [
+            { reviewedAt: null },
+            { reviewReason: null },
+            { reviewReason: { not: expect.any(String) } },
+          ],
+        },
+        data: expect.objectContaining({ needsReview: true }),
+      }),
+    );
   });
 
   it("나이스 조회 오류 — 운영자 버튼은 502, 자동 조회는 던지지 않고 기록만 남긴다", async () => {
@@ -453,5 +692,456 @@ describe("SettlementPayoutResultService", () => {
     });
     await service.checkDueRequests();
     expect(mockPrisma.settlementPayoutRequest.findMany).not.toHaveBeenCalled();
+  });
+
+  describe("실패로 닫은 건 다시 맞추기(나이스 화면 재요청)", () => {
+    const failedClosed = (settlementStatus = "failed") =>
+      activeRequest({
+        id: "failed",
+        status: "FAILED",
+        niceSeq: "SEQ-1",
+        settlementStatus,
+      });
+    const live = () =>
+      activeRequest({
+        id: "live",
+        status: "REQUESTED",
+        niceSeq: "SEQ-2",
+        settlementId: "s-2",
+      });
+
+    it("'성공'으로 바뀌었으면 요청 SUCCEEDED, 정산 failed → paid, 거래 기록은 '재요청' 표기", async () => {
+      mockPrisma.settlementPayoutRequest.findMany.mockResolvedValue([
+        failedClosed(),
+        live(),
+      ]);
+      mockPayoutApi.queryPayoutResults.mockResolvedValue(
+        niceResult([row("SEQ-1", "성공"), row("SEQ-2", "요청")]),
+      );
+      const r = await service.checkByAdmin(PAY_DATE, "admin-1");
+      expect(r.succeeded).toBe(1);
+      expect(r.pending).toBe(1);
+      const close =
+        mockPrisma.settlementPayoutRequest.updateMany.mock.calls.find(
+          (c: [{ where: { id: string } }]) => c[0].where.id === "failed",
+        );
+      expect(close?.[0]).toEqual(
+        expect.objectContaining({
+          where: { id: "failed", status: "FAILED" },
+          data: expect.objectContaining({
+            status: "SUCCEEDED",
+            needsReview: false,
+            errReason: null,
+          }),
+        }),
+      );
+      expect(mockPrisma.settlement.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            id: "s-1",
+            status: { in: ["failed", "approved"] },
+          }),
+          data: expect.objectContaining({
+            status: "paid",
+            bankName: "신한은행",
+            bankAccount: "enc:cipher",
+          }),
+        }),
+      );
+      expect(
+        mockPrisma.settlementTransaction.create.mock.calls[0][0].data
+          .description,
+      ).toContain("재요청");
+      // 정산을 먼저 닫고 요청을 SUCCEEDED 로 바꾼다 — 닫지 못하면 요청은 FAILED 로 남아 차단이 유지된다.
+      const requestMock = mockPrisma.settlementPayoutRequest.updateMany.mock;
+      const closeIdx = requestMock.calls.findIndex(
+        (c: [{ where: { id: string } }]) => c[0].where.id === "failed",
+      );
+      expect(
+        mockPrisma.settlement.updateMany.mock.invocationCallOrder[0],
+      ).toBeLessThan(requestMock.invocationCallOrder[closeIdx]);
+    });
+
+    it("'성공'이고 정산이 approved 로 돌아와 있으면(팀플러스 재요청이 삭제·미접수로 복귀) 그 돈으로 정산을 닫는다", async () => {
+      mockPrisma.settlementPayoutRequest.findMany.mockResolvedValue([
+        failedClosed("approved"),
+        live(),
+      ]);
+      mockPayoutApi.queryPayoutResults.mockResolvedValue(
+        niceResult([row("SEQ-1", "성공"), row("SEQ-2", "요청")]),
+      );
+      const r = await service.checkByAdmin(PAY_DATE, "admin-1");
+      expect(r.succeeded).toBe(1);
+      expect(mockPrisma.settlementTransaction.create).toHaveBeenCalledTimes(1);
+    });
+
+    it("'성공'인데 정산이 이미 failed 가 아니면(이중 지급 의심) paid 로 바꾸지 않고, 그 요청 행과 진행 중 요청에 확인 표시를 남기며 확인 필요로 집계한다", async () => {
+      mockPrisma.settlementPayoutRequest.findMany.mockResolvedValue([
+        failedClosed("processing"),
+        live(),
+      ]);
+      mockPayoutApi.queryPayoutResults.mockResolvedValue(
+        niceResult([row("SEQ-1", "성공"), row("SEQ-2", "요청")]),
+      );
+      mockPrisma.settlement.updateMany.mockResolvedValue({ count: 0 });
+      const r = await service.checkByAdmin(PAY_DATE, "admin-1");
+      expect(r.succeeded).toBe(0);
+      expect(r.needsReview).toBe(1);
+      expect(mockPrisma.settlementTransaction.create).not.toHaveBeenCalled();
+      const calls = mockPrisma.settlementPayoutRequest.updateMany.mock.calls;
+      // 종결된 옛 요청 행에 표시와 사유를 남긴다 — 다른 경로가 지우지 않아 상세 이력에 남는다.
+      const markOld = calls.find(
+        (
+          c: [{ where: { id?: string }; data: { errReason?: string | null } }],
+        ) =>
+          c[0].where.id === "failed" && typeof c[0].data.errReason === "string",
+      );
+      expect(markOld?.[0]).toEqual(
+        expect.objectContaining({
+          // 요청은 FAILED 로 둔다 — needsReview 차단(지급 요청·수동 완료)이 살아 있어야
+          //   정산이 나중에 failed·approved 로 돌아와도 다시 지급할 수 없다.
+          where: { id: "failed", status: "FAILED" },
+          data: expect.objectContaining({
+            needsReview: true,
+            errReason: expect.stringContaining("이중 지급"),
+            reviewedAt: null,
+            reviewedById: null,
+            reviewMemo: null,
+          }),
+        }),
+      );
+      expect(
+        calls.some(
+          (c: [{ where: { id?: string }; data: { status?: string } }]) =>
+            c[0].where.id === "failed" && c[0].data.status === "SUCCEEDED",
+        ),
+      ).toBe(false);
+      const flagActive = calls.find(
+        (c: [{ where: { settlementId?: string } }]) =>
+          c[0].where.settlementId === "s-1",
+      );
+      expect(flagActive?.[0]).toEqual(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            settlementId: "s-1",
+            needsReview: false,
+            reviewedAt: null,
+          }),
+          data: { needsReview: true, reviewReason: "REOPENED_DUPLICATE" },
+        }),
+      );
+    });
+
+    it("지급 전 가드(verifyFailedForRetry)는 실패 건만 다시 맞추고 같은 지급일의 진행 중 요청은 건드리지 않는다", async () => {
+      mockPrisma.settlementPayoutRequest.findMany.mockResolvedValue([
+        failedClosed(),
+        live(),
+      ]);
+      mockPayoutApi.queryPayoutResults.mockResolvedValue(
+        niceResult([row("SEQ-1", "재요청 진행중"), row("SEQ-2", "요청")]),
+      );
+      const v = await service.verifyFailedForRetry(PAY_DATE, "admin-1");
+      expect(v.verified).toBe(true);
+      const touchedLive =
+        mockPrisma.settlementPayoutRequest.updateMany.mock.calls.some(
+          (c: [{ where: { id?: string } }]) => c[0].where.id === "live",
+        );
+      expect(touchedLive).toBe(false);
+      expect(mockPrisma.settlement.updateMany).not.toHaveBeenCalled();
+    });
+
+    it("verifyFailedForRetry — 예기치 않은 오류는 ERROR 로 돌려주고 던지지 않는다(일괄 요청의 다른 건을 막지 않음)", async () => {
+      mockPrisma.settlementPayoutRequest.findMany.mockRejectedValueOnce(
+        new Error("db down"),
+      );
+      await expect(
+        service.verifyFailedForRetry(PAY_DATE, "admin-1"),
+      ).resolves.toEqual({ verified: false, reason: "ERROR" });
+      expect(mockRedis.releaseLock).toHaveBeenCalled();
+    });
+
+    it("운영자 [결과 조회]는 실패 건만 남은 지급일도 나이스에 조회한다(켜 둔 확인 표시를 풀 수 있는 길)", async () => {
+      mockPrisma.settlementPayoutRequest.findMany.mockResolvedValue([
+        failedClosed(),
+      ]);
+      mockPayoutApi.queryPayoutResults.mockResolvedValue(
+        niceResult([row("SEQ-1", "실패", "잔액 부족")]),
+      );
+      const r = await service.checkByAdmin(PAY_DATE, "admin-1");
+      expect(r.queried).toBe(true);
+      expect(mockPayoutApi.queryPayoutResults).toHaveBeenCalledTimes(1);
+    });
+
+    it("verifyFailedSettlements — 실패 정산의 실패 건 지급일을 모아 날짜별로 한 번씩 확인하고, 확인 못 한 날짜의 정산 id 를 돌려준다", async () => {
+      mockPrisma.settlement.findMany.mockResolvedValue([
+        { id: "s-1", payoutRequests: [{ settlementDate: SETTLEMENT_DATE }] },
+        { id: "s-2", payoutRequests: [{ settlementDate: SETTLEMENT_DATE }] },
+      ]);
+      mockRedis.setIfNotExists.mockResolvedValue(false);
+      const unverified = await service.verifyFailedSettlements(
+        ["s-1", "s-2", "s-3"],
+        "admin-1",
+      );
+      expect([...unverified].sort()).toEqual(["s-1", "s-2"]);
+      // 같은 지급일은 한 번만 조회한다.
+      expect(mockRedis.setIfNotExists).toHaveBeenCalledTimes(1);
+    });
+
+    it("다시 '실패' 또는 '삭제'로 보이면 켜 둔 확인 표시를 끈다(다시 요청할 수 있다)", async () => {
+      mockPrisma.settlementPayoutRequest.findMany.mockResolvedValue([
+        failedClosed(),
+        live(),
+      ]);
+      mockPayoutApi.queryPayoutResults.mockResolvedValue(
+        niceResult([row("SEQ-1", "삭제"), row("SEQ-2", "요청")]),
+      );
+      const r = await service.checkByAdmin(PAY_DATE, "admin-1");
+      expect(r.needsReview).toBe(0);
+      const clear =
+        mockPrisma.settlementPayoutRequest.updateMany.mock.calls.find(
+          (c: [{ where: { id: string } }]) => c[0].where.id === "failed",
+        );
+      // "재진행"으로 켰던 표시(또는 사유가 비어 있던 옛 표시)만 끈다 — 금액 불일치·이중 지급 의심은 운영자 확인 완료로만 푼다.
+      expect(clear?.[0]).toEqual(
+        expect.objectContaining({
+          where: {
+            id: "failed",
+            status: "FAILED",
+            needsReview: true,
+            OR: [
+              { reviewReason: "REOPENED_IN_PROGRESS" },
+              { reviewReason: null },
+            ],
+          },
+          data: expect.objectContaining({ needsReview: false }),
+        }),
+      );
+      expect(mockPrisma.$queryRaw).toHaveBeenCalled();
+      expect(mockPrisma.settlement.updateMany).not.toHaveBeenCalled();
+    });
+
+    it("확인 완료한 요청도 실패 건의 나이스 재진행(REOPENED_IN_PROGRESS)이면 다시 켜고 지난 확인 기록을 비운다 — 다른 사유는 같은 사유일 때만 막는다", async () => {
+      mockPrisma.settlementPayoutRequest.findMany.mockResolvedValue([
+        failedClosed(),
+        live(),
+      ]);
+      mockPayoutApi.queryPayoutResults.mockResolvedValue(
+        niceResult([row("SEQ-1", "재요청 진행중"), row("SEQ-2", "요청")]),
+      );
+      await service.checkByAdmin(PAY_DATE, "admin-1");
+      const reopen =
+        mockPrisma.settlementPayoutRequest.updateMany.mock.calls.find(
+          (c: [{ where: { id: string }; data: { reviewReason?: string } }]) =>
+            c[0].where.id === "failed" &&
+            c[0].data.reviewReason === "REOPENED_IN_PROGRESS",
+        );
+      expect(reopen?.[0]).toEqual({
+        where: { id: "failed", needsReview: false },
+        data: expect.objectContaining({
+          needsReview: true,
+          reviewedAt: null,
+          reviewedById: null,
+          reviewMemo: null,
+        }),
+      });
+    });
+
+    it("verifyFailedForRetry — 진행 중 요청이 없어도 실패 건(접수번호 있음·정산 failed)이 있으면 나이스를 조회하고 verified", async () => {
+      mockPrisma.settlementPayoutRequest.findMany.mockResolvedValue([
+        failedClosed(),
+      ]);
+      mockPayoutApi.queryPayoutResults.mockResolvedValue(
+        niceResult([row("SEQ-1", "재요청 진행중")]),
+      );
+      const v = await service.verifyFailedForRetry(PAY_DATE, "admin-1");
+      expect(v).toEqual({ verified: true, reason: null });
+      expect(mockPayoutApi.queryPayoutResults).toHaveBeenCalledTimes(1);
+      const flag =
+        mockPrisma.settlementPayoutRequest.updateMany.mock.calls.find(
+          (c: [{ where: { id: string }; data: { needsReview?: boolean } }]) =>
+            c[0].where.id === "failed" && c[0].data.needsReview === true,
+        );
+      expect(flag?.[0].data).toEqual(
+        expect.objectContaining({ needsReview: true }),
+      );
+      const [lockKey, lockToken] = mockRedis.setIfNotExists.mock.calls[0];
+      expect(mockRedis.releaseLock).toHaveBeenCalledWith(lockKey, lockToken);
+    });
+
+    it("completeReview — 확인 필요가 켜진 요청을 메모·처리자와 함께 끄고(팀 lock 안), 같은 정산에 남은 건수를 돌려준다. 켜져 있지 않으면 409", async () => {
+      mockPrisma.settlementPayoutRequest.findUnique.mockResolvedValue({
+        id: "pr-1",
+        settlementId: "s-1",
+        settlement: { teamId: "team-1" },
+      });
+      mockPrisma.settlementPayoutRequest.updateMany.mockResolvedValueOnce({
+        count: 1,
+      });
+      mockPrisma.settlementPayoutRequest.count = jest.fn().mockResolvedValue(0);
+      const r = await service.completeReview("pr-1", "admin-1", "대조 완료");
+      expect(mockPrisma.$queryRaw).toHaveBeenCalled();
+      expect(
+        mockPrisma.settlementPayoutRequest.updateMany,
+      ).toHaveBeenCalledWith({
+        where: { id: "pr-1", needsReview: true },
+        data: expect.objectContaining({
+          needsReview: false,
+          reviewedById: "admin-1",
+          reviewMemo: "대조 완료",
+          reviewedAt: expect.any(Date),
+        }),
+      });
+      expect(r).toEqual(
+        expect.objectContaining({
+          id: "pr-1",
+          settlementId: "s-1",
+          reviewedById: "admin-1",
+          openLeft: 0,
+        }),
+      );
+
+      mockPrisma.settlementPayoutRequest.updateMany.mockResolvedValueOnce({
+        count: 0,
+      });
+      await expect(
+        service.completeReview("pr-1", "admin-1", "다시"),
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({
+          errorCode: "PAYOUT_REVIEW_NOT_OPEN",
+        }),
+      });
+
+      mockPrisma.settlementPayoutRequest.findUnique.mockResolvedValue(null);
+      await expect(
+        service.completeReview("pr-x", "admin-1", "메모"),
+      ).rejects.toThrow("지급 요청을 찾을 수 없습니다.");
+    });
+
+    it("verifyFailedSettlements — 실패 뒤 approved 로 되돌아간 정산도 대상이다(옛 실패 건이 남아 있다)", async () => {
+      mockPrisma.settlement.findMany.mockResolvedValue([]);
+      await service.verifyFailedSettlements(["s-1"], "admin-1");
+      expect(mockPrisma.settlement.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            status: { in: ["failed", "approved"] },
+          }),
+        }),
+      );
+    });
+
+    it("verifyFailedForRetry — 정산이 approved 로 돌아온 실패 건(접수번호 있음)도 나이스를 조회해 다시 맞춘다", async () => {
+      mockPrisma.settlementPayoutRequest.findMany.mockResolvedValue([
+        failedClosed("approved"),
+      ]);
+      mockPayoutApi.queryPayoutResults.mockResolvedValue(
+        niceResult([row("SEQ-1", "재요청 진행중")]),
+      );
+      const v = await service.verifyFailedForRetry(PAY_DATE, "admin-1");
+      expect(v).toEqual({ verified: true, reason: null });
+      expect(mockPayoutApi.queryPayoutResults).toHaveBeenCalledTimes(1);
+      const flag =
+        mockPrisma.settlementPayoutRequest.updateMany.mock.calls.find(
+          (c: [{ where: { id: string }; data: { needsReview?: boolean } }]) =>
+            c[0].where.id === "failed" && c[0].data.needsReview === true,
+        );
+      expect(flag?.[0].data).toEqual(
+        expect.objectContaining({ needsReview: true }),
+      );
+    });
+
+    it("이중 지급으로 이미 기록한 요청은 다음 조회에서 다시 켜거나 세지 않는다(확인 시각만 갱신)", async () => {
+      mockPrisma.settlementPayoutRequest.findMany.mockResolvedValue([
+        failedClosed("paid"),
+        live(),
+      ]);
+      // 사유가 이미 재요청 중복으로 적혀 있다(운영자가 확인 완료했을 수도 있다).
+      mockPrisma.settlementPayoutRequest.findUnique.mockResolvedValue({
+        status: "FAILED",
+        reviewReason: "REOPENED_DUPLICATE",
+      });
+      mockPayoutApi.queryPayoutResults.mockResolvedValue(
+        niceResult([row("SEQ-1", "성공"), row("SEQ-2", "요청")]),
+      );
+      mockPrisma.settlement.updateMany.mockResolvedValue({ count: 0 });
+      const r = await service.checkByAdmin(PAY_DATE, "admin-1");
+      expect(r.needsReview).toBe(0);
+      expect(r.succeeded).toBe(0);
+      const calls = mockPrisma.settlementPayoutRequest.updateMany.mock.calls;
+      expect(
+        calls.some(
+          (c: [{ where: { id?: string }; data: { needsReview?: boolean } }]) =>
+            c[0].where.id === "failed" && c[0].data.needsReview === true,
+        ),
+      ).toBe(false);
+      expect(
+        calls.some(
+          (c: [{ where: { settlementId?: string } }]) =>
+            c[0].where.settlementId === "s-1",
+        ),
+      ).toBe(false);
+      const touch = calls.find(
+        (c: [{ where: { id?: string } }]) => c[0].where.id === "failed",
+      );
+      expect(touch?.[0].data).toEqual(
+        expect.objectContaining({ lastCheckedAt: expect.any(Date) }),
+      );
+    });
+
+    it("verifyFailedForRetry — 정산이 더는 failed 가 아닌 실패 건만 있으면 나이스를 부르지 않고 verified(확인할 것이 없음)", async () => {
+      mockPrisma.settlementPayoutRequest.findMany.mockResolvedValue([
+        failedClosed("paid"),
+      ]);
+      const v = await service.verifyFailedForRetry(PAY_DATE, "admin-1");
+      expect(v).toEqual({ verified: true, reason: null });
+      expect(mockPayoutApi.queryPayoutResults).not.toHaveBeenCalled();
+    });
+
+    it("verifyFailedForRetry — 같은 지급일을 조회 중이면 IN_PROGRESS, 나이스 오류면 NICE_ERROR(둘 다 verified=false, 던지지 않음)", async () => {
+      mockRedis.setIfNotExists.mockResolvedValueOnce(false);
+      await expect(
+        service.verifyFailedForRetry(PAY_DATE, "admin-1"),
+      ).resolves.toEqual({ verified: false, reason: "IN_PROGRESS" });
+
+      mockPrisma.settlementPayoutRequest.findMany.mockResolvedValue([
+        failedClosed(),
+      ]);
+      mockPayoutApi.queryPayoutResults.mockResolvedValue({
+        outcome: "ERROR",
+        meta: { sid: "0101002", resCode: null, resMsg: null, error: "timeout" },
+        totCnt: 0,
+        succCnt: 0,
+        failCnt: 0,
+        remainAmt: null,
+        rows: [],
+      });
+      await expect(
+        service.verifyFailedForRetry(PAY_DATE, "admin-1"),
+      ).resolves.toEqual({ verified: false, reason: "NICE_ERROR" });
+      expect(mockRedis.releaseLock).toHaveBeenCalled();
+    });
+
+    it("결과 배치(cron)도 실패로 닫은 건을 다시 맞춘다 — 확인 필요가 켜진 실패 건만 남은 지급일을 나이스에 묻는다", async () => {
+      mockPrisma.settlementPayoutRequest.findMany
+        .mockResolvedValueOnce([{ settlementDate: SETTLEMENT_DATE }])
+        .mockResolvedValueOnce(
+          [
+            failedClosed("paid"),
+            // 정산은 끝났지만 확인 표시가 남아 있다 — 풀어 줄 길은 다시 조회하는 것뿐이다.
+          ].map((r) => ({ ...r, needsReview: true })),
+        )
+        .mockResolvedValueOnce([]);
+      mockPayoutApi.queryPayoutResults.mockResolvedValue(
+        niceResult([row("SEQ-1", "실패")]),
+      );
+      await service.checkDueRequests();
+      expect(mockPayoutApi.queryPayoutResults).toHaveBeenCalledTimes(1);
+      const clear =
+        mockPrisma.settlementPayoutRequest.updateMany.mock.calls.find(
+          (c: [{ where: { id: string } }]) => c[0].where.id === "failed",
+        );
+      expect(clear?.[0].data).toEqual(
+        expect.objectContaining({ needsReview: false }),
+      );
+    });
   });
 });

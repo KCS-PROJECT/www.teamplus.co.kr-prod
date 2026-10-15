@@ -48,6 +48,7 @@ import {
   type PayoutRequestInfo,
 } from './payoutRequestMeta';
 import { isoToKstDateTimeLabel } from '@/lib/kst-date';
+import { PayoutReviewList } from './PayoutReviewList';
 
 export type SettlementStatus =
   | 'pending'
@@ -551,6 +552,7 @@ export function SettlementDetailDialog({
     ? getPayoutStatusLabelOverride(detail.status, detail.payoutScheduledDate) ?? statusMeta?.label
     : undefined;
   const payoutRequests = detail?.payoutRequests ?? [];
+  const reviewRequests = payoutRequests.filter((r) => r.needsReview);
   const scheduledDateLabel = formatPayoutMonthDay(detail?.payoutScheduledDate);
   const latestPayoutReason = payoutRequests[0]?.errReason || payoutRequests[0]?.requestDetail || null;
   // 지급대행 연동(live) 중에는 지급 요청 → 결과 조회로 상태가 바뀌므로 수동 지급 완료를 막는다.
@@ -731,6 +733,21 @@ export function SettlementDetailDialog({
                     {detail.accountHolder && ` · ${MESSAGES.settlement.accountHolderSeparator} ${detail.accountHolder}`}
                   </p>
                 )}
+                {reviewRequests.length > 0 && (
+                  <div className="space-y-1">
+                    <h4 className="text-sm font-semibold text-slate-900 dark:text-white">
+                      {MESSAGES.settlement.reviewSectionTitle}
+                    </h4>
+                    <PayoutReviewList
+                      requests={reviewRequests}
+                      onResolved={() => {
+                        if (settlementId) void loadDetail(settlementId);
+                        onActionSuccess(MESSAGES.settlement.reviewResolved);
+                      }}
+                      onError={onActionError}
+                    />
+                  </div>
+                )}
                 {payoutRequests.length > 0 && (
                   <div className="space-y-1">
                     <h4 className="text-sm font-semibold text-slate-900 dark:text-white">
@@ -795,6 +812,15 @@ export function SettlementDetailDialog({
                                 </td>
                                 <td className="px-3 py-2 text-slate-500 dark:text-slate-400 break-words">
                                   {[request.errReason, request.requestDetail].filter(Boolean).join(' · ') || '-'}
+                                  {request.reviewedAt && request.reviewMemo && (
+                                    <p className="mt-0.5 text-slate-400 dark:text-slate-500">
+                                      {MESSAGES.settlementDynamic.reviewedNote(
+                                        request.reviewedByName ?? '-',
+                                        isoToKstDateTimeLabel(request.reviewedAt),
+                                        request.reviewMemo,
+                                      )}
+                                    </p>
+                                  )}
                                 </td>
                                 <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap text-slate-500 dark:text-slate-400">
                                   {MESSAGES.settlementDynamic.payoutHistoryChecks(request.checkCount)}

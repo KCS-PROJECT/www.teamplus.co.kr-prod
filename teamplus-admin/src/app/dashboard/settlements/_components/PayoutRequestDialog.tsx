@@ -29,9 +29,14 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { AlertTriangle } from 'lucide-react';
 import { api } from '@/services/api-client';
 import { getPayoutOutcomeMeta, type PayoutRequestOutcome } from './payoutRequestMeta';
+import {
+  PayoutConfirmBox,
+  PayoutDialogSection,
+  PayoutSummaryTiles,
+  type PayoutSummaryTile,
+} from './payoutDialogParts';
 
 interface PayoutDefaults {
   mode: 'off' | 'readonly' | 'live';
@@ -46,6 +51,7 @@ interface PreviewIncluded {
   teamName: string;
   settlementMonth: string;
   netAmount: number;
+  /** 실패 건의 재요청 — 요청할 때 서버가 나이스에서 그 실패 건의 상태를 먼저 확인한다 */
   isRetry: boolean;
   subMallId: string | null;
   bankName: string | null;
@@ -123,6 +129,57 @@ function extractErrorCode(error: unknown): string | undefined {
     | { errorCode?: string; code?: string }
     | undefined;
   return data?.errorCode ?? data?.code;
+}
+
+/** 요약 타일 — 지급 팀 · 지급 합계 · 나이스 잔액(못 읽었거나 모자라면 노란 타일). */
+function buildPreviewTiles(preview: PayoutPreview): PayoutSummaryTile[] {
+  const balanceTile: PayoutSummaryTile =
+    preview.balance === null
+      ? {
+          key: 'balance',
+          label: MESSAGES.settlement.payoutRequestBalanceLabel,
+          value: MESSAGES.settlement.payoutSummaryBalanceUnknown,
+          tone: 'warn',
+          note: preview.balanceError ?? undefined,
+        }
+      : {
+          key: 'balance',
+          label: MESSAGES.settlement.payoutRequestBalanceLabel,
+          value: formatAmount(preview.balance),
+          tone: preview.balanceShort ? 'warn' : 'default',
+          note: preview.balanceShort ? MESSAGES.settlement.payoutSummaryBalanceShort : undefined,
+        };
+  return [
+    { key: 'teams', label: MESSAGES.settlement.payoutSummaryTeams, value: `${preview.includedCount}건` },
+    { key: 'total', label: MESSAGES.settlement.payoutSummaryTotal, value: formatAmount(preview.includedTotal) },
+    balanceTile,
+  ];
+}
+
+function buildResultTiles(summary: PayoutRequestResponse['summary']): PayoutSummaryTile[] {
+  const errored = summary.errored ?? 0;
+  return [
+    { key: 'requested', label: MESSAGES.settlement.payoutOutcomeRequested, value: `${summary.requested}건` },
+    {
+      key: 'unconfirmed',
+      label: MESSAGES.settlement.payoutOutcomeUnconfirmed,
+      value: `${summary.unconfirmed}건`,
+      tone: summary.unconfirmed > 0 ? 'warn' : 'default',
+    },
+    {
+      key: 'rejected',
+      label: MESSAGES.settlement.payoutOutcomeRejected,
+      value: `${summary.rejected}건`,
+      tone: summary.rejected > 0 ? 'warn' : 'default',
+    },
+    { key: 'skipped', label: MESSAGES.settlement.payoutOutcomeSkipped, value: `${summary.skipped}건` },
+    {
+      key: 'errored',
+      label: MESSAGES.settlement.payoutOutcomeError,
+      value: `${errored}건`,
+      tone: errored > 0 ? 'warn' : 'default',
+    },
+  ];
 }
 
 interface PayoutRequestDialogProps {
@@ -294,10 +351,11 @@ export function PayoutRequestDialog({
     !isPreviewLoading &&
     !isSubmitting &&
     !submitError;
+  const hasRetry = !!preview && preview.included.some((item) => item.isRetry);
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {step === 'result'
@@ -309,7 +367,7 @@ export function PayoutRequestDialog({
 
         {step === 'preview' ? (
           <div className="space-y-4 py-2">
-            <div className="space-y-1">
+            <PayoutDialogSection title={MESSAGES.settlement.payoutConditionTitle}>
               <div className="flex flex-wrap items-center gap-2">
                 <label
                   htmlFor="payout-request-pay-date"
@@ -336,13 +394,12 @@ export function PayoutRequestDialog({
               <p className="text-xs text-slate-500 dark:text-slate-400">
                 {MESSAGES.settlement.payoutDeadlineNotice}
               </p>
-            </div>
-
-            {showEarlyNotice && (
-              <p className="text-sm text-amber-700 dark:text-amber-400">
-                {MESSAGES.settlement.payoutRequestEarlyDateNotice}
-              </p>
-            )}
+              {showEarlyNotice && (
+                <p className="text-sm text-amber-700 dark:text-amber-400">
+                  {MESSAGES.settlement.payoutRequestEarlyDateNotice}
+                </p>
+              )}
+            </PayoutDialogSection>
 
             {isPreviewLoading && (
               <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -357,143 +414,115 @@ export function PayoutRequestDialog({
             )}
 
             {preview && (
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <h4 className="text-sm font-bold text-slate-900 dark:text-white">
-                    {MESSAGES.settlement.payoutRequestIncludedTitle}
-                  </h4>
+              <>
+                <PayoutSummaryTiles tiles={buildPreviewTiles(preview)} />
+
+                <PayoutDialogSection
+                  title={MESSAGES.settlement.payoutRequestIncludedTitle}
+                  count={preview.included.length}
+                  flush={preview.included.length > 0}
+                  footer={hasRetry ? MESSAGES.settlement.payoutRequestRetryCheckNotice : undefined}
+                >
                   {preview.included.length === 0 ? (
                     <p className="text-sm text-slate-500 dark:text-slate-400">
                       {MESSAGES.settlement.payoutRequestIncludedEmpty}
                     </p>
                   ) : (
-                    <div className="rounded-lg border border-slate-200 dark:border-slate-700 overflow-x-auto">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>{MESSAGES.settlement.payoutColTeam}</TableHead>
-                            <TableHead>{MESSAGES.settlement.payoutRequestColMonth}</TableHead>
-                            <TableHead className="text-right">{MESSAGES.settlement.payoutColAmount}</TableHead>
-                            <TableHead>{MESSAGES.settlement.payoutRequestColBank}</TableHead>
-                            <TableHead>{MESSAGES.settlement.payoutRequestColAccount}</TableHead>
-                            <TableHead>{MESSAGES.settlement.payoutRequestColHolder}</TableHead>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>{MESSAGES.settlement.payoutColTeam}</TableHead>
+                          <TableHead>{MESSAGES.settlement.payoutRequestColMonth}</TableHead>
+                          <TableHead className="text-right">{MESSAGES.settlement.payoutColAmount}</TableHead>
+                          <TableHead>{MESSAGES.settlement.payoutRequestColBank}</TableHead>
+                          <TableHead>{MESSAGES.settlement.payoutRequestColAccount}</TableHead>
+                          <TableHead>{MESSAGES.settlement.payoutRequestColHolder}</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {preview.included.map((item) => (
+                          <TableRow key={item.settlementId}>
+                            <TableCell className="font-medium text-slate-900 dark:text-white">
+                              <span className="inline-flex items-center gap-1.5">
+                                {item.teamName}
+                                {item.isRetry && (
+                                  <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 px-1.5 py-0 text-[11px]">
+                                    {MESSAGES.settlement.payoutRequestRetryBadge}
+                                  </Badge>
+                                )}
+                              </span>
+                            </TableCell>
+                            <TableCell className="tabular-nums text-slate-500 dark:text-slate-400">
+                              {item.settlementMonth}
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums text-slate-900 dark:text-white">
+                              {formatAmount(item.netAmount)}
+                            </TableCell>
+                            <TableCell className="text-slate-500 dark:text-slate-400">
+                              {item.bankName ?? '-'}
+                            </TableCell>
+                            <TableCell className="tabular-nums text-slate-500 dark:text-slate-400">
+                              {item.bankAccountMasked ?? '-'}
+                            </TableCell>
+                            <TableCell className="text-slate-500 dark:text-slate-400">
+                              {item.accountHolder ?? '-'}
+                            </TableCell>
                           </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {preview.included.map((item) => (
-                            <TableRow key={item.settlementId}>
-                              <TableCell className="font-medium text-slate-900 dark:text-white">
-                                <span className="inline-flex items-center gap-1.5">
-                                  {item.teamName}
-                                  {item.isRetry && (
-                                    <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 px-1.5 py-0 text-[11px]">
-                                      {MESSAGES.settlement.payoutRequestRetryBadge}
-                                    </Badge>
-                                  )}
-                                </span>
-                              </TableCell>
-                              <TableCell className="tabular-nums text-slate-500 dark:text-slate-400">
-                                {item.settlementMonth}
-                              </TableCell>
-                              <TableCell className="text-right tabular-nums text-slate-900 dark:text-white">
-                                {formatAmount(item.netAmount)}
-                              </TableCell>
-                              <TableCell className="text-slate-500 dark:text-slate-400">
-                                {item.bankName ?? '-'}
-                              </TableCell>
-                              <TableCell className="tabular-nums text-slate-500 dark:text-slate-400">
-                                {item.bankAccountMasked ?? '-'}
-                              </TableCell>
-                              <TableCell className="text-slate-500 dark:text-slate-400">
-                                {item.accountHolder ?? '-'}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
+                        ))}
+                      </TableBody>
+                    </Table>
                   )}
-                  <p className="text-sm font-bold text-slate-900 dark:text-white tabular-nums">
-                    {MESSAGES.settlementDynamic.payoutTeamsTotal(
-                      preview.includedCount,
-                      formatAmount(preview.includedTotal),
-                    )}
-                  </p>
-                  {preview.balance !== null ? (
-                    <p className="text-sm text-slate-500 dark:text-slate-400 tabular-nums">
-                      {MESSAGES.settlement.payoutRequestBalanceLabel} {formatAmount(preview.balance)}
-                    </p>
-                  ) : (
-                    <p role="alert" className="flex items-start gap-1.5 text-sm text-amber-700 dark:text-amber-400">
-                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                      {MESSAGES.settlementDynamic.payoutRequestBalanceUnavailable(
-                        preview.balanceError ?? '',
-                      )}
-                    </p>
-                  )}
-                  {preview.balanceShort && (
-                    <p role="alert" className="flex items-start gap-1.5 text-sm text-amber-700 dark:text-amber-400">
-                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                      {MESSAGES.settlement.payoutRequestBalanceShort}
-                    </p>
-                  )}
-                </div>
+                </PayoutDialogSection>
 
                 {preview.excluded.length > 0 && (
-                  <div className="space-y-2">
-                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">
-                      {MESSAGES.settlement.payoutRequestExcludedTitle}
-                    </h4>
-                    <div className="rounded-lg border border-slate-200 dark:border-slate-700 overflow-x-auto">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>{MESSAGES.settlement.payoutColTeam}</TableHead>
-                            <TableHead>{MESSAGES.settlement.payoutRequestColMonth}</TableHead>
-                            <TableHead className="text-right">
-                              {MESSAGES.settlement.payoutColExcludedAmount}
-                            </TableHead>
-                            <TableHead>{MESSAGES.settlement.payoutColReason}</TableHead>
+                  <PayoutDialogSection
+                    title={MESSAGES.settlement.payoutRequestExcludedTitle}
+                    count={preview.excluded.length}
+                    flush
+                    collapsible
+                  >
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>{MESSAGES.settlement.payoutColTeam}</TableHead>
+                          <TableHead>{MESSAGES.settlement.payoutRequestColMonth}</TableHead>
+                          <TableHead className="text-right">
+                            {MESSAGES.settlement.payoutColExcludedAmount}
+                          </TableHead>
+                          <TableHead>{MESSAGES.settlement.payoutColReason}</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {preview.excluded.map((item) => (
+                          <TableRow key={item.settlementId}>
+                            <TableCell className="font-medium text-slate-900 dark:text-white">
+                              {item.teamName}
+                            </TableCell>
+                            <TableCell className="tabular-nums text-slate-500 dark:text-slate-400">
+                              {item.settlementMonth}
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums text-slate-900 dark:text-white">
+                              {formatAmount(item.netAmount)}
+                            </TableCell>
+                            <TableCell className="text-slate-500 dark:text-slate-400 whitespace-normal">
+                              {item.reason}
+                            </TableCell>
                           </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {preview.excluded.map((item) => (
-                            <TableRow key={item.settlementId}>
-                              <TableCell className="font-medium text-slate-900 dark:text-white">
-                                {item.teamName}
-                              </TableCell>
-                              <TableCell className="tabular-nums text-slate-500 dark:text-slate-400">
-                                {item.settlementMonth}
-                              </TableCell>
-                              <TableCell className="text-right tabular-nums text-slate-900 dark:text-white">
-                                {formatAmount(item.netAmount)}
-                              </TableCell>
-                              <TableCell className="text-slate-500 dark:text-slate-400 whitespace-normal">
-                                {item.reason}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </div>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </PayoutDialogSection>
                 )}
 
                 {preview.included.length > 0 && (
-                  <label className="flex items-start gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={confirmed}
-                      onChange={(e) => setConfirmed(e.target.checked)}
-                      disabled={isSubmitting}
-                      className="mt-0.5 w-4 h-4 rounded border-slate-300 text-primary focus:ring-primary"
-                    />
-                    <span className="text-sm text-slate-700 dark:text-slate-300">
-                      {MESSAGES.settlement.payoutRequestConfirmCheckbox}
-                    </span>
-                  </label>
+                  <PayoutConfirmBox
+                    checked={confirmed}
+                    onChange={setConfirmed}
+                    disabled={isSubmitting}
+                    label={MESSAGES.settlement.payoutRequestConfirmCheckbox}
+                  />
                 )}
-              </div>
+              </>
             )}
 
             {submitError && (
@@ -503,19 +532,15 @@ export function PayoutRequestDialog({
             )}
           </div>
         ) : (
-          <div className="space-y-3 py-2">
+          <div className="space-y-4 py-2">
             {response && (
               <>
-                <p className="text-sm font-medium text-slate-900 dark:text-white tabular-nums">
-                  {MESSAGES.settlementDynamic.payoutRequestSummary(
-                    response.summary.requested,
-                    response.summary.unconfirmed,
-                    response.summary.rejected,
-                    response.summary.skipped,
-                    response.summary.errored ?? 0,
-                  )}
-                </p>
-                <div className="rounded-lg border border-slate-200 dark:border-slate-700 overflow-x-auto">
+                <PayoutSummaryTiles tiles={buildResultTiles(response.summary)} columns={5} />
+                <PayoutDialogSection
+                  title={MESSAGES.settlement.payoutRequestResultRows}
+                  count={response.results.length}
+                  flush
+                >
                   <Table>
                     <TableHeader>
                       <TableRow>
@@ -547,7 +572,7 @@ export function PayoutRequestDialog({
                       })}
                     </TableBody>
                   </Table>
-                </div>
+                </PayoutDialogSection>
               </>
             )}
           </div>

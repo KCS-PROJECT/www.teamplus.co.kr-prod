@@ -35,6 +35,7 @@ import { QuerySettlementDto } from "./dto/query-settlement.dto";
 import { QuerySettlementDetailsDto } from "./dto/query-settlement-details.dto";
 import {
   ApproveSettlementDto,
+  ApproveSettlementsBatchDto,
   RejectSettlementDto,
 } from "./dto/approve-settlement.dto";
 import { PayoutSettlementDto } from "./dto/payout-settlement.dto";
@@ -54,6 +55,7 @@ import {
   CheckPayoutResultsDto,
   CreatePayoutRequestsDto,
   QueryPayoutRequestPreviewDto,
+  ReviewPayoutRequestDto,
 } from "./dto/payout-request.dto";
 
 @ApiTags("Settlements")
@@ -161,26 +163,8 @@ export class SettlementsController {
   }
 
   /**
-   * static path — `:id` 보다 반드시 위에 선언해야 "payout-export" 가 :id 로 매칭되지 않는다.
+   * static path — `:id` 보다 반드시 위에 선언해야 "payout-file" 이 :id 로 매칭되지 않는다.
    */
-  @Get("payout-export")
-  @Roles("ADMIN")
-  @ApiOperation({
-    summary: "지급 대상 CSV 다운로드",
-    description:
-      "approved 상태 정산만 포함합니다. 계좌번호는 복호화된 평문입니다.",
-  })
-  @ApiQuery({ name: "month", required: true, description: "정산월 YYYY-MM" })
-  @ApiProduces("text/csv")
-  @ApiResponse({ status: 200, description: "CSV 파일 다운로드" })
-  async getPayoutExport(@Query("month") month: string, @Res() res: Response) {
-    const csvBuffer = await this.settlementsService.getPayoutExport(month);
-    const filename = `settlement_payout_${month}.csv`;
-    res.setHeader("Content-Type", "text/csv; charset=utf-8");
-    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-    res.send(csvBuffer);
-  }
-
   @Get("payout-file/preview")
   @Roles("ADMIN")
   @ApiOperation({
@@ -382,14 +366,45 @@ export class SettlementsController {
     return this.payoutRequestService.request(dto, req.user.id);
   }
 
+  @Post("payout-requests/:requestId/review")
+  @Roles("ADMIN")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "지급 요청 확인 완료",
+    description:
+      "결과 조회가 운영자 확인(needsReview)을 켠 지급 요청을 메모와 함께 닫는다. 그 정산에 켜진 요청이 더 없으면 지급 요청·수동 완료가 다시 가능해진다. " +
+      "정산·요청 상태와 원장은 바꾸지 않는다. 확인이 필요하지 않은 요청이면 409 PAYOUT_REVIEW_NOT_OPEN.",
+  })
+  @ApiParam({ name: "requestId", description: "지급 요청 ID" })
+  @ApiResponse({ status: 200, description: "확인 완료" })
+  @ApiResponse({ status: 404, description: "지급 요청 없음" })
+  @ApiResponse({ status: 409, description: "PAYOUT_REVIEW_NOT_OPEN" })
+  @AuditAction({
+    action: "settlement.payout-request.review",
+    resource: "SettlementPayoutRequest",
+    includeKeys: ["requestId", "memo"],
+  })
+  async reviewPayoutRequest(
+    @Param("requestId") requestId: string,
+    @Body() dto: ReviewPayoutRequestDto,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    return this.payoutResultService.completeReview(
+      requestId,
+      req.user.id,
+      dto.memo,
+    );
+  }
+
   @Post("payout-requests/check")
   @Roles("ADMIN")
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: "나이스 지급 결과 조회(수동)",
+    summary: "나이스 지급 결과 조회(운영 대응용 수동)",
     description:
       "지급일 단위로 나이스 결과(0101002)를 읽어 진행 중인 요청을 확정한다(성공 → paid, 실패 → failed, 삭제·미접수 → approved 복귀). " +
-      "평일 16시·18시 자동 조회와 같은 경로. off 면 409 PAYOUT_API_OFF, 같은 지급일을 조회 중이면 409 PAYOUT_CHECK_IN_PROGRESS, 나이스 오류면 502.",
+      "배치(평일 16:00~19:30 30분 간격 · 매일 09:05 아침 대사 · 5분마다 응답 미확인 정리)와 같은 경로라 평소에는 부를 일이 없다. " +
+      "off 면 409 PAYOUT_API_OFF, 같은 지급일을 조회 중이면 409 PAYOUT_CHECK_IN_PROGRESS, 나이스 오류면 502.",
   })
   @ApiResponse({ status: 200, description: "조회·반영 집계" })
   @ApiResponse({
@@ -407,6 +422,31 @@ export class SettlementsController {
     @Request() req: AuthenticatedRequest,
   ) {
     return this.payoutResultService.checkByAdmin(dto.payDate, req.user.id);
+  }
+
+  @Post("approve-batch")
+  @Roles("ADMIN")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "정산 일괄 승인",
+    description:
+      "선택한 정산을 건별로 승인한다(pending → approved). 각 건은 단건 승인과 같은 규칙(순지급액 음수 불가·pending 만)을 거치며 " +
+      "한 건의 실패가 다른 건을 막지 않는다. 건별 결과(APPROVED · SKIPPED[NOT_PENDING·NET_NEGATIVE·SETTLEMENT_NOT_FOUND·DUPLICATE_ITEM] · ERROR)를 돌려준다.",
+  })
+  @ApiResponse({ status: 200, description: "처리 완료(건별 결과 참고)" })
+  @AuditAction({
+    action: "settlement.approve-batch",
+    resource: "Settlement",
+    includeKeys: ["ids", "note"],
+  })
+  async approveSettlementsBatch(
+    @Body() dto: ApproveSettlementsBatchDto,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    this.logger.log(
+      `정산 일괄 승인 요청: items=${dto.ids.length}, adminId=${req.user.id}`,
+    );
+    return this.settlementsService.approveBatch(dto.ids, req.user.id, dto.note);
   }
 
   @Post("accounts/:teamId/register")

@@ -5,10 +5,12 @@ import {
   IsArray,
   IsISO8601,
   IsString,
+  Length,
   Matches,
   ValidateNested,
 } from "class-validator";
 import { ApiProperty } from "@nestjs/swagger";
+import { PAYOUT_REVIEW_MEMO_MAX } from "../constants/payout-review.constant";
 
 /** 한 번의 요청에 담을 수 있는 정산 수 — 나이스를 건별로 순차 호출하므로 응답 시간을 묶어 둔다. */
 export const PAYOUT_REQUEST_MAX_ITEMS = 10;
@@ -88,6 +90,20 @@ export class CreatePayoutRequestsDto {
   @ValidateNested({ each: true })
   @Type(() => PayoutRequestItemDto)
   items!: PayoutRequestItemDto[];
+}
+
+/** 지급 요청 확인 완료 — POST /api/v1/settlements/payout-requests/:requestId/review. 메모는 필수(무엇을 확인했는지 남긴다). */
+export class ReviewPayoutRequestDto {
+  @ApiProperty({
+    description: `확인 내용 메모(1~${PAYOUT_REVIEW_MEMO_MAX}자)`,
+    example: "나이스 화면과 대조 — 재요청 건은 삭제 처리함",
+  })
+  @Transform(({ value }) => (typeof value === "string" ? value.trim() : value))
+  @IsString()
+  @Length(1, PAYOUT_REVIEW_MEMO_MAX, {
+    message: `메모는 1~${PAYOUT_REVIEW_MEMO_MAX}자여야 합니다.`,
+  })
+  memo!: string;
 }
 
 /** 지급 결과 조회(수동) — POST /api/v1/settlements/payout-requests/check. */
