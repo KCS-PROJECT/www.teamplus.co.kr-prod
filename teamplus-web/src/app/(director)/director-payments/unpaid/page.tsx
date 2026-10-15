@@ -113,15 +113,18 @@ export default function DirectorUnpaidPage() {
     [toast],
   );
 
-  // 월(귀속 청구월)별 그룹 — 항목 정렬(오래된 청구 우선)을 보존한 채 순서대로 묶는다.
+  // 월(귀속 청구월)별 그룹 — 오래된 달 먼저, 그룹 안은 항목 정렬(오래된 청구 우선) 유지.
+  //   대회는 끝나기 전·일정 미정이면 오래전 청구여도 이번 달로 오므로 연속 묶기로는 같은 달이 쪼개진다.
   const monthGroups = useMemo(() => {
-    const groups: { yearMonth: string; items: UnpaidOverdueItem[] }[] = [];
+    const groups = new Map<string, UnpaidOverdueItem[]>();
     for (const item of data?.items ?? []) {
-      const last = groups[groups.length - 1];
-      if (last && last.yearMonth === item.yearMonth) last.items.push(item);
-      else groups.push({ yearMonth: item.yearMonth, items: [item] });
+      const group = groups.get(item.yearMonth);
+      if (group) group.push(item);
+      else groups.set(item.yearMonth, [item]);
     }
-    return groups;
+    return Array.from(groups, ([yearMonth, items]) => ({ yearMonth, items })).sort(
+      (a, b) => a.yearMonth.localeCompare(b.yearMonth),
+    );
   }, [data]);
 
   return (

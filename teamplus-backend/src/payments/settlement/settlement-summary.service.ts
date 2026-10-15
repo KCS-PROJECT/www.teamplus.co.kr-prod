@@ -368,6 +368,26 @@ interface RosterEntry {
 }
 
 /**
+ * 납부 현황·미납 목록의 대회 표시월 — 종료월이 이미 왔으면 종료월, 일정 미정이거나 종료월이
+ *  이번 달보다 뒤면 이번 달. 끝나기 전 받은 돈이 종료월까지 어느 화면에도 안 보이는 것을 막는다.
+ *  endDate 는 @db.Date 라 dbDateToKstYearMonth(UTC 성분)로 읽는다.
+ */
+function isTournamentPinnedToCurrentMonth(
+  endDate: Date | null | undefined,
+  currentYm: string,
+): boolean {
+  return endDate == null || dbDateToKstYearMonth(endDate) > currentYm;
+}
+
+function tournamentDisplayYearMonth(
+  endDate: Date | null | undefined,
+  currentYm: string,
+): string {
+  const endYm = endDate == null ? null : dbDateToKstYearMonth(endDate);
+  return endYm != null && endYm <= currentYm ? endYm : currentYm;
+}
+
+/**
  * [정산 센터 Phase 2b] 팀/Academy 정산 소계 배치 집계 코어.
  *
  * ⚠️ getClassPayments(Phase 2a)를 수업별 N회 호출하지 않는다 — 그 함수는 최신 enrollment
@@ -552,9 +572,9 @@ export class SettlementSummaryService {
 
   /**
    * [정산 센터] 연체 미납 목록 — 미납 관리 페이지 전용. 청구 단위 그룹 + 인별 라인.
-   *  귀속 월은 인별 상세/안내 발송 API 와 동일 축(수업=billing.yearMonth, 대회=청구 발행 KST월
-   *  — resolveTournamentAttribution 의 PENDING 규칙과 일치)이라 페이지에서 그대로 넘겨도
-   *  월 스코프가 어긋나지 않는다.
+   *  귀속 월은 인별 상세/안내 발송 API 와 동일 축(수업=billing.yearMonth, 대회=종료월, 종료 전·
+   *  일정 미정이면 이번 달 — 납부 현황 buildTournamentSourceRows 와 같은 축)이라 페이지에서
+   *  그대로 넘겨도 월 스코프가 어긋나지 않는다.
    */
   async getTeamUnpaidItems(
     requester: JwtUserPayload,
@@ -651,10 +671,11 @@ export class SettlementSummaryService {
           sourceType: "TOURNAMENT",
           sourceId: reg.tournamentId,
           sourceName: reg.tournament?.name ?? "-",
-          // 상세(getTeamUnpaidMembers)가 납부 현황과 같은 대회 귀속월로 조회하도록 — 종료월, 일정 미정이면 이번 달.
-          yearMonth: reg.tournament?.endDate
-            ? dbDateToKstYearMonth(reg.tournament.endDate)
-            : currentYm,
+          // 상세(getTeamUnpaidMembers)가 납부 현황과 같은 대회 표시월로 조회하도록.
+          yearMonth: tournamentDisplayYearMonth(
+            reg.tournament?.endDate,
+            currentYm,
+          ),
           billedAt,
           overdueDays: Math.max(
             0,
@@ -1253,8 +1274,9 @@ export class SettlementSummaryService {
    * [핵심 SoT] 대회 목록 → 소스별 귀속 행(EnrichedRow) 배치 빌더(팀 API 전용).
    *  배치 1쿼리(대회+참가+연결 Payment). **선불·후불 대회 모두 포함**(Codex HIGH-2).
    *  소계·인별 미수금이 이 결과를 공유(§2-0 불변식). 당월 활동 없는 대회(rows 0)는 제외.
-   *  일정 미정(종료일 없음) 대회는 귀속월을 정할 수 없어 KST 이번 달 요청에만 전부 넣는다
-   *  (결제 유무 무관). 순서: 일정 있는 대회 종료일 늦은 순 → 일정 미정 대회 생성일 최신순.
+   *  일정 미정(종료일 없음)이거나 종료월이 이번 달보다 뒤인 대회는 KST 이번 달 요청에만 전부
+   *  넣는다(결제 유무 무관, isTournamentPinnedToCurrentMonth). 순서: 일정 있는 대회 종료일 늦은 순 →
+   *  일정 미정 대회 생성일 최신순.
    */
   private async buildTournamentSourceRows(
     tournamentIds: string[],
@@ -1263,7 +1285,8 @@ export class SettlementSummaryService {
     if (tournamentIds.length === 0) return [];
 
     const todayUtcMidnight = kstTodayUtcMidnight();
-    const isCurrentMonth = yearMonth === resolveSettlementYearMonth();
+    const currentYm = resolveSettlementYearMonth();
+    const isCurrentMonth = yearMonth === currentYm;
 
     const tournaments = await this.prisma.tournament.findMany({
       where: { id: { in: tournamentIds } },
@@ -1309,8 +1332,11 @@ export class SettlementSummaryService {
       const rows: EnrichedRow[] = [];
       let hasApprovedPayment = false;
       const cancelled = t.status === "cancelled";
-      const datesTbd = t.endDate == null;
-      if (datesTbd && !isCurrentMonth) continue;
+      const pinnedToCurrentMonth = isTournamentPinnedToCurrentMonth(
+        t.endDate,
+        currentYm,
+      );
+      if (pinnedToCurrentMonth && !isCurrentMonth) continue;
       for (const reg of t.registrations) {
         const att = resolveTournamentAttribution({
           registrationPaymentStatus: reg.paymentStatus,
@@ -1320,7 +1346,7 @@ export class SettlementSummaryService {
           tournamentBillingMode: t.billingMode,
           tournamentStatus: t.status,
         });
-        if (!datesTbd && att.yearMonth !== yearMonth) continue;
+        if (!pinnedToCurrentMonth && att.yearMonth !== yearMonth) continue;
         // 취소 대회의 정산 전 참가는 청구될 일이 없다 — 인원·정산 상태·막힘 사유 계산에서도
         //   제외해 "정산 필요" 신호가 취소 대회에 뜨지 않게 한다(돈이 오간 행만 남긴다).
         if (cancelled && att.billingStatus === "UNSETTLED") continue;
