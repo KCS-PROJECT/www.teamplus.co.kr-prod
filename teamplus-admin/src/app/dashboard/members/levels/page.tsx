@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Badge } from '@/components/ui/badge';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import {
@@ -396,10 +397,10 @@ export default function MemberLevelsPage() {
 
               <div>
                 <label className="text-sm font-medium mb-2 block">조정 포인트</label>
-                <Input
-                  type="number"
+                <NumberInput
+                  allowNegative
                   value={adjustPoints}
-                  onChange={(e) => setAdjustPoints(parseInt(e.target.value) || 0)}
+                  onValueChange={setAdjustPoints}
                   placeholder="예: 1000 (적립) 또는 -500 (차감)"
                 />
                 {adjustPoints !== 0 && (

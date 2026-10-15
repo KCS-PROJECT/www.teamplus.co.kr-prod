@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
@@ -810,10 +811,10 @@ export default function LeaguesPage() {
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">연도</label>
-                <Input
-                  type="number"
+                <NumberInput
+                  min={1}
                   value={leagueForm.year}
-                  onChange={(event) => setLeagueForm((prev) => ({ ...prev, year: Number(event.target.value) || new Date().getFullYear() }))}
+                  onValueChange={(year) => setLeagueForm((prev) => ({ ...prev, year }))}
                 />
               </div>
               <div>
@@ -891,30 +892,27 @@ export default function LeaguesPage() {
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">레벨</label>
-                <Input
-                  type="number"
+                <NumberInput
                   min={1}
                   max={6}
                   value={divisionForm.level}
-                  onChange={(event) => setDivisionForm((prev) => ({ ...prev, level: Number(event.target.value) || 1 }))}
+                  onValueChange={(level) => setDivisionForm((prev) => ({ ...prev, level }))}
                 />
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">최대 팀 수</label>
-                <Input
-                  type="number"
+                <NumberInput
                   min={1}
                   value={divisionForm.maxTeams}
-                  onChange={(event) => setDivisionForm((prev) => ({ ...prev, maxTeams: Number(event.target.value) || 1 }))}
+                  onValueChange={(maxTeams) => setDivisionForm((prev) => ({ ...prev, maxTeams }))}
                 />
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">정렬 순서</label>
-                <Input
-                  type="number"
+                <NumberInput
                   min={0}
                   value={divisionForm.sortOrder}
-                  onChange={(event) => setDivisionForm((prev) => ({ ...prev, sortOrder: Number(event.target.value) || 0 }))}
+                  onValueChange={(sortOrder) => setDivisionForm((prev) => ({ ...prev, sortOrder }))}
                 />
               </div>
             </div>

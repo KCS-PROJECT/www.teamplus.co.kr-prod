@@ -20,6 +20,7 @@ import {
 import { MESSAGES } from "@/lib/messages";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { NumberInput } from "@/components/ui/number-input";
 import { PageHeader } from "@/components/ui/page-header";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import {
@@ -634,18 +635,12 @@ function AppSettingsContent() {
                   >
                     최대 로그인 시도 횟수
                   </label>
-                  <Input
+                  <NumberInput
                     id={maxLoginAttemptsId}
-                    type="number"
                     min={1}
                     max={10}
                     value={formData.maxLoginAttempts}
-                    onChange={(e) =>
-                      updateField(
-                        "maxLoginAttempts",
-                        parseInt(e.target.value) || 5,
-                      )
-                    }
+                    onValueChange={(value) => updateField("maxLoginAttempts", value)}
                     placeholder="예: 5"
                     aria-label="최대 로그인 시도 횟수"
                     className="h-11 bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600 dark:text-white"
@@ -661,18 +656,12 @@ function AppSettingsContent() {
                   >
                     세션 타임아웃 (분)
                   </label>
-                  <Input
+                  <NumberInput
                     id={sessionTimeoutId}
-                    type="number"
                     min={5}
                     max={480}
                     value={formData.sessionTimeout}
-                    onChange={(e) =>
-                      updateField(
-                        "sessionTimeout",
-                        parseInt(e.target.value) || 60,
-                      )
-                    }
+                    onValueChange={(value) => updateField("sessionTimeout", value)}
                     placeholder="예: 60"
                     aria-label="세션 타임아웃 (분)"
                     className="h-11 bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600 dark:text-white"
@@ -696,18 +685,12 @@ function AppSettingsContent() {
                   >
                     결제권 만료일 (일)
                   </label>
-                  <Input
+                  <NumberInput
                     id={creditExpireDaysId}
-                    type="number"
                     min={30}
                     max={365}
                     value={formData.creditExpireDays}
-                    onChange={(e) =>
-                      updateField(
-                        "creditExpireDays",
-                        parseInt(e.target.value) || 90,
-                      )
-                    }
+                    onValueChange={(value) => updateField("creditExpireDays", value)}
                     placeholder="예: 90"
                     aria-label="결제권 만료일 (일)"
                     className="h-11 bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600 dark:text-white"
@@ -723,18 +706,12 @@ function AppSettingsContent() {
                   >
                     QR 만료 시간 (분)
                   </label>
-                  <Input
+                  <NumberInput
                     id={qrExpireMinutesId}
-                    type="number"
                     min={1}
                     max={60}
                     value={formData.qrExpireMinutes}
-                    onChange={(e) =>
-                      updateField(
-                        "qrExpireMinutes",
-                        parseInt(e.target.value) || 5,
-                      )
-                    }
+                    onValueChange={(value) => updateField("qrExpireMinutes", value)}
                     placeholder="예: 5"
                     aria-label="QR 만료 시간 (분)"
                     className="h-11 bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600 dark:text-white"
@@ -1025,24 +1002,13 @@ function AppSettingsContent() {
                 </label>
                 <div className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
                   <span>{MESSAGES.settings.payoutDayPrefix}</span>
-                  <Input
+                  <NumberInput
                     id={payoutDayOfMonthId}
-                    type="number"
                     min={1}
                     max={31}
                     value={formData.payoutDayOfMonth}
-                    onChange={(e) =>
-                      updateField(
-                        "payoutDayOfMonth",
-                        Math.min(
-                          31,
-                          Math.max(
-                            1,
-                            parseInt(e.target.value) ||
-                              DEFAULT_SETTINGS.payoutDayOfMonth,
-                          ),
-                        ),
-                      )
+                    onValueChange={(value) =>
+                      updateField("payoutDayOfMonth", value)
                     }
                     className="h-11 w-24 bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600 dark:text-white"
                   />

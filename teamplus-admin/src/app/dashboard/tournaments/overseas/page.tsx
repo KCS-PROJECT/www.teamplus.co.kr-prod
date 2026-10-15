@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
@@ -771,30 +772,27 @@ export default function OverseasTripsPage() {
 
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">최대 참가 인원</label>
-              <Input
-                type="number"
+              <NumberInput
                 min={1}
                 value={tripForm.maxParticipants}
-                onChange={(event) => setTripForm((prev) => ({ ...prev, maxParticipants: Number(event.target.value) || 1 }))}
+                onValueChange={(maxParticipants) => setTripForm((prev) => ({ ...prev, maxParticipants }))}
               />
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">예상 총비용</label>
-              <Input
-                type="number"
+              <NumberInput
                 min={0}
                 value={tripForm.estimatedCost}
-                onChange={(event) => setTripForm((prev) => ({ ...prev, estimatedCost: Number(event.target.value) || 0 }))}
+                onValueChange={(estimatedCost) => setTripForm((prev) => ({ ...prev, estimatedCost }))}
               />
             </div>
 
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">예치금</label>
-              <Input
-                type="number"
+              <NumberInput
                 min={0}
                 value={tripForm.depositAmount}
-                onChange={(event) => setTripForm((prev) => ({ ...prev, depositAmount: Number(event.target.value) || 0 }))}
+                onValueChange={(depositAmount) => setTripForm((prev) => ({ ...prev, depositAmount }))}
               />
             </div>
             <div>

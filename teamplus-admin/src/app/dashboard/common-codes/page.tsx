@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { PageHeader } from '@/components/ui/page-header';
@@ -648,10 +649,10 @@ export default function CommonCodesPage() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">정렬 순서</label>
-                <Input
-                  type="number"
+                <NumberInput
+                  min={0}
                   value={groupForm.sortOrder}
-                  onChange={(e) => setGroupForm(prev => ({ ...prev, sortOrder: parseInt(e.target.value) || 0 }))}
+                  onValueChange={(sortOrder) => setGroupForm(prev => ({ ...prev, sortOrder }))}
                 />
               </div>
               <div className="flex items-end">
@@ -753,10 +754,10 @@ export default function CommonCodesPage() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">정렬 순서</label>
-                <Input
-                  type="number"
+                <NumberInput
+                  min={0}
                   value={codeForm.sortOrder}
-                  onChange={(e) => setCodeForm(prev => ({ ...prev, sortOrder: parseInt(e.target.value) || 0 }))}
+                  onValueChange={(sortOrder) => setCodeForm(prev => ({ ...prev, sortOrder }))}
                 />
               </div>
               <div className="flex items-end">
