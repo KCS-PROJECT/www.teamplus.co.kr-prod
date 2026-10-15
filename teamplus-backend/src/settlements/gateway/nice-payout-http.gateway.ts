@@ -7,6 +7,11 @@ import {
   NicePayoutCallMeta,
   NicePayoutGateway,
   NicePayoutOutcome,
+  NicePayoutRequestInput,
+  NicePayoutRequestResult,
+  NicePayoutResultRow,
+  NicePayoutResultsQuery,
+  NicePayoutResultsResult,
   NicePayoutSid,
   NiceSubMallRequest,
   NiceSubMallResult,
@@ -24,6 +29,24 @@ interface CallResult {
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === "object" && v !== null && !Array.isArray(v);
+
+/** 나이스는 숫자 필드를 숫자로도 문자열로도 보낸다 — 둘 다 받고 그 밖은 null. */
+const toNumber = (raw: unknown): number | null => {
+  const n =
+    typeof raw === "number"
+      ? raw
+      : typeof raw === "string" && raw.trim() !== ""
+        ? Number(raw)
+        : NaN;
+  return Number.isFinite(n) ? n : null;
+};
+
+const toText = (raw: unknown): string | null => {
+  if (typeof raw === "number") return String(raw);
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  return trimmed === "" ? null : trimmed;
+};
 
 /** DI 는 nicePayoutGatewayProvider 팩토리로만 생성한다(시각 주입 인자 때문). */
 export class NicePayoutHttpGateway implements NicePayoutGateway {
@@ -60,18 +83,82 @@ export class NicePayoutHttpGateway implements NicePayoutGateway {
 
   async getBalance(): Promise<NiceBalanceResult> {
     const { outcome, meta, body } = await this.call("0101001", {});
-    let remainAmt: number | null = null;
-    if (outcome === "SUCCESS" && body) {
-      const raw = body.remainAmt;
-      const n =
-        typeof raw === "number"
-          ? raw
-          : typeof raw === "string" && raw.trim() !== ""
-            ? Number(raw)
-            : NaN;
-      remainAmt = Number.isFinite(n) ? n : null;
-    }
+    const remainAmt =
+      outcome === "SUCCESS" && body ? toNumber(body.remainAmt) : null;
     return { outcome, meta, remainAmt };
+  }
+
+  async requestPayout(
+    req: NicePayoutRequestInput,
+  ): Promise<NicePayoutRequestResult> {
+    const fields: Record<string, string> = {
+      settlmntDt: req.settlmntDt,
+      subId: req.subId,
+      settlmntAmt: String(req.settlmntAmt),
+      dupChkYn: req.dupChkYn,
+    };
+    if (req.accntDesc) fields.accntDesc = req.accntDesc;
+    const { outcome, meta, body } = await this.call("0102001", fields, {
+      subId: req.subId,
+    });
+    const seq = outcome === "SUCCESS" && body ? toText(body.seq) : null;
+    // 성공 코드인데 접수번호가 없으면 취소·대조를 할 수 없다 — 요청이 반영됐는지 모르는 것으로 본다.
+    if (outcome === "SUCCESS" && seq === null) {
+      const m = { ...meta, error: "invalid_response" };
+      this.log("warn", m, { subId: req.subId });
+      return { outcome: "AMBIGUOUS", meta: m, seq: null };
+    }
+    return { outcome, meta, seq };
+  }
+
+  async queryPayoutResults(
+    req: NicePayoutResultsQuery,
+  ): Promise<NicePayoutResultsResult> {
+    const fields: Record<string, string> = { settlmntDt: req.settlmntDt };
+    if (req.subId) fields.subId = req.subId;
+    const { outcome, meta, body } = await this.call(
+      "0101002",
+      fields,
+      req.subId ? { subId: req.subId } : {},
+    );
+    if (outcome !== "SUCCESS" || !body) {
+      return {
+        outcome,
+        meta,
+        totCnt: null,
+        succCnt: null,
+        failCnt: null,
+        remainAmt: null,
+        rows: [],
+      };
+    }
+    const rawDetail = body.detail;
+    const rows: NicePayoutResultRow[] = [];
+    if (Array.isArray(rawDetail)) {
+      for (const item of rawDetail) {
+        if (!isRecord(item)) continue;
+        const subId = toText(item.subId);
+        const statusNm = toText(item.statusNm);
+        if (subId === null || statusNm === null) continue;
+        // 계좌번호(accntNo)·사업자번호(subCoNo)는 읽지 않는다 — 기록·로그 어디에도 남기지 않기 위해서다.
+        rows.push({
+          seq: toText(item.seq),
+          subId,
+          statusNm,
+          settlmntAmt: toNumber(item.settlmntAmt),
+          errReason: toText(item.errReason)?.slice(0, 200) ?? null,
+        });
+      }
+    }
+    return {
+      outcome,
+      meta,
+      totCnt: toNumber(body.totCnt),
+      succCnt: toNumber(body.succCnt),
+      failCnt: toNumber(body.failCnt),
+      remainAmt: toNumber(body.remainAmt),
+      rows,
+    };
   }
 
   async upsertSubMall(req: NiceSubMallRequest): Promise<NiceSubMallResult> {

@@ -10,10 +10,7 @@ import {
   instantToKstDateOnly,
   nowKstParts,
 } from "@/common/utils/kst-date.util";
-import {
-  dbDateToKstYearMonth,
-  instantToKstYearMonth,
-} from "@/payments/settlement/attribution.util";
+import { resolvePaymentAttributionMonth } from "@/payments/settlement/attribution.util";
 import {
   resolvePaymentTeamIds,
   PaymentTeamLinks,
@@ -219,23 +216,6 @@ type ClosePaymentRow = Prisma.PaymentGetPayload<{
 }>;
 
 /**
- * 귀속월(YYYY-MM) — 마감 판정에는 쓰지 않는 표시용 병기값.
- *  선불=enrollment.billingMonth, 후불=billing.yearMonth, 대회=completedAt KST 월.
- */
-function resolveAttributionMonth(payment: ClosePaymentRow): string | null {
-  const line = payment.monthlyBillingLines[0];
-  if (line) return line.billing.yearMonth;
-  const enrollment = payment.enrollments[0];
-  if (enrollment?.billingMonth) {
-    return dbDateToKstYearMonth(enrollment.billingMonth);
-  }
-  if (payment.tournamentRegistrations.length > 0) {
-    return instantToKstYearMonth(payment.completedAt ?? payment.createdAt);
-  }
-  return null;
-}
-
-/**
  * 정산 상세 출처 + productName — 대회 → 선불 수업 → 후불 수업 순(팀 거래탭 subjectName 과
  * 동일 우선순위). 이름과 출처를 한 함수에서 정해 둘이 서로 다른 대상을 가리키지 않게 한다.
  */
@@ -427,7 +407,7 @@ export class SettlementCloseService {
         pgFeeRate: rowPgFeeRate,
         pgFeeAmount,
         actualAmount: p.amount - feeAmount - pgFeeAmount,
-        attributionMonth: resolveAttributionMonth(p),
+        attributionMonth: resolvePaymentAttributionMonth(p),
         memo: null,
       });
     }
@@ -538,7 +518,7 @@ export class SettlementCloseService {
           pgFeeRate: originalPgFeeRate,
           pgFeeAmount,
           actualAmount: -r.refundAmount - feeAmount - pgFeeAmount,
-          attributionMonth: resolveAttributionMonth(original),
+          attributionMonth: resolvePaymentAttributionMonth(original),
           memo: "환불",
         });
       }

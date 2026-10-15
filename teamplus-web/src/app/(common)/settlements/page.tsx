@@ -19,6 +19,7 @@ import {
 } from '@/services/team.service';
 import { MESSAGES } from '@/lib/messages';
 import { settlementAccountStatusView } from '@/lib/settlement-account-status';
+import { formatPayoutScheduled } from '@/lib/settlement-payout';
 import { cn } from '@/lib/utils';
 
 // ---------------------------------------------------------------------------
@@ -37,6 +38,7 @@ interface SettlementListItem {
   netAmount: number;
   status: SettlementStatus;
   completedAt: string | null;
+  payoutScheduledDate: string | null;
   accountStatus: TeamSettlementAccountStatus | null;
 }
 
@@ -46,6 +48,7 @@ interface ApiSettlementListItem {
   netAmount?: number;
   status?: string;
   completedAt?: string | null;
+  payoutScheduledDate?: string | null;
   accountStatus?: TeamSettlementAccountStatus | null;
   team?: { id?: string; name?: string };
 }
@@ -111,6 +114,7 @@ function mapApiSettlement(item: ApiSettlementListItem): SettlementListItem {
     netAmount: item.netAmount ?? 0,
     status: normalizeStatus(item.status),
     completedAt: item.completedAt ?? null,
+    payoutScheduledDate: item.payoutScheduledDate ?? null,
     accountStatus: item.accountStatus ?? null,
   };
 }
@@ -242,6 +246,12 @@ function SettlementRow({
   const isNetNegative = item.netAmount < 0;
   const paidDate =
     item.status === 'paid' && item.completedAt ? formatPaidDate(item.completedAt) : '';
+  const payoutHint =
+    item.status === 'processing'
+      ? formatPayoutScheduled(item.payoutScheduledDate)
+      : item.status === 'failed'
+        ? MESSAGES.settlements.payoutFailedHint
+        : '';
 
   return (
     <button
@@ -265,6 +275,11 @@ function SettlementRow({
             ? `${item.teamName} ${MESSAGES.settlements.paidDateLabel(paidDate)}`
             : item.teamName}
         </p>
+        {payoutHint && (
+          <p className="mt-0.5 truncate text-card-meta font-medium text-it-ink-500 dark:text-rink-300">
+            {payoutHint}
+          </p>
+        )}
         {isNetNegative && (
           <p className="mt-1 text-card-meta font-bold text-flame-500">
             {MESSAGES.settlements.negativeNetAmountNotice}

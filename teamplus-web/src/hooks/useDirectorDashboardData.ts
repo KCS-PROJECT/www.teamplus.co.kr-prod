@@ -124,16 +124,6 @@ function buildPriorityTasks(
     });
   }
 
-  // 기본 항목: 항상 표시
-  tasks.push({
-    icon: 'credit_card',
-    iconBg: 'bg-blue-50 dark:bg-blue-900/20',
-    iconColor: 'text-primary dark:text-blue-400',
-    title: '미수금 확인',
-    subtitle: '이번 달 미결제 현황 확인',
-    href: '/director-payments',
-  });
-
   return tasks;
 }
 

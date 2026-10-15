@@ -40,6 +40,15 @@ import {
 } from 'lucide-react';
 import { api } from '@/services/api-client';
 import { getAccountStatusMeta, type AccountStatus } from './accountStatusMeta';
+import {
+  formatPayoutMonthDay,
+  getPayoutRequestStatusMeta,
+  getPayoutStatusLabelOverride,
+  type PayoutApiMode,
+  type PayoutRequestInfo,
+} from './payoutRequestMeta';
+import { isoToKstDateTimeLabel } from '@/lib/kst-date';
+import { PayoutReviewList } from './PayoutReviewList';
 
 export type SettlementStatus =
   | 'pending'
@@ -117,6 +126,8 @@ interface SettlementDetail {
   } | null;
   scheduledAt?: string | null;
   completedAt?: string | null;
+  payoutScheduledDate?: string | null;
+  payoutRequests?: PayoutRequestInfo[];
   createdAt: string;
   updatedAt: string;
   team: { id: string; name: string };
@@ -284,6 +295,8 @@ interface SettlementDetailDialogProps {
   /** 승인/거절/지급 성공 시 부모 목록 새로고침 */
   onActionSuccess: (message: string) => void;
   onActionError: (message: string) => void;
+  /** 지급대행 모드. live 에서는 나이스 지급 요청이 지급 경로라 수동 [지급 완료] 를 숨긴다. */
+  payoutMode?: PayoutApiMode;
 }
 
 export function SettlementDetailDialog({
@@ -292,6 +305,7 @@ export function SettlementDetailDialog({
   onOpenChange,
   onActionSuccess,
   onActionError,
+  payoutMode = 'off',
 }: SettlementDetailDialogProps) {
   const [detail, setDetail] = useState<SettlementDetail | null>(null);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
@@ -534,6 +548,16 @@ export function SettlementDetailDialog({
 
   const statusMeta = detail ? STATUS_META[detail.status] : null;
   const StatusIcon = statusMeta?.icon ?? Clock;
+  const statusLabel = detail
+    ? getPayoutStatusLabelOverride(detail.status, detail.payoutScheduledDate) ?? statusMeta?.label
+    : undefined;
+  const payoutRequests = detail?.payoutRequests ?? [];
+  const reviewRequests = payoutRequests.filter((r) => r.needsReview);
+  const scheduledDateLabel = formatPayoutMonthDay(detail?.payoutScheduledDate);
+  const latestPayoutReason = payoutRequests[0]?.errReason || payoutRequests[0]?.requestDetail || null;
+  // 지급대행 연동(live) 중에는 지급 요청 → 결과 조회로 상태가 바뀌므로 수동 지급 완료를 막는다.
+  const canManualPayout =
+    (detail?.status === 'approved' || detail?.status === 'failed') && payoutMode !== 'live';
   const rejectReasonFromTx = detail?.transactions?.find(
     (t) => t.transactionType === 'reject',
   )?.description;
@@ -595,7 +619,7 @@ export function SettlementDetailDialog({
                   {statusMeta && (
                     <Badge className={statusMeta.badge}>
                       <StatusIcon className="h-3 w-3 mr-1" aria-hidden="true" />
-                      {statusMeta.label}
+                      {statusLabel}
                     </Badge>
                   )}
                   {isNegative && (
@@ -644,6 +668,18 @@ export function SettlementDetailDialog({
             <>
               {/* 금액 요약 — 한 줄(플랫폼 수수료가 있으면 5칸) + 계좌 한 줄 */}
               <div className="shrink-0 space-y-2">
+                {detail.status === 'processing' && scheduledDateLabel && (
+                  <p className="flex items-start gap-1.5 text-sm font-medium text-purple-700 dark:text-purple-400">
+                    <Clock className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
+                    {MESSAGES.settlementDynamic.payoutScheduledNotice(scheduledDateLabel)}
+                  </p>
+                )}
+                {detail.status === 'failed' && (
+                  <p className="flex items-start gap-1.5 text-sm text-red-600 dark:text-red-400" role="alert">
+                    <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
+                    {latestPayoutReason ?? MESSAGES.settlement.payoutFailedNotice}
+                  </p>
+                )}
                 <dl
                   className={`grid grid-cols-2 gap-2 text-sm ${
                     summaryItems.length > 4 ? 'sm:grid-cols-5' : 'sm:grid-cols-4'
@@ -670,7 +706,7 @@ export function SettlementDetailDialog({
                     {MESSAGES.settlement.payoutDisabledNegative}
                   </p>
                 )}
-                {!payoutAccountReady && detail.status === 'approved' && (
+                {!payoutAccountReady && canManualPayout && (
                   <p className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400" role="alert">
                     <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" aria-hidden="true" />
                     {MESSAGES.settlement.payoutDisabledAccount}
@@ -696,6 +732,106 @@ export function SettlementDetailDialog({
                     </span>
                     {detail.accountHolder && ` · ${MESSAGES.settlement.accountHolderSeparator} ${detail.accountHolder}`}
                   </p>
+                )}
+                {reviewRequests.length > 0 && (
+                  <div className="space-y-1">
+                    <h4 className="text-sm font-semibold text-slate-900 dark:text-white">
+                      {MESSAGES.settlement.reviewSectionTitle}
+                    </h4>
+                    <PayoutReviewList
+                      requests={reviewRequests}
+                      onResolved={() => {
+                        if (settlementId) void loadDetail(settlementId);
+                        onActionSuccess(MESSAGES.settlement.reviewResolved);
+                      }}
+                      onError={onActionError}
+                    />
+                  </div>
+                )}
+                {payoutRequests.length > 0 && (
+                  <div className="space-y-1">
+                    <h4 className="text-sm font-semibold text-slate-900 dark:text-white">
+                      {MESSAGES.settlement.payoutHistoryTitle}
+                    </h4>
+                    <div className="max-h-40 overflow-auto rounded-lg border border-slate-200 dark:border-slate-700">
+                      <table className="w-full text-xs">
+                        <thead className="sticky top-0 bg-slate-50 dark:bg-slate-800">
+                          <tr className="border-b border-slate-200 dark:border-slate-700">
+                            <th className={`${headCellClass} text-left whitespace-nowrap`}>
+                              {MESSAGES.settlement.payoutHistoryColRequestedAt}
+                            </th>
+                            <th className={`${headCellClass} text-left whitespace-nowrap`}>
+                              {MESSAGES.settlement.payoutHistoryColPayDate}
+                            </th>
+                            <th className={`${headCellClass} text-right whitespace-nowrap`}>
+                              {MESSAGES.settlement.payoutColAmount}
+                            </th>
+                            <th className={`${headCellClass} text-left whitespace-nowrap`}>
+                              {MESSAGES.settlement.payoutHistoryColStatus}
+                            </th>
+                            <th className={`${headCellClass} text-left whitespace-nowrap`}>
+                              {MESSAGES.settlement.payoutHistoryColNiceSeq}
+                            </th>
+                            <th className={`${headCellClass} text-left`}>{MESSAGES.settlement.payoutHistoryColReason}</th>
+                            <th className={`${headCellClass} text-right whitespace-nowrap`}>
+                              {MESSAGES.settlement.payoutHistoryColChecks}
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {payoutRequests.map((request) => {
+                            const requestMeta = getPayoutRequestStatusMeta(request.status, request.statusLabel);
+                            return (
+                              <tr
+                                key={request.id}
+                                className="border-b border-slate-100 dark:border-slate-700/60 last:border-b-0 align-top"
+                              >
+                                <td className="px-3 py-2 tabular-nums whitespace-nowrap text-slate-900 dark:text-white">
+                                  {isoToKstDateTimeLabel(request.requestedAt)}
+                                </td>
+                                <td className="px-3 py-2 tabular-nums whitespace-nowrap text-slate-500 dark:text-slate-400">
+                                  {request.settlementDate?.slice(0, 10) ?? '-'}
+                                </td>
+                                <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap text-slate-900 dark:text-white">
+                                  {formatAmount(request.amount)}
+                                </td>
+                                <td className="px-3 py-2 whitespace-nowrap">
+                                  <span className="inline-flex items-center gap-1">
+                                    <Badge className={`${requestMeta.badge} px-1.5 py-0 text-[11px]`}>
+                                      {requestMeta.label}
+                                    </Badge>
+                                    {(request.needsAttention || request.needsReview) && (
+                                      <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 px-1.5 py-0 text-[11px]">
+                                        {MESSAGES.settlement.needsAttentionBadge}
+                                      </Badge>
+                                    )}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-2 tabular-nums whitespace-nowrap text-slate-500 dark:text-slate-400">
+                                  {request.niceSeq ?? '-'}
+                                </td>
+                                <td className="px-3 py-2 text-slate-500 dark:text-slate-400 break-words">
+                                  {[request.errReason, request.requestDetail].filter(Boolean).join(' · ') || '-'}
+                                  {request.reviewedAt && request.reviewMemo && (
+                                    <p className="mt-0.5 text-slate-400 dark:text-slate-500">
+                                      {MESSAGES.settlementDynamic.reviewedNote(
+                                        request.reviewedByName ?? '-',
+                                        isoToKstDateTimeLabel(request.reviewedAt),
+                                        request.reviewMemo,
+                                      )}
+                                    </p>
+                                  )}
+                                </td>
+                                <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap text-slate-500 dark:text-slate-400">
+                                  {MESSAGES.settlementDynamic.payoutHistoryChecks(request.checkCount)}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
                 )}
               </div>
 
@@ -1158,7 +1294,7 @@ export function SettlementDetailDialog({
                 </Button>
               </>
             )}
-            {detail?.status === 'approved' && (
+            {canManualPayout && detail && (
               <>
                 <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                   {MESSAGES.settlement.close}
@@ -1180,7 +1316,7 @@ export function SettlementDetailDialog({
                 </Button>
               </>
             )}
-            {detail && detail.status !== 'pending' && detail.status !== 'approved' && (
+            {detail && detail.status !== 'pending' && !canManualPayout && (
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 {MESSAGES.settlement.close}
               </Button>

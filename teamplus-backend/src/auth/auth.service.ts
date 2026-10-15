@@ -2932,9 +2932,11 @@ function resolveWithdrawBlockerLink(
       return "/academy";
     case "postpaidUnpaid":
       if (isParent) return "/payment/history?tab=pending";
-      return isAcademyDirector ? "/academy" : "/director-payments";
+      return isAcademyDirector
+        ? "/academy"
+        : "/director-payments/collections";
     case "tournamentUnsettled":
-      return "/director-payments";
+      return "/director-payments/collections";
     case "refundInProgress":
       if (isParent) return "/payment/history";
       return isAcademyDirector ? "/academy" : "/director-payments/refunds";

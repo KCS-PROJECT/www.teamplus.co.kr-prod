@@ -23,8 +23,9 @@ export const SETTLEMENT_STATUS_VALUES = Object.values(
 /**
  * 상태 전이표.
  *  - pending → approved(승인) | rejected(반려)
- *  - approved → paid(지급, Phase 1 직접 전이) | processing(후속 단계 예약 — Phase 1 서비스는 호출 안 함)
- *  - processing → paid | failed / failed → processing (후속 단계 예약)
+ *  - approved → paid(수동 지급 완료) | processing(나이스 지급 요청을 잡음)
+ *  - processing → paid(결과 성공) | failed(결과 실패) | approved(요청 거절·나이스에서 삭제·접수되지 않음 → 지급 예정으로 복귀)
+ *  - failed → processing(재요청) | paid(실패 건을 운영자가 다른 방법으로 보낸 뒤 완료 처리)
  *  - paid 종결 상태
  *  - rejected → pending 은 **마감 생성기 전용** 전이다(SettlementCloseService 가 재마감 시
  *    재계산 대상으로 되돌릴 때만 사용) — approve/reject/payout 등 일반 API 는 이 전이를
@@ -42,8 +43,12 @@ const TRANSITIONS: Record<SettlementStatus, readonly SettlementStatus[]> = {
   [SETTLEMENT_STATUS.PROCESSING]: [
     SETTLEMENT_STATUS.PAID,
     SETTLEMENT_STATUS.FAILED,
+    SETTLEMENT_STATUS.APPROVED,
   ],
-  [SETTLEMENT_STATUS.FAILED]: [SETTLEMENT_STATUS.PROCESSING],
+  [SETTLEMENT_STATUS.FAILED]: [
+    SETTLEMENT_STATUS.PROCESSING,
+    SETTLEMENT_STATUS.PAID,
+  ],
   [SETTLEMENT_STATUS.PAID]: [],
   [SETTLEMENT_STATUS.REJECTED]: [SETTLEMENT_STATUS.PENDING],
 };
@@ -53,7 +58,7 @@ const ACTION_LABELS: Partial<Record<SettlementStatus, string>> = {
   [SETTLEMENT_STATUS.APPROVED]: "승인",
   [SETTLEMENT_STATUS.REJECTED]: "반려",
   [SETTLEMENT_STATUS.PAID]: "지급",
-  [SETTLEMENT_STATUS.PROCESSING]: "후속 처리 전환",
+  [SETTLEMENT_STATUS.PROCESSING]: "지급 요청",
   [SETTLEMENT_STATUS.FAILED]: "실패 처리",
 };
 

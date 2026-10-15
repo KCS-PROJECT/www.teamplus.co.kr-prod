@@ -32,6 +32,8 @@ import { resolveNiceAction } from "./utils/nice-account-state.util";
 import { NicePayoutApiService } from "./nice-payout-api.service";
 import { resolvePayoutApiMode } from "./payout-mode.util";
 import type { PayoutApiMode } from "./constants/payout-mode.constant";
+import { SETTLEMENT_STATUS } from "./constants/settlement-status.constant";
+import { acquireSettlementCloseLock } from "./utils/settlement-locks.util";
 import type {
   NiceSubMallRequest,
   NiceSubMallResult,
@@ -48,6 +50,9 @@ const ACCOUNT_CHANGED_MESSAGE =
 
 export const SUBMALL_WINDOW_CLOSED_MESSAGE =
   "23:00~01:00에는 은행 시스템 전환으로 정산 계좌를 등록할 수 없습니다. 01시 이후 다시 저장해주세요.";
+
+export const PAYOUT_IN_PROGRESS_MESSAGE =
+  "지급 처리 중인 정산이 있어 지금은 계좌를 변경할 수 없습니다. 지급 결과가 확정된 뒤 다시 시도해주세요.";
 
 const SUBMALL_SID = "0105001";
 
@@ -207,7 +212,48 @@ export class TeamSettlementAccountService {
     requester: JwtUserPayload,
   ): Promise<AccountRegistrationPolicy> {
     await this.assertReadAccess(teamId, requester);
-    return this.getRegistrationPolicy();
+    const policy = await this.getRegistrationPolicy();
+    // 지급 요청이 나간 정산이 있으면 계좌를 바꿀 수 없다 — 나이스가 이체할 계좌와 우리 기록이 어긋나면 안 된다.
+    if (!policy.saveBlockedReason && (await this.hasPayoutInProgress(teamId))) {
+      return { ...policy, saveBlockedReason: PAYOUT_IN_PROGRESS_MESSAGE };
+    }
+    return policy;
+  }
+
+  /** 팀에 나이스 지급 처리 중(processing) 정산이 있는지. */
+  async hasPayoutInProgress(teamId: string): Promise<boolean> {
+    const count = await this.prisma.settlement.count({
+      where: { teamId, status: SETTLEMENT_STATUS.PROCESSING },
+    });
+    return count > 0;
+  }
+
+  private async assertNoPayoutInProgress(teamId: string): Promise<void> {
+    if (await this.hasPayoutInProgress(teamId)) {
+      throw this.payoutInProgress();
+    }
+  }
+
+  /**
+   * 계좌를 바꾸는 쓰기와 같은 트랜잭션에서 — 팀 lock 으로 지급 요청 claim 과 직렬화되어,
+   * 검사와 쓰기 사이에 지급 요청이 끼어들어 요청 스냅샷과 다른 계좌로 이체되는 일을 막는다.
+   */
+  private async assertNoPayoutInProgressInTx(
+    tx: Prisma.TransactionClient,
+    teamId: string,
+  ): Promise<void> {
+    await acquireSettlementCloseLock(tx, teamId);
+    const count = await tx.settlement.count({
+      where: { teamId, status: SETTLEMENT_STATUS.PROCESSING },
+    });
+    if (count > 0) throw this.payoutInProgress();
+  }
+
+  private payoutInProgress(): ConflictException {
+    return new ConflictException({
+      message: PAYOUT_IN_PROGRESS_MESSAGE,
+      errorCode: "SETTLEMENT_PAYOUT_IN_PROGRESS",
+    });
   }
 
   async getRegistrationPolicy(): Promise<AccountRegistrationPolicy> {
@@ -225,6 +271,7 @@ export class TeamSettlementAccountService {
     requester: JwtUserPayload,
   ) {
     await this.assertTeamDirector(teamId, requester, undefined, true);
+    await this.assertNoPayoutInProgress(teamId);
 
     const live = (await this.currentMode()) === "live";
     if (live && isSubMallWindowClosed()) throw this.windowClosed();
@@ -293,32 +340,35 @@ export class TeamSettlementAccountService {
         // 새 내용을 먼저 확인 중(SUBMITTED)으로 쓴 뒤 나이스를 부른다 — 호출 중에는 지급이 막히고,
         //   나이스 반영 뒤 서버가 멈춰도 DB 가 나이스보다 옛 계좌로 남지 않는다.
         //   입력 오류로 거절되면 아래 registerWithNice 가 이전 값으로 되돌린다(첫 저장이면 행 삭제).
-        await this.mapWriteRace(async () => {
-          if (existing) {
-            // 읽어 둔 값이 그대로일 때만 잡는다 — 입력 오류로 되돌릴 때 이 값을 쓰므로, 그 사이 끝난
-            //   다른 변경을 옛 값으로 덮어쓰지 않게 한다.
-            const claimed = await this.prisma.teamSettlementAccount.updateMany({
-              where: {
-                teamId,
-                updatedAt: existing.updatedAt,
-                ...this.claimableWhere(claimAt),
-              },
-              data: unchanged
-                ? { registrationStartedAt: claimAt }
-                : { ...changedData, registrationStartedAt: claimAt },
-            });
-            if (claimed.count === 0) throw await this.claimConflict(teamId);
-          } else {
-            await this.prisma.teamSettlementAccount.create({
-              data: {
-                teamId,
-                businessNumber: encryptField(dto.businessNumber as string),
-                ...changedData,
-                registrationStartedAt: claimAt,
-              },
-            });
-          }
-        });
+        await this.mapWriteRace(() =>
+          this.prisma.$transaction(async (tx) => {
+            await this.assertNoPayoutInProgressInTx(tx, teamId);
+            if (existing) {
+              // 읽어 둔 값이 그대로일 때만 잡는다 — 입력 오류로 되돌릴 때 이 값을 쓰므로, 그 사이 끝난
+              //   다른 변경을 옛 값으로 덮어쓰지 않게 한다.
+              const claimed = await tx.teamSettlementAccount.updateMany({
+                where: {
+                  teamId,
+                  updatedAt: existing.updatedAt,
+                  ...this.claimableWhere(claimAt),
+                },
+                data: unchanged
+                  ? { registrationStartedAt: claimAt }
+                  : { ...changedData, registrationStartedAt: claimAt },
+              });
+              if (claimed.count === 0) throw await this.claimConflict(teamId);
+            } else {
+              await tx.teamSettlementAccount.create({
+                data: {
+                  teamId,
+                  businessNumber: encryptField(dto.businessNumber as string),
+                  ...changedData,
+                  registrationStartedAt: claimAt,
+                },
+              });
+            }
+          }),
+        );
         this.logger.log(
           `팀 정산 계좌 저장(나이스 등록 진행): teamId=${teamId}, userId=${requester.id}`,
         );
@@ -341,22 +391,25 @@ export class TeamSettlementAccountService {
     ) {
       // live 에서 나이스가 거절한 계좌는 수동 운영으로 돌아온 뒤 같은 내용을 다시 저장해도
       //   운영자 확인 대기로 되돌린다 — 그대로 두면 운영자가 풀 방법이 없어 지급이 막힌다.
-      await this.mapWriteRace(async () => {
-        if (existing) {
-          await this.prisma.teamSettlementAccount.update({
-            where: { teamId },
-            data: changedData,
-          });
-        } else {
-          await this.prisma.teamSettlementAccount.create({
-            data: {
-              teamId,
-              businessNumber: encryptField(dto.businessNumber as string),
-              ...changedData,
-            },
-          });
-        }
-      });
+      await this.mapWriteRace(() =>
+        this.prisma.$transaction(async (tx) => {
+          await this.assertNoPayoutInProgressInTx(tx, teamId);
+          if (existing) {
+            await tx.teamSettlementAccount.update({
+              where: { teamId },
+              data: changedData,
+            });
+          } else {
+            await tx.teamSettlementAccount.create({
+              data: {
+                teamId,
+                businessNumber: encryptField(dto.businessNumber as string),
+                ...changedData,
+              },
+            });
+          }
+        }),
+      );
       this.logger.log(
         `팀 정산 계좌 저장: teamId=${teamId}, userId=${requester.id}`,
       );
@@ -868,6 +921,8 @@ export class TeamSettlementAccountService {
     }
 
     const registered = dto.status === TeamSettlementAccountStatus.REGISTERED;
+    // 등록 해제는 지급 요청이 나간 계좌를 "등록 전"으로 돌리는 일이라 지급 처리 중에는 막는다.
+    if (!registered) await this.assertNoPayoutInProgress(teamId);
     const current = await this.prisma.teamSettlementAccount.findUnique({
       where: { teamId },
       select: { subMallId: true, createdAt: true },
@@ -882,16 +937,19 @@ export class TeamSettlementAccountService {
 
     let result: Prisma.BatchPayload;
     try {
-      result = await this.prisma.teamSettlementAccount.updateMany({
-        where: { teamId, updatedAt: new Date(dto.expectedUpdatedAt) },
-        data: {
-          status: dto.status,
-          registeredById: registered ? adminId : null,
-          registeredAt: registered ? new Date() : null,
-          lastResCode: null,
-          lastResMsg: null,
-          subMallId,
-        },
+      result = await this.prisma.$transaction(async (tx) => {
+        if (!registered) await this.assertNoPayoutInProgressInTx(tx, teamId);
+        return tx.teamSettlementAccount.updateMany({
+          where: { teamId, updatedAt: new Date(dto.expectedUpdatedAt) },
+          data: {
+            status: dto.status,
+            registeredById: registered ? adminId : null,
+            registeredAt: registered ? new Date() : null,
+            lastResCode: null,
+            lastResMsg: null,
+            subMallId,
+          },
+        });
       });
     } catch (error) {
       // sub_mall_id 유니크 위반 — 같은 서브몰 ID 를 다른 계좌가 이미 갖고 있다(계좌 변경과는 다른 원인).
@@ -937,6 +995,7 @@ export class TeamSettlementAccountService {
    * 다음 등록은 새 서브몰 ID 로 한다 — 그래서 이 계좌가 쓰던(또는 등록 엑셀에 실렸을) ID 를 물러난 ID 로 남긴다.
    */
   async reset(teamId: string, adminId: string) {
+    await this.assertNoPayoutInProgress(teamId);
     const current = await this.prisma.teamSettlementAccount.findUnique({
       where: { teamId },
       select: { subMallId: true, createdAt: true },
@@ -949,6 +1008,7 @@ export class TeamSettlementAccountService {
       (await this.nextSubMallId(teamId, current.createdAt));
 
     const deleted = await this.prisma.$transaction(async (tx) => {
+      await this.assertNoPayoutInProgressInTx(tx, teamId);
       const result = await tx.teamSettlementAccount.deleteMany({
         where: { teamId, createdAt: current.createdAt },
       });

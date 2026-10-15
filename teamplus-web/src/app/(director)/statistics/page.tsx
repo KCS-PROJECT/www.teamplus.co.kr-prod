@@ -9,7 +9,7 @@
  *  2. 매출 추이 차트 — 세그먼트(전체/선불/후불) 토글을 이 섹션 안에 배치
  *     (세그먼트는 추이·수업별 매출에만 적용되는 프론트 로컬 필터)
  *  3. 수업별 매출 (HBar + billingMode 뱃지) — 추이와 세그먼트 상태 공유
- *  4. 수납 관리 — 후불 청구/수납/미수(기간) + 현재 미수금 총액 + 결제 관리 이동.
+ *  4. 납부 관리 — 후불 청구/납부/미수(기간) + 현재 미수금 총액 + 납부 현황 이동.
  *     미수 계열 숫자를 이 섹션 한 곳에만 노출 (Hero 에 red 요소 금지)
  *  5. 회원 현황 (subtitle KPI + 월별 증감 타임라인)
  *  제거: 출석률 추이·수업별 출석률·mock 데이터 전부
@@ -248,6 +248,11 @@ export default function StatisticsPage() {
             data={data}
             segment={segment}
             onSegmentChange={setSegment}
+            collectionsHref={
+              scope === "month"
+                ? `/director-payments/collections?yearMonth=${anchor}`
+                : "/director-payments/collections"
+            }
           />
         )}
       </main>
@@ -262,10 +267,13 @@ function StatisticsContent({
   data,
   segment,
   onSegmentChange,
+  collectionsHref,
 }: {
   data: DirectorRevenueResponse;
   segment: RevenueSegment;
   onSegmentChange: (s: RevenueSegment) => void;
+  /** 납부 현황 진입 — 월간 보기면 보던 달을 들고 간다. */
+  collectionsHref: string;
 }) {
   const { hero, series, classRevenue, postpaidStatus, memberSummary, memberTrend } =
     data;
@@ -357,7 +365,7 @@ function StatisticsContent({
         )}
       </SectionCard>
 
-      {/* 4. 수납 관리 — 후불 청구/수납/미수(기간) + 현재 미수금 총액. 후불 수업 없으면 숨김 */}
+      {/* 4. 납부 관리 — 후불 청구/납부/미수(기간) + 현재 미수금 총액. 후불 수업 없으면 숨김 */}
       {postpaidStatus.hasPostpaid && (
         <SectionCard
           icon="receipt_long"
@@ -411,11 +419,11 @@ function StatisticsContent({
             )}
           </div>
           <NavLink
-            href="/director-payments"
+            href={collectionsHref}
             className="mt-4 flex min-h-[44px] items-center justify-center gap-1.5 rounded-xl bg-it-blue-500 px-4 text-card-body font-bold text-white transition-colors hover:bg-it-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-it-blue-500/40 active:brightness-95 motion-reduce:transition-none"
           >
             <Icon name="payments" className="text-[18px]" aria-hidden="true" />
-            {MESSAGES.statistics.goToPayments}
+            {MESSAGES.statistics.goToCollections}
           </NavLink>
         </SectionCard>
       )}
@@ -442,7 +450,7 @@ function StatisticsContent({
 // Sub Components
 // ============================================================
 
-/** 매출 요약 — 기간 컨트롤 섹션에 이어 붙는 Hero 숫자부 (미수금은 수납 관리 섹션 담당) */
+/** 매출 요약 — 기간 컨트롤 섹션에 이어 붙는 Hero 숫자부 (미수금은 납부 관리 섹션 담당) */
 function HeroSummary({ hero }: { hero: RevenueHero }) {
   return (
     <div className="mt-5 border-t border-it-line pt-4 dark:border-rink-700">

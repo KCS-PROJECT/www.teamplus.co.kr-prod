@@ -60,4 +60,80 @@ describe("NicePayoutFakeGateway", () => {
     expect(r.meta.error).toBe("timeout");
     expect(r.meta.durationMs).toBeGreaterThanOrEqual(5);
   });
+
+  describe("지급 요청·결과 조회", () => {
+    const payout = (settlmntAmt: number, subId = "TEAM-1") => ({
+      subId,
+      settlmntDt: "20200102",
+      settlmntAmt,
+      dupChkYn: "N" as const,
+      accntDesc: "팀플러스 7월 정산",
+    });
+
+    it("접수 성공 → seq 발급, 지난 지급일 결과 조회에서 '성공'", async () => {
+      const r = await gw.requestPayout(payout(500000));
+      expect(r.outcome).toBe("SUCCESS");
+      expect(r.meta.sid).toBe("0102001");
+      expect(r.seq).toMatch(/^FAKE\d{6}$/);
+
+      const q = await gw.queryPayoutResults({ settlmntDt: "20200102" });
+      expect(q.outcome).toBe("SUCCESS");
+      expect(q.meta.sid).toBe("0101002");
+      expect(q.totCnt).toBe(1);
+      expect(q.succCnt).toBe(1);
+      expect(q.rows).toEqual([
+        {
+          seq: r.seq,
+          subId: "TEAM-1",
+          statusNm: "성공",
+          settlmntAmt: 500000,
+          errReason: null,
+        },
+      ]);
+    });
+
+    it("아직 오지 않은 지급일은 '요청' 으로 보인다", async () => {
+      await gw.requestPayout({ ...payout(1000), settlmntDt: "20991231" });
+      const q = await gw.queryPayoutResults({ settlmntDt: "20991231" });
+      expect(q.rows[0].statusNm).toBe("요청");
+    });
+
+    it("끝 세 자리 999 → 접수는 되지만 결과는 '실패' + 사유", async () => {
+      await gw.requestPayout(payout(100999));
+      const q = await gw.queryPayoutResults({ settlmntDt: "20200102" });
+      expect(q.rows[0].statusNm).toBe("실패");
+      expect(q.rows[0].errReason).toContain("잔액부족");
+      expect(q.failCnt).toBe(1);
+    });
+
+    it("끝 세 자리 998 → 접수된 뒤 응답 유실(AMBIGUOUS), 결과 조회에는 나타난다", async () => {
+      const r = await gw.requestPayout(payout(100998));
+      expect(r.outcome).toBe("AMBIGUOUS");
+      expect(r.seq).toBeNull();
+      const q = await gw.queryPayoutResults({ settlmntDt: "20200102" });
+      expect(q.rows).toHaveLength(1);
+      expect(q.rows[0].settlmntAmt).toBe(100998);
+    });
+
+    it("끝 세 자리 997 → 접수되지 않고 응답도 없음(AMBIGUOUS), 결과 조회에 없다", async () => {
+      const r = await gw.requestPayout(payout(100997));
+      expect(r.outcome).toBe("AMBIGUOUS");
+      const q = await gw.queryPayoutResults({ settlmntDt: "20200102" });
+      expect(q.rows).toHaveLength(0);
+    });
+
+    it("dupChkYn=Y 인 같은 서브몰·지급일·금액 재요청은 1103, N 이면 둘 다 접수", async () => {
+      await gw.requestPayout(payout(1000));
+      const dup = await gw.requestPayout({ ...payout(1000), dupChkYn: "Y" });
+      expect(dup.outcome).toBe("TERMINAL");
+      expect(dup.meta.resCode).toBe("1103");
+      const again = await gw.requestPayout(payout(1000));
+      expect(again.outcome).toBe("SUCCESS");
+      const q = await gw.queryPayoutResults({
+        settlmntDt: "20200102",
+        subId: "TEAM-1",
+      });
+      expect(q.rows).toHaveLength(2);
+    });
+  });
 });

@@ -1,4 +1,5 @@
 import {
+  IsBoolean,
   IsOptional,
   IsIn,
   IsInt,
@@ -7,7 +8,7 @@ import {
   Min,
   Max,
 } from "class-validator";
-import { Type } from "class-transformer";
+import { Transform, Type } from "class-transformer";
 import { ApiPropertyOptional } from "@nestjs/swagger";
 import {
   SETTLEMENT_STATUS_VALUES,
@@ -42,6 +43,15 @@ export class QuerySettlementDto {
   @IsOptional()
   @IsString()
   teamId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "true 면 확인 필요 정산만(관리자) — 지급 요청에 needsReview 가 켜졌거나 열린 지급 이상 건이 연결된 정산. status 와 함께 쓰면 AND",
+  })
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === "true")
+  @IsBoolean()
+  needsReview?: boolean;
 
   @ApiPropertyOptional({
     description: "조회 시작일 YYYY-MM-DD (KST 달력일, 생성일 기준)",

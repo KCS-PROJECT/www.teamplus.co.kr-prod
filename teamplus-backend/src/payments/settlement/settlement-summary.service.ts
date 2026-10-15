@@ -14,6 +14,8 @@ import {
   resolveTournamentAttribution,
   instantToKstYearMonth,
   dbDateToKstYearMonth,
+  resolvePaymentAttributionMonth,
+  resolveRefundedTerminalAmount,
   isRosterMemberForMonth,
   SettlementBillingStatus,
 } from "./attribution.util";
@@ -112,6 +114,8 @@ export interface TournamentSettlementSummary {
   blockedReasonCode: BlockedReasonCode;
   /** 취소된 대회 — 돈 흐름(결제·청구·환불)이 있어 목록에 남은 경우에만 true. */
   cancelled: boolean;
+  /** 일정 미정(종료일 없음) 대회 — 이번 달 화면에만 모아 보여준다. */
+  datesTbd: boolean;
   detailPath: string;
 }
 
@@ -241,6 +245,8 @@ interface TournamentSourceRows {
   isPostpaid: boolean;
   tournamentEnded: boolean;
   cancelled: boolean;
+  endDate: Date | null;
+  createdAt: Date;
 }
 
 /** 팀 인별 미수금 — 회원 1행(자녀/선수 축). */
@@ -296,7 +302,7 @@ export interface UnpaidReminderResult {
 export interface TeamTransactionItem {
   paymentId: string;
   amount: number;
-  /** completed | refunded | partially_refunded | cancelled(실결제 후 취소). */
+  /** completed | refunded | partially_refunded | refund_processing | cancelled(실결제 후 취소). */
   paymentStatus: string;
   completedAt: Date;
   /** 결제자(보호자) 표시명 — 이름 비어 있으면 null. */
@@ -307,11 +313,27 @@ export interface TeamTransactionItem {
   subjectName: string | null;
   sourceType: "CLASS" | "TOURNAMENT" | null;
   billingTiming: "PREPAID" | "POSTPAID" | null;
+  /** 귀속 월(YYYY-MM) — 후불 청구월 · 선불 billingMonth · 대회 결제월. 근거 없으면 null. */
+  attributionMonth: string | null;
+  /** 이 결제의 환불액 — 환불 아니면 0. */
+  refundedAmount: number;
+}
+
+/** 선택 월 전체 결제 요약 — items 상한(300)과 무관하다. */
+export interface TeamTransactionsSummary {
+  paymentCount: number;
+  /** Payment.amount 합(총액 — 환불과 무관). */
+  paymentAmount: number;
+  refundCount: number;
+  refundAmount: number;
+  /** paymentAmount - refundAmount. */
+  netAmount: number;
 }
 
 export interface TeamTransactionsResponse {
   yearMonth: string;
   items: TeamTransactionItem[];
+  summary: TeamTransactionsSummary;
   /** 월 내 전체 건수 — items 는 최신순 상한(300)까지만 담는다. */
   totalCount: number;
 }
@@ -549,6 +571,7 @@ export class SettlementSummaryService {
     }
 
     const now = Date.now();
+    const currentYm = resolveSettlementYearMonth();
     const { lineWhere, regWhere } = this.overdueWheres(
       scopeTeamIds,
       this.overdueCutoff(),
@@ -577,7 +600,7 @@ export class SettlementSummaryService {
           userId: true,
           childId: true,
           payment: { select: { amount: true, createdAt: true } },
-          tournament: { select: { name: true } },
+          tournament: { select: { name: true, endDate: true } },
           child: { select: { firstName: true, lastName: true } },
           user: { select: { firstName: true, lastName: true } },
         },
@@ -628,7 +651,10 @@ export class SettlementSummaryService {
           sourceType: "TOURNAMENT",
           sourceId: reg.tournamentId,
           sourceName: reg.tournament?.name ?? "-",
-          yearMonth: instantToKstYearMonth(billedAt),
+          // 상세(getTeamUnpaidMembers)가 납부 현황과 같은 대회 귀속월로 조회하도록 — 종료월, 일정 미정이면 이번 달.
+          yearMonth: reg.tournament?.endDate
+            ? dbDateToKstYearMonth(reg.tournament.endDate)
+            : currentYm,
           billedAt,
           overdueDays: Math.max(
             0,
@@ -1227,6 +1253,8 @@ export class SettlementSummaryService {
    * [핵심 SoT] 대회 목록 → 소스별 귀속 행(EnrichedRow) 배치 빌더(팀 API 전용).
    *  배치 1쿼리(대회+참가+연결 Payment). **선불·후불 대회 모두 포함**(Codex HIGH-2).
    *  소계·인별 미수금이 이 결과를 공유(§2-0 불변식). 당월 활동 없는 대회(rows 0)는 제외.
+   *  일정 미정(종료일 없음) 대회는 귀속월을 정할 수 없어 KST 이번 달 요청에만 전부 넣는다
+   *  (결제 유무 무관). 순서: 일정 있는 대회 종료일 늦은 순 → 일정 미정 대회 생성일 최신순.
    */
   private async buildTournamentSourceRows(
     tournamentIds: string[],
@@ -1235,6 +1263,7 @@ export class SettlementSummaryService {
     if (tournamentIds.length === 0) return [];
 
     const todayUtcMidnight = kstTodayUtcMidnight();
+    const isCurrentMonth = yearMonth === resolveSettlementYearMonth();
 
     const tournaments = await this.prisma.tournament.findMany({
       where: { id: { in: tournamentIds } },
@@ -1244,6 +1273,7 @@ export class SettlementSummaryService {
         billingMode: true,
         status: true,
         endDate: true,
+        createdAt: true,
         teamId: true,
         team: { select: { name: true } },
         registrations: {
@@ -1269,7 +1299,6 @@ export class SettlementSummaryService {
       },
     });
 
-    let attributionUnknownCount = 0;
     const sources: TournamentSourceRows[] = [];
 
     for (const t of tournaments) {
@@ -1279,6 +1308,9 @@ export class SettlementSummaryService {
         : ("PREPAID" as const);
       const rows: EnrichedRow[] = [];
       let hasApprovedPayment = false;
+      const cancelled = t.status === "cancelled";
+      const datesTbd = t.endDate == null;
+      if (datesTbd && !isCurrentMonth) continue;
       for (const reg of t.registrations) {
         const att = resolveTournamentAttribution({
           registrationPaymentStatus: reg.paymentStatus,
@@ -1286,16 +1318,12 @@ export class SettlementSummaryService {
           endDate: t.endDate,
           payment: reg.payment,
           tournamentBillingMode: t.billingMode,
+          tournamentStatus: t.status,
         });
-        if (att.attributionUnknown) {
-          // 일정 미정(endDate null) 대회의 미확정 건은 정상 상태(기간 확정 시 귀속) —
-          //   이상치 경고 카운트에서 분리해 진짜 귀속 불명만 warn 에 남긴다.
-          if (t.endDate != null) {
-            attributionUnknownCount++;
-          }
-          continue;
-        }
-        if (att.yearMonth !== yearMonth) continue;
+        if (!datesTbd && att.yearMonth !== yearMonth) continue;
+        // 취소 대회의 정산 전 참가는 청구될 일이 없다 — 인원·정산 상태·막힘 사유 계산에서도
+        //   제외해 "정산 필요" 신호가 취소 대회에 뜨지 않게 한다(돈이 오간 행만 남긴다).
+        if (cancelled && att.billingStatus === "UNSETTLED") continue;
         if (reg.payment?.completedAt != null) hasApprovedPayment = true;
         rows.push({
           // 청구 대상 = 자녀(childId) 우선, 없으면 신청자.
@@ -1317,10 +1345,9 @@ export class SettlementSummaryService {
 
       if (rows.length === 0) continue; // 당월 활동 없는 대회 제외
 
-      // 취소 대회는 이 달 행에 금액(결제·청구·환불·예상액)이나 승인된 결제가 하나라도 있으면
-      //   남긴다 — 결제 대기만 있다가 함께 취소된 대회만 빼서, 숨김이 합계를 바꾸지 않게 한다.
+      // 취소 대회는 이 달 행에 금액(결제·청구·환불)이나 승인된 결제가 하나라도 있으면 남긴다 —
+      //   정산 전 참가는 위에서 뺐으므로, 결제 대기·미결제만 있다가 취소된 대회가 빠진다.
       //   승인 후 취소된 결제는 RefundLog 없이 CANCELLED 로 귀속돼 금액이 0 이라 따로 본다.
-      const cancelled = t.status === "cancelled";
       if (
         cancelled &&
         !hasApprovedPayment &&
@@ -1349,16 +1376,20 @@ export class SettlementSummaryService {
         isPostpaid,
         tournamentEnded,
         cancelled,
+        endDate: t.endDate,
+        createdAt: t.createdAt,
       });
     }
 
-    if (attributionUnknownCount > 0) {
-      this.logger.warn(
-        `[정산 소계] 대회 월귀속 근거 없는 참가 ${attributionUnknownCount}건 — 집계 제외. yearMonth=${yearMonth}`,
-      );
-    }
-
-    return sources;
+    return sources.sort((a, b) => {
+      const aTbd = a.endDate == null;
+      const bTbd = b.endDate == null;
+      if (aTbd !== bTbd) return aTbd ? 1 : -1;
+      const diff = aTbd
+        ? (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0)
+        : (b.endDate?.getTime() ?? 0) - (a.endDate?.getTime() ?? 0);
+      return diff !== 0 ? diff : a.sourceId.localeCompare(b.sourceId);
+    });
   }
 
   /**
@@ -1391,8 +1422,9 @@ export class SettlementSummaryService {
 
       let settlementStatus: SubtotalSettlementStatus;
       let blockedReasonCode: BlockedReasonCode = null;
-      if (!src.isPostpaid) {
-        // 선불 대회 — 정산 확정 단계 없음.
+      if (!src.isPostpaid || src.cancelled) {
+        // 선불 대회 — 정산 확정 단계 없음. 취소 대회 — 더 청구할 것이 없어 정산 대상 아님
+        //   (남은 행은 환불·승인 이력뿐).
         settlementStatus = "NOT_REQUIRED";
       } else {
         const settledCount = src.rows.filter(
@@ -1430,6 +1462,7 @@ export class SettlementSummaryService {
         mixedBilling: false, // 대회는 단일 결제방식
         blockedReasonCode,
         cancelled: src.cancelled,
+        datesTbd: src.endDate == null,
         detailPath: `/tournaments/${src.sourceId}/students`,
       });
     }
@@ -1928,7 +1961,18 @@ export class SettlementSummaryService {
     const yearMonth = resolveSettlementYearMonth(yearMonthRaw);
     const scopeTeamIds = await this.resolveTeamScope(requester, teamId);
     if (scopeTeamIds.length === 0) {
-      return { yearMonth, items: [], totalCount: 0 };
+      return {
+        yearMonth,
+        items: [],
+        totalCount: 0,
+        summary: {
+          paymentCount: 0,
+          paymentAmount: 0,
+          refundCount: 0,
+          refundAmount: 0,
+          netAmount: 0,
+        },
+      };
     }
 
     // 선택 월의 KST 경계 [1일 00:00, 다음달 1일 00:00) → UTC instant 범위.
@@ -1940,7 +1984,13 @@ export class SettlementSummaryService {
     const where: import("@prisma/client").Prisma.PaymentWhereInput = {
       completedAt: { gte: monthStart, lt: monthEnd },
       paymentStatus: {
-        in: ["completed", "refunded", "partially_refunded", "cancelled"],
+        in: [
+          "completed",
+          "refunded",
+          "partially_refunded",
+          "refund_processing",
+          "cancelled",
+        ],
       },
       ...buildPaymentTeamScopeWhere(scopeTeamIds),
     };
@@ -1955,27 +2005,41 @@ export class SettlementSummaryService {
           amount: true,
           paymentStatus: true,
           completedAt: true,
+          createdAt: true,
+          refundLogs: { select: { refundAmount: true } },
           user: { select: { firstName: true, lastName: true } },
           product: { select: { billingTiming: true } },
+          // 귀속월 산정은 마감 서비스와 같은 [0] 기준 — take:1 에도 같은 orderBy 를 건다.
           enrollments: {
             select: {
+              billingMonth: true,
               class: { select: { className: true } },
               child: { select: { firstName: true, lastName: true } },
             },
+            orderBy: { classId: "asc" },
             take: 1,
           },
           tournamentRegistrations: {
             select: {
-              tournament: { select: { name: true, billingMode: true } },
+              tournament: {
+                select: { name: true, billingMode: true, endDate: true },
+              },
               child: { select: { firstName: true, lastName: true } },
             },
+            orderBy: { tournamentId: "asc" },
             take: 1,
           },
           monthlyBillingLines: {
             select: {
-              billing: { select: { class: { select: { className: true } } } },
+              billing: {
+                select: {
+                  yearMonth: true,
+                  class: { select: { className: true } },
+                },
+              },
               user: { select: { firstName: true, lastName: true } },
             },
+            orderBy: { billing: { classId: "asc" } },
             take: 1,
           },
         },
@@ -1983,6 +2047,62 @@ export class SettlementSummaryService {
         take: TRANSACTIONS_MAX,
       }),
     ]);
+
+    // 요약은 목록 상한과 무관하게 선택 월 전체 — 목록이 월 전체를 담았으면 그 행으로 계산하고,
+    //   상한을 넘을 때만 같은 where 로 금액·상태·환불 로그만 다시 읽는다.
+    type SummaryRow = {
+      amount: number;
+      paymentStatus: string;
+      refundLogs: { refundAmount: number | null }[];
+    };
+    const summaryRows: SummaryRow[] =
+      totalCount <= payments.length
+        ? payments
+        : await this.prisma.payment.findMany({
+            where,
+            select: {
+              amount: true,
+              paymentStatus: true,
+              refundLogs: { select: { refundAmount: true } },
+            },
+          });
+
+    // 환불액 — 승인 후 취소는 전액, 환불 terminal 은 공용 규칙(부분=로그 합, 전액=로그 합 아니면
+    //   결제액). 환불 처리 중은 미확정이라 0.
+    const refundedOf = (p: SummaryRow): number => {
+      if (p.paymentStatus === "cancelled") return p.amount;
+      if (
+        p.paymentStatus !== "refunded" &&
+        p.paymentStatus !== "partially_refunded"
+      ) {
+        return 0;
+      }
+      return resolveRefundedTerminalAmount(
+        p.paymentStatus,
+        p.amount,
+        p.refundLogs,
+      );
+    };
+
+    const summary: TeamTransactionsSummary = {
+      paymentCount: totalCount,
+      paymentAmount: 0,
+      refundCount: 0,
+      refundAmount: 0,
+      netAmount: 0,
+    };
+    for (const r of summaryRows) {
+      summary.paymentAmount += r.amount;
+      if (
+        r.paymentStatus === "refunded" ||
+        r.paymentStatus === "partially_refunded" ||
+        r.paymentStatus === "cancelled"
+      ) {
+        summary.refundCount += 1;
+        summary.refundAmount += refundedOf(r);
+      }
+    }
+    summary.netAmount = summary.paymentAmount - summary.refundAmount;
 
     const toName = (
       u?: { firstName: string | null; lastName: string | null } | null,
@@ -2013,9 +2133,11 @@ export class SettlementSummaryService {
           null,
         sourceType: src.sourceType,
         billingTiming: src.billingTiming,
+        attributionMonth: resolvePaymentAttributionMonth(p),
+        refundedAmount: refundedOf(p),
       };
     });
 
-    return { yearMonth, items, totalCount };
+    return { yearMonth, items, totalCount, summary };
   }
 }

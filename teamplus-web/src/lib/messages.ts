@@ -1376,9 +1376,7 @@ export const MESSAGES = {
   },
   // 팀 정산 센터 (/director-payments) — 월 인식 훈련/대회/미수금
   settlement: {
-    // 탭 — 거래 내역(건별 장부·기본) / 정산 집계(훈련·대회 소계)
-    tabTransactions: "거래 내역",
-    tabSettlementAgg: "정산 현황",
+    // 훈련·대회 구분
     tabTraining: "훈련",
     tabTournament: "대회",
     tournamentCancelled: "취소된 대회",
@@ -1430,7 +1428,7 @@ export const MESSAGES = {
     mixed: "혼합",
     // 금액 라벨
     billed: "청구",
-    paid: "수납",
+    paid: "납부",
     outstanding: "미수",
     paidRatio: (paid: number, total: number) => `완납 ${paid}/${total}명`,
     // 예상 배지
@@ -1453,13 +1451,12 @@ export const MESSAGES = {
     blockedTournamentNotEnded: "대회가 끝나면 정산할 수 있어요.",
     blockedBillingTimingUnassigned: "결제 방식이 정해지지 않은 인원이 있어요.",
     // 빈 상태
-    emptyTraining: "해당 월에 정산할 훈련이 없습니다.",
-    emptyTournament: "해당 월에 정산할 대회가 없습니다.",
+    emptyTraining: "정산할 훈련이 없습니다.",
+    emptyTournament: "정산할 대회가 없습니다.",
     // 정산 집계 탭 — 훈련·대회 모두 없을 때만 통합 표기(한쪽만 없으면 섹션 자체 숨김)
-    emptySettlement: "해당 월에 정산할 내역이 없습니다.",
+    emptySettlement: "정산할 내역이 없습니다.",
     // 접근성 라벨 (하드코딩 금지 — aria-label)
     ariaCenter: "감독 정산 센터",
-    ariaFilter: "정산 현황 필터",
     // 로드 실패 / 재시도 (금융 화면 — 실패를 0/빈 결과로 위장 금지)
     loadFailedTitle: "정산 정보를 불러오지 못했습니다.",
     loadFailedDesc: "잠시 후 다시 시도해주세요.",
@@ -1469,6 +1466,25 @@ export const MESSAGES = {
     // AppBar 타이틀
     pageTitle: "결제 관리",
     appBarTitle: "결제 현황",
+    // 결제 내역(/director-payments, 결제일 기준) · 하위 화면 납부 현황(/director-payments/collections, 청구 월 기준)
+    ledgerTitle: "결제 내역",
+    collectionsTitle: "납부 현황",
+    ledgerMonthLabel: (m: number) => `${m}월 결제`,
+    collectionsMonthLabel: (m: number) => `${m}월분`,
+    ledgerNetLabel: "결제 금액",
+    ledgerPaymentLabel: "전체 결제",
+    ledgerRefundLabel: "환불",
+    ledgerPaymentLabelCount: (n: number) => `전체 결제 ${n}건`,
+    ledgerRefundLabelCount: (n: number) => `환불 ${n}건`,
+    ledgerBasisNote: "결제일 기준",
+    collectionsBasisNote: (m: number) => `${m}월분 기준`,
+    collectedLabel: "납부",
+    unpaidAllTimeChip: (n: number) => `미납 ${n}건 · 전 기간`,
+    attributionMonthChip: (m: number) => `${m}월분`,
+    attributionMonthYearChip: (y: number, m: number) => `${y}년 ${m}월분`,
+    collectionsCheck: (m: number) => `${m}월분 납부 확인`,
+    txnRefundProcessing: "환불 처리 중",
+    txnPartialRefund: (amount: string) => `환불 ${amount}원`,
     // 정산 집계 탭 하단 — 월별 지급 정산(/settlements) 바로가기
     // 미수금 탭 — 빈 상태 / 로드 실패
     emptyUnpaid: "미수금이 없습니다.",
@@ -3377,8 +3393,8 @@ export const MESSAGES = {
     homeMenuGroupsEmpty: "아직 그룹이 없어요",
     homeMenuNotices: "팀 공지",
     homeMenuNoticesMeta: "공지 작성 · 관리",
-    homeMenuCollections: "결제 관리",
-    homeMenuCollectionsMeta: "거래 내역 · 정산 현황 · 미납",
+    homeMenuLedger: "결제 내역",
+    homeMenuLedgerMeta: "결제 · 환불 · 월별 납부 확인",
     homeMenuPayout: "지급 정산",
     homeMenuPayoutMeta: "월별 지급 · 정산 계좌",
   },
@@ -4293,9 +4309,12 @@ export const MESSAGES = {
     breakdownTitle: "계산 내역",
     statusPending: "정산 대기",
     statusApproved: "지급 예정",
-    statusProcessing: "처리 중",
+    statusProcessing: "지급 처리 중",
     statusPaid: "지급 완료",
     statusFailed: "지급 실패",
+    payoutScheduledLabel: (month: number, day: number) => `${month}월 ${day}일 지급 예정`,
+    payoutFailedHint: "운영자가 확인 후 다시 지급합니다",
+    payoutFailedDetail: "지급 실패 · 운영자 확인 중",
     statusRejected: "반려",
     rejectReasonLabel: "반려 사유",
     bankInfoTitle: "지급 계좌",
@@ -4493,16 +4512,16 @@ export const MESSAGES = {
     segmentPostpaid: "후불",
     revenueTrend: "매출 추이",
     classRevenue: "수업별 매출",
-    collectionTitle: "수납 관리",
+    collectionTitle: "납부 관리",
     previousOutstanding: "이전 기간 미수",
     billed: "청구",
-    collected: "수납",
+    collected: "납부",
     postpaidOutstanding: "미수",
-    goToPayments: "결제 관리로 이동",
+    goToCollections: "납부 현황으로 이동",
     memberTitle: "회원 현황",
     totalMembers: "총 회원",
     newMembers: "신규 회원",
-    emptyRevenue: "수납 내역이 없습니다",
+    emptyRevenue: "납부 내역이 없습니다",
     emptyClassRevenue: "수업별 매출 데이터가 없습니다",
     emptyMembers: "회원 변동 데이터가 없습니다",
     noManagedTeams: "관리 중인 팀이 없습니다",

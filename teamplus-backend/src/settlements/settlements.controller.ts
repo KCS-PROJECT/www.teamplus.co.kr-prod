@@ -35,6 +35,7 @@ import { QuerySettlementDto } from "./dto/query-settlement.dto";
 import { QuerySettlementDetailsDto } from "./dto/query-settlement-details.dto";
 import {
   ApproveSettlementDto,
+  ApproveSettlementsBatchDto,
   RejectSettlementDto,
 } from "./dto/approve-settlement.dto";
 import { PayoutSettlementDto } from "./dto/payout-settlement.dto";
@@ -48,6 +49,14 @@ import {
 } from "./dto/query-payout-file.dto";
 import { NICE_XLSX_CONTENT_TYPE } from "./utils/nice-xlsx.util";
 import { nowKstParts } from "@/common/utils/kst-date.util";
+import { SettlementPayoutRequestService } from "./settlement-payout-request.service";
+import { SettlementPayoutResultService } from "./settlement-payout-result.service";
+import {
+  CheckPayoutResultsDto,
+  CreatePayoutRequestsDto,
+  QueryPayoutRequestPreviewDto,
+  ReviewPayoutRequestDto,
+} from "./dto/payout-request.dto";
 
 @ApiTags("Settlements")
 @Controller("api/v1/settlements")
@@ -60,6 +69,8 @@ export class SettlementsController {
     private readonly settlementsService: SettlementsService,
     private readonly settlementCloseService: SettlementCloseService,
     private readonly accountService: TeamSettlementAccountService,
+    private readonly payoutRequestService: SettlementPayoutRequestService,
+    private readonly payoutResultService: SettlementPayoutResultService,
   ) {}
 
   @Get()
@@ -152,26 +163,8 @@ export class SettlementsController {
   }
 
   /**
-   * static path — `:id` 보다 반드시 위에 선언해야 "payout-export" 가 :id 로 매칭되지 않는다.
+   * static path — `:id` 보다 반드시 위에 선언해야 "payout-file" 이 :id 로 매칭되지 않는다.
    */
-  @Get("payout-export")
-  @Roles("ADMIN")
-  @ApiOperation({
-    summary: "지급 대상 CSV 다운로드",
-    description:
-      "approved 상태 정산만 포함합니다. 계좌번호는 복호화된 평문입니다.",
-  })
-  @ApiQuery({ name: "month", required: true, description: "정산월 YYYY-MM" })
-  @ApiProduces("text/csv")
-  @ApiResponse({ status: 200, description: "CSV 파일 다운로드" })
-  async getPayoutExport(@Query("month") month: string, @Res() res: Response) {
-    const csvBuffer = await this.settlementsService.getPayoutExport(month);
-    const filename = `settlement_payout_${month}.csv`;
-    res.setHeader("Content-Type", "text/csv; charset=utf-8");
-    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-    res.send(csvBuffer);
-  }
-
   @Get("payout-file/preview")
   @Roles("ADMIN")
   @ApiOperation({
@@ -300,6 +293,160 @@ export class SettlementsController {
   @ApiResponse({ status: 502, description: "나이스 응답 오류" })
   async getPayoutBalance(@Request() req: AuthenticatedRequest) {
     return this.settlementsService.getPayoutBalance(req.user.id);
+  }
+
+  /**
+   * static path — `:id` 보다 반드시 위에 선언해야 "payout-requests" 가 :id 로 매칭되지 않는다.
+   */
+  @Get("payout-requests/defaults")
+  @Roles("ADMIN")
+  @ApiOperation({
+    summary: "나이스 지급 요청 초기값",
+    description:
+      "현재 지급대행 모드, 앱 설정의 기본 지급일(매월 N일), 그로부터 계산한 기본 지급일(주말이면 다음 평일, 이번 달 N일이 지났으면 다음 달), 한 번에 요청할 수 있는 건수.",
+  })
+  @ApiResponse({ status: 200, description: "초기값 조회 성공" })
+  getPayoutRequestDefaults() {
+    return this.payoutRequestService.getDefaults();
+  }
+
+  @Get("payout-requests/preview")
+  @Roles("ADMIN")
+  @ApiOperation({
+    summary: "나이스 지급 요청 미리보기",
+    description:
+      "선택한 정산 중 요청에 들어갈 팀(마스킹 계좌·계좌 버전)과 빠지는 팀·사유, 현재 지급대행 잔액과 부족 여부. " +
+      "readonly·live 에서 조회할 수 있고 off 면 409 PAYOUT_API_OFF. 지급일은 KST 오늘 이후(오늘이면 10:30 전)·평일·31일 이내.",
+  })
+  @ApiResponse({ status: 200, description: "미리보기 조회 성공" })
+  @ApiResponse({ status: 400, description: "지급일 오류(PAYOUT_DATE_INVALID)" })
+  @ApiResponse({
+    status: 409,
+    description: "지급대행 API 미사용(PAYOUT_API_OFF)",
+  })
+  async getPayoutRequestPreview(
+    @Query() query: QueryPayoutRequestPreviewDto,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    return this.payoutRequestService.preview(
+      query.settlementIds,
+      query.payDate,
+      req.user.id,
+    );
+  }
+
+  @Post("payout-requests")
+  @Roles("ADMIN")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "나이스 지급 요청 실행",
+    description:
+      "live 전용. 선택한 정산을 건별로 나이스에 지급 요청(0102001)한다. 정산은 processing 이 되고 지급일 결과 조회로 paid/failed 가 확정된다. " +
+      "건별 결과(REQUESTED 접수·UNCONFIRMED 응답 미확인·REJECTED 거절·SKIPPED 건너뜀)를 돌려준다. 응답을 못 받은 건은 다시 보내지 않는다.",
+  })
+  @ApiResponse({ status: 200, description: "요청 처리 완료(건별 결과 참고)" })
+  @ApiResponse({ status: 400, description: "지급일 오류(PAYOUT_DATE_INVALID)" })
+  @ApiResponse({
+    status: 409,
+    description:
+      "지급대행 API 미사용(PAYOUT_API_OFF) · live 아님(PAYOUT_API_NOT_LIVE)",
+  })
+  @AuditAction({
+    action: "settlement.payout-request",
+    resource: "Settlement",
+    includeKeys: ["payDate"],
+  })
+  async createPayoutRequests(
+    @Body() dto: CreatePayoutRequestsDto,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    this.logger.log(
+      `나이스 지급 요청: payDate=${dto.payDate}, items=${dto.items.length}, adminId=${req.user.id}`,
+    );
+    return this.payoutRequestService.request(dto, req.user.id);
+  }
+
+  @Post("payout-requests/:requestId/review")
+  @Roles("ADMIN")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "지급 요청 확인 완료",
+    description:
+      "결과 조회가 운영자 확인(needsReview)을 켠 지급 요청을 메모와 함께 닫는다. 그 정산에 켜진 요청이 더 없으면 지급 요청·수동 완료가 다시 가능해진다. " +
+      "정산·요청 상태와 원장은 바꾸지 않는다. 확인이 필요하지 않은 요청이면 409 PAYOUT_REVIEW_NOT_OPEN.",
+  })
+  @ApiParam({ name: "requestId", description: "지급 요청 ID" })
+  @ApiResponse({ status: 200, description: "확인 완료" })
+  @ApiResponse({ status: 404, description: "지급 요청 없음" })
+  @ApiResponse({ status: 409, description: "PAYOUT_REVIEW_NOT_OPEN" })
+  @AuditAction({
+    action: "settlement.payout-request.review",
+    resource: "SettlementPayoutRequest",
+    includeKeys: ["requestId", "memo"],
+  })
+  async reviewPayoutRequest(
+    @Param("requestId") requestId: string,
+    @Body() dto: ReviewPayoutRequestDto,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    return this.payoutResultService.completeReview(
+      requestId,
+      req.user.id,
+      dto.memo,
+    );
+  }
+
+  @Post("payout-requests/check")
+  @Roles("ADMIN")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "나이스 지급 결과 조회(운영 대응용 수동)",
+    description:
+      "지급일 단위로 나이스 결과(0101002)를 읽어 진행 중인 요청을 확정한다(성공 → paid, 실패 → failed, 삭제·미접수 → approved 복귀). " +
+      "배치(평일 16:00~19:30 30분 간격 · 매일 09:05 아침 대사 · 5분마다 응답 미확인 정리)와 같은 경로라 평소에는 부를 일이 없다. " +
+      "off 면 409 PAYOUT_API_OFF, 같은 지급일을 조회 중이면 409 PAYOUT_CHECK_IN_PROGRESS, 나이스 오류면 502.",
+  })
+  @ApiResponse({ status: 200, description: "조회·반영 집계" })
+  @ApiResponse({
+    status: 409,
+    description: "PAYOUT_API_OFF · PAYOUT_CHECK_IN_PROGRESS",
+  })
+  @ApiResponse({ status: 502, description: "나이스 응답 오류" })
+  @AuditAction({
+    action: "settlement.payout-check",
+    resource: "Settlement",
+    includeKeys: ["payDate"],
+  })
+  async checkPayoutResults(
+    @Body() dto: CheckPayoutResultsDto,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    return this.payoutResultService.checkByAdmin(dto.payDate, req.user.id);
+  }
+
+  @Post("approve-batch")
+  @Roles("ADMIN")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "정산 일괄 승인",
+    description:
+      "선택한 정산을 건별로 승인한다(pending → approved). 각 건은 단건 승인과 같은 규칙(순지급액 음수 불가·pending 만)을 거치며 " +
+      "한 건의 실패가 다른 건을 막지 않는다. 건별 결과(APPROVED · SKIPPED[NOT_PENDING·NET_NEGATIVE·SETTLEMENT_NOT_FOUND·DUPLICATE_ITEM] · ERROR)를 돌려준다.",
+  })
+  @ApiResponse({ status: 200, description: "처리 완료(건별 결과 참고)" })
+  @AuditAction({
+    action: "settlement.approve-batch",
+    resource: "Settlement",
+    includeKeys: ["ids", "note"],
+  })
+  async approveSettlementsBatch(
+    @Body() dto: ApproveSettlementsBatchDto,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    this.logger.log(
+      `정산 일괄 승인 요청: items=${dto.ids.length}, adminId=${req.user.id}`,
+    );
+    return this.settlementsService.approveBatch(dto.ids, req.user.id, dto.note);
   }
 
   @Post("accounts/:teamId/register")
@@ -543,15 +690,16 @@ export class SettlementsController {
   @Roles("ADMIN")
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: "정산 지급",
+    summary: "정산 수동 지급 완료",
     description:
-      "ADMIN이 정산을 지급합니다. status가 approved → paid로 전환되고 SettlementTransaction이 기록됩니다.",
+      "ADMIN이 나이스 관리자 또는 다른 방법으로 이체한 뒤 완료 처리합니다. status가 approved|failed → paid로 전환되고 SettlementTransaction이 기록됩니다. 지급대행 live 모드에서는 어드민이 이 버튼을 숨기고 지급 요청을 씁니다.",
   })
   @ApiParam({ name: "id", description: "정산 ID" })
   @ApiResponse({ status: 200, description: "정산 지급 성공" })
   @ApiResponse({
     status: 400,
-    description: "승인(approved) 상태인 정산만 지급할 수 있습니다.",
+    description:
+      "지급 예정(approved) 또는 지급 실패(failed) 상태인 정산만 지급할 수 있습니다.",
   })
   @ApiResponse({ status: 404, description: "정산 정보를 찾을 수 없습니다." })
   @AuditAction({

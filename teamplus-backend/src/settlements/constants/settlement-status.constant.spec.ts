@@ -40,10 +40,22 @@ describe("settlement-status.constant", () => {
       ).toBe(true);
     });
 
-    it("failed → processing 을 허용한다", () => {
+    it("failed → processing(재요청) | paid(수동 완료) 를 허용한다", () => {
       expect(
         canTransition(SETTLEMENT_STATUS.FAILED, SETTLEMENT_STATUS.PROCESSING),
       ).toBe(true);
+      expect(
+        canTransition(SETTLEMENT_STATUS.FAILED, SETTLEMENT_STATUS.PAID),
+      ).toBe(true);
+    });
+
+    it("processing → approved(요청 거절·삭제·미접수 복귀) 를 허용한다", () => {
+      expect(
+        canTransition(SETTLEMENT_STATUS.PROCESSING, SETTLEMENT_STATUS.APPROVED),
+      ).toBe(true);
+      expect(
+        canTransition(SETTLEMENT_STATUS.PROCESSING, SETTLEMENT_STATUS.REJECTED),
+      ).toBe(false);
     });
 
     it("paid 는 종결 상태라 어떤 전이도 불허한다", () => {

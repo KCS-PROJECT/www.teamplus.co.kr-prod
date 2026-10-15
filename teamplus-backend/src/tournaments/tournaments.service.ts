@@ -3449,6 +3449,7 @@ export class TournamentsService {
         endDate: tournament.endDate,
         payment: reg.payment,
         tournamentBillingMode: tournament.billingMode,
+        tournamentStatus: tournament.status,
       });
       return {
         ...reg,

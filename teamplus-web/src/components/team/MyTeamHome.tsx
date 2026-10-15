@@ -247,10 +247,10 @@ export function MyTeamHome({ team, onLoaded }: MyTeamHomeProps) {
       href: "/director-notices",
     },
     {
-      key: "collections",
-      icon: "receipt_long",
-      label: MESSAGES.team.homeMenuCollections,
-      meta: MESSAGES.team.homeMenuCollectionsMeta,
+      key: "ledger",
+      icon: "payments",
+      label: MESSAGES.team.homeMenuLedger,
+      meta: MESSAGES.team.homeMenuLedgerMeta,
       href: "/director-payments",
     },
     {

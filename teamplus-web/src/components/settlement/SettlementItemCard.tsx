@@ -38,6 +38,8 @@ export interface SettlementCardData {
   detailPath: string;
   /** 취소된 대회 표시(대회 카드 전용). */
   cancelled?: boolean;
+  /** 일정 미정 대회 표시(대회 카드 전용). */
+  datesTbd?: boolean;
 }
 
 // ─── 5-state 정산 상태 배지 (it-* 토큰) ──────────────
@@ -154,15 +156,23 @@ export function SettlementItemCard({
           <h3 className="truncate text-[15px] font-bold text-it-ink-800 dark:text-white">
             {data.title}
           </h3>
-          {(data.subtitle || data.cancelled) && (
+          {(data.subtitle || data.cancelled || data.datesTbd) && (
             <p className="mt-0.5 truncate text-[13px] text-it-ink-500 dark:text-wtext-4">
-              {data.subtitle}
-              {data.subtitle && data.cancelled && ' · '}
-              {data.cancelled && (
-                <span className="font-bold text-it-red-600 dark:text-it-red-300">
-                  {MESSAGES.settlement.tournamentCancelled}
-                </span>
-              )}
+              {[
+                data.subtitle ? <span key="subtitle">{data.subtitle}</span> : null,
+                data.cancelled ? (
+                  <span key="cancelled" className="font-bold text-it-red-600 dark:text-it-red-300">
+                    {MESSAGES.settlement.tournamentCancelled}
+                  </span>
+                ) : null,
+                data.datesTbd ? (
+                  <span key="datesTbd" className="font-bold text-it-ink-700 dark:text-wtext-2">
+                    {MESSAGES.tournament.datesTbd}
+                  </span>
+                ) : null,
+              ]
+                .filter(Boolean)
+                .flatMap((part, i) => (i === 0 ? [part] : [' · ', part]))}
             </p>
           )}
         </div>
