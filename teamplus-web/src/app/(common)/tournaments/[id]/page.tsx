@@ -314,14 +314,20 @@ export default function CommonTournamentDetailPage() {
     () => activeRegRows.filter((r) => r.paymentStatus === "PENDING").length,
     [activeRegRows],
   );
-  // 왼쪽 버튼 한 자리 — 신청이 없으면 삭제, 있으면 취소. 명단을 아직 못 받았으면 삭제를
-  //   보이지 않고, 종료(finished)된 대회는 전이표가 취소를 막으므로 아무것도 두지 않는다.
-  const leftAction: "delete" | "cancel" | "none" =
-    regRowsLoaded && activeRegRows.length === 0
-      ? "delete"
-      : tournament?.status === "finished"
-        ? "none"
-        : "cancel";
+  // 왼쪽 버튼 한 자리 — 시작 전이고 남은 신청도 결제 흔적도 없으면 삭제, 그 외는 취소.
+  //   백엔드 삭제 가드와 같은 기준이라, 취소·환불로 빠진 신청이라도 결제가 연결됐던 대회나
+  //   시작된 대회는 삭제 대신 취소로 닫는다. 명단을 아직 못 받았으면 삭제를 보이지 않고,
+  //   끝난 대회(finished 또는 종료일 경과)는 취소할 것이 없으므로 아무것도 두지 않는다.
+  const canDelete =
+    regRowsLoaded &&
+    uiStatus === "recruiting" &&
+    activeRegRows.length === 0 &&
+    !regRows.some((r) => r.payment != null);
+  const leftAction: "delete" | "cancel" | "none" = canDelete
+    ? "delete"
+    : uiStatus === "completed"
+      ? "none"
+      : "cancel";
 
   const dDay = useMemo(
     () =>

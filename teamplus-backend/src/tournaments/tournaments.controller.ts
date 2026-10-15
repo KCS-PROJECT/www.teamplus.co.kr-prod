@@ -185,13 +185,19 @@ export class TournamentsController {
   @Roles("ADMIN", "DIRECTOR", "COACH")
   @ApiOperation({
     summary: "대회 삭제",
-    description: "대회를 삭제합니다. 관리자/감독/코치 가능.",
+    description:
+      "신청자·결제 이력이 없는 시작 전 대회만 삭제합니다. 관리자/감독/코치 가능.",
   })
   @ApiParam({ name: "id", description: "대회 ID" })
   @ApiResponse({ status: 200, description: "대회가 삭제되었습니다." })
   @ApiResponse({
     status: 400,
-    description: "경기가 등록된 대회는 삭제할 수 없습니다.",
+    description: "게시 중인 공지가 있는 대회는 삭제할 수 없습니다.",
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      "시작·종료된 대회, 신청자나 결제·청구·환불 이력이 있는 대회는 삭제할 수 없습니다(대회 취소 안내).",
   })
   @ApiResponse({ status: 404, description: "대회를 찾을 수 없습니다." })
   async deleteTournament(

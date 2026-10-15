@@ -140,10 +140,7 @@ export const deleteTournament = async (id: string): Promise<void> => {
   } catch (error: unknown) {
     console.error('[Tournament Service] 삭제 실패:', error);
     throw new Error(
-      getApiErrorMessage(
-        error,
-        '대회 삭제에 실패했습니다. 경기가 등록된 대회는 삭제할 수 없습니다.',
-      ),
+      getApiErrorMessage(error, '대회 삭제에 실패했습니다.'),
     );
   }
 };

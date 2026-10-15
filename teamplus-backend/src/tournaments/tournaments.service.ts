@@ -72,6 +72,14 @@ type TournamentCancelSnapshot = {
   }[];
 };
 
+/** 치렀거나 치르는 중인 경기 상태 — 하나라도 있으면 대회 삭제로 기록을 지우지 않는다. */
+const PLAYED_MATCH_STATUSES = [
+  "warmup",
+  "in_progress",
+  "intermission",
+  "completed",
+];
+
 @Injectable()
 export class TournamentsService {
   constructor(
@@ -1758,37 +1766,15 @@ export class TournamentsService {
   }
 
   /**
-   * 토너먼트 삭제
+   * 토너먼트 삭제 — 아무도 신청하지 않았고 돈이 오간 적 없는, 시작 전 대회만 지운다.
+   *  신청자·결제 흔적이 있는 대회는 기록 보존·신청자 알림·고아 결제 감지가 있는 대회 취소로 닫는다.
    */
   async deleteTournament(id: string, requester: JwtUserPayload) {
     // 주최 팀 관리자만 삭제 가능 (IDOR 가드)
     await this.resourceAccess.assertManageableTournament(id, requester);
-    const tournament = await this.prisma.tournament.findUnique({
-      where: { id },
-      select: { id: true },
-    });
 
-    if (!tournament) {
-      throw new NotFoundException("대회를 찾을 수 없습니다.");
-    }
-
-    // [2026-06-22] 결제·정산 이력이 있는 대회는 삭제 차단 — 재무·기록 보존.
-    //   실결제(paymentId 연결된 PAID) 또는 정산(GameExpense)이 있으면 삭제 불가.
-    const paidCount = await this.prisma.tournamentRegistration.count({
-      where: {
-        tournamentId: id,
-        paymentStatus: "PAID",
-        paymentId: { not: null },
-      },
-    });
-    const expenseCount = await this.prisma.gameExpense.count({
-      where: { OR: [{ tournamentId: id }, { match: { tournamentId: id } }] },
-    });
-    if (paidCount > 0 || expenseCount > 0) {
-      throw new BadRequestException(
-        "결제 또는 정산 이력이 있는 대회는 삭제할 수 없습니다.",
-      );
-    }
+    // 빠른 실패용 사전 검사(없는 대회 404 포함) — 최종 판정은 트랜잭션 안 재검사가 한다.
+    await this.assertTournamentDeletable(this.prisma, id);
 
     // [Codex R1 H-04] 게시 중 단위 공지 가드 — TeamPost FK 가 RESTRICT 라 공지가 남아
     // 있으면 삭제가 비제어 DB 오류로 실패한다. 게시 중 공지는 제어된 차단으로 안내.
@@ -1798,9 +1784,8 @@ export class TournamentsService {
       );
     }
 
-    // [2026-06-15] 경기가 있어도 대회를 삭제할 수 있도록 연관 데이터를 트랜잭션으로 함께 삭제.
+    // 치르지 않은 경기 일정은 대회와 함께 삭제한다(경비·경기 기록이 있으면 가드가 막는다).
     //   FK 제약(Restrict)으로 막던 항목을 선삭제한다:
-    //     · GameExpense (tournament/match 둘 다 Restrict) — 먼저 삭제
     //     · HockeyMatch (tournament Restrict) — periods/events 는 Cascade 자동 삭제
     //   나머지(TournamentRegistration=Cascade · PlayerAward/Video=SetNull · TournamentMatch=Cascade)는 자동 처리.
     // [Codex R1 H-04] soft 삭제된 공지 잔재만 정리(FK 점유 해제) 후 삭제.
@@ -1808,11 +1793,14 @@ export class TournamentsService {
     //      P2003 을 제어된 안내로 변환해 공지를 보존한다.
     try {
       await this.prisma.$transaction(async (tx) => {
-        await tx.gameExpense.deleteMany({
-          where: {
-            OR: [{ tournamentId: id }, { match: { tournamentId: id } }],
-          },
-        });
+        // 대회 취소·결제요청 확정/취소와 직렬화하고, 대회 행(새 신청 INSERT 의 FK 확인)과
+        //   기존 신청 행(결제 시작·승인 UPDATE)을 잠근 뒤 재검사한다. 검사 뒤 들어온 결제 시작이
+        //   신청과 함께 Cascade 로 지워지면, 늦게 승인된 결제가 고아 판정도 못 받고 남는다.
+        await acquireTournamentBillingLock(tx, id);
+        await tx.$queryRaw`SELECT id FROM tournaments WHERE id = ${id} FOR UPDATE`;
+        await tx.$queryRaw`SELECT id FROM tournament_registrations WHERE tournament_id = ${id} FOR UPDATE`;
+        await this.assertTournamentDeletable(tx, id);
+
         await tx.hockeyMatch.deleteMany({ where: { tournamentId: id } });
         await tx.tournamentRegistration.deleteMany({
           where: { tournamentId: id },
@@ -1830,6 +1818,105 @@ export class TournamentsService {
     }
 
     return { id, deletedAt: new Date() };
+  }
+
+  /**
+   * 대회 삭제 가능 판정. 막히면 409 + 대회 취소 안내.
+   *  · 돈 흔적 — 결제가 한 번이라도 연결된 신청(완료·진행 중·청구·환불·취소된 결제 모두.
+   *    취소된 결제도 승인이 늦게 들어올 수 있다), 결제요청 취소로 연결이 풀린 후불 청구 결제,
+   *    환불 요청, 경기 비용.
+   *  · 경기 기록 — 시작·종료된 경기가 있으면 취소된 대회라도 기록 보존.
+   *  · 시작 — 진행 중·종료, 또는 이용 개시일(tournament-usage.util) 당일 이후. 취소된 대회는 면제.
+   *  · 신청자 — 취소·환불되지 않은 신청이 남아 있으면 알림이 가는 대회 취소로 닫는다.
+   *    취소된 대회는 이미 취소 흐름으로 닫혔으므로 면제.
+   */
+  private async assertTournamentDeletable(
+    db: Prisma.TransactionClient | PrismaService,
+    id: string,
+  ): Promise<void> {
+    const tournament = await db.tournament.findUnique({
+      where: { id },
+      select: { id: true, status: true, startDate: true },
+    });
+    if (!tournament) {
+      throw new NotFoundException("대회를 찾을 수 없습니다.");
+    }
+
+    const [
+      linkedPaymentCount,
+      postpaidBillingCount,
+      refundRequestCount,
+      expenseCount,
+      playedMatchCount,
+    ] = await Promise.all([
+      db.tournamentRegistration.count({
+        where: { tournamentId: id, paymentId: { not: null } },
+      }),
+      db.payment.count({
+        where: { orderNumber: { startsWith: `TRN-POSTPAID-${id}-` } },
+      }),
+      db.refundRequest.count({ where: { tournamentId: id } }),
+      db.gameExpense.count({
+        where: {
+          OR: [{ tournamentId: id }, { match: { tournamentId: id } }],
+        },
+      }),
+      db.hockeyMatch.count({
+        where: { tournamentId: id, status: { in: PLAYED_MATCH_STATUSES } },
+      }),
+    ]);
+
+    if (tournament.status === "finished") {
+      throw new ConflictException({
+        message: "종료된 대회는 기록 보존을 위해 삭제할 수 없어요.",
+        errorCode: "TOURNAMENT_DELETE_FINISHED",
+      });
+    }
+    if (
+      linkedPaymentCount > 0 ||
+      postpaidBillingCount > 0 ||
+      refundRequestCount > 0 ||
+      expenseCount > 0
+    ) {
+      throw new ConflictException({
+        message:
+          "결제·청구·환불 이력이 있는 대회는 삭제할 수 없어요. 대회 취소를 이용해 주세요.",
+        errorCode: "TOURNAMENT_DELETE_HAS_PAYMENT",
+      });
+    }
+    if (playedMatchCount > 0) {
+      throw new ConflictException({
+        message: "경기 기록이 있는 대회는 기록 보존을 위해 삭제할 수 없어요.",
+        errorCode: "TOURNAMENT_DELETE_HAS_MATCH_RECORDS",
+      });
+    }
+    if (tournament.status === "cancelled") return;
+
+    const started =
+      tournament.status === "ongoing" ||
+      isTournamentUsageStarted(
+        await resolveTournamentUsageStart(db, tournament),
+      );
+    if (started) {
+      throw new ConflictException({
+        message: "시작된 대회는 삭제할 수 없어요. 대회 취소를 이용해 주세요.",
+        errorCode: "TOURNAMENT_DELETE_STARTED",
+      });
+    }
+
+    const activeApplicantCount = await db.tournamentRegistration.count({
+      where: {
+        tournamentId: id,
+        paymentStatus: { notIn: ["CANCELLED", "REFUNDED"] },
+      },
+    });
+    if (activeApplicantCount > 0) {
+      throw new ConflictException({
+        message:
+          "신청자가 있는 대회는 대회 취소를 이용해 주세요. 신청자에게 취소 알림이 발송돼요.",
+        errorCode: "TOURNAMENT_DELETE_HAS_APPLICANTS",
+      });
+    }
   }
 
   // ==================== Match CRUD ====================
