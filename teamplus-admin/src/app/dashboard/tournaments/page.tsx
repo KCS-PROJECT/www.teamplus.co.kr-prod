@@ -22,11 +22,9 @@ import { LoadingSpinner } from '@/components/ui/loading-spinner';
 import { Modal, ModalHeader, ModalBody, ModalFooter, ConfirmModal } from '@/components/ui/modal';
 import {
   useTournaments,
-  useCreateTournament,
   useUpdateTournament,
   useDeleteTournament,
   useTournamentRegistrations,
-  useConfirmTournamentSettlement,
 } from '@/hooks/useTournaments';
 import type {
   Tournament,
@@ -34,10 +32,11 @@ import type {
   TournamentFeeType,
   TournamentBillingMode,
   CreateTournamentRequest,
+  TournamentRegistration,
 } from '@/services/tournament.service';
 import { MESSAGES } from '@/lib/messages';
 import {
-  Trophy, Search, Plus, Calendar, Users,
+  Trophy, Search, Calendar, Users,
   Edit2, Trash2, ListChecks, AlertCircle, Wallet,
 } from 'lucide-react';
 
@@ -47,7 +46,6 @@ interface TournamentFormState {
   clubId: string;
   startDate: string;
   endDate: string;
-  status: TournamentStatus;
   billingMode: TournamentBillingMode;
   eligibleBirthYearFrom: string;
   eligibleBirthYearTo: string;
@@ -64,7 +62,6 @@ const emptyForm: TournamentFormState = {
   clubId: '',
   startDate: '',
   endDate: '',
-  status: 'scheduled',
   billingMode: 'PREPAID',
   eligibleBirthYearFrom: '',
   eligibleBirthYearTo: '',
@@ -81,6 +78,20 @@ const statusLabels: Record<TournamentStatus, string> = {
   finished: '종료',
   cancelled: '취소',
 };
+
+const REGISTRATION_PAYMENT_LABELS: Record<string, string> = {
+  UNPAID: '미결제',
+  PENDING: '결제 대기',
+  PAID: '결제 완료',
+  CANCELLED: '취소',
+  REFUNDED: '환불',
+};
+
+function registrantName(reg: TournamentRegistration): string {
+  const person = reg.child ?? reg.user;
+  if (!person) return '-';
+  return `${person.lastName ?? ''}${person.firstName ?? ''}`.trim() || '-';
+}
 
 const statusColors: Record<TournamentStatus, string> = {
   scheduled: 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800',
@@ -117,13 +128,9 @@ function TournamentsPageContent() {
   const [selectedStatus, setSelectedStatus] = useState('전체');
 
   // Modal states
-  const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showRegistrationsModal, setShowRegistrationsModal] = useState(false);
-  const [showSettlementModal, setShowSettlementModal] = useState(false);
-  const [showSettlementConfirm, setShowSettlementConfirm] = useState(false);
-  const [settlementFee, setSettlementFee] = useState('');
   const [selectedTournament, setSelectedTournament] = useState<Tournament | null>(null);
   const [form, setForm] = useState<TournamentFormState>(emptyForm);
 
@@ -131,30 +138,18 @@ function TournamentsPageContent() {
   const { data: tournamentsData, isLoading, isError, error } = useTournaments();
   const tournaments = tournamentsData ?? [];
 
-  const createMutation = useCreateTournament();
   const updateMutation = useUpdateTournament();
   const deleteMutation = useDeleteTournament();
-  const settlementMutation = useConfirmTournamentSettlement();
 
-  const isSaving =
-    createMutation.isPending || updateMutation.isPending || deleteMutation.isPending;
+  const isSaving = updateMutation.isPending || deleteMutation.isPending;
 
-  // 참가자 명단 조회 — 참가자 모달 또는 정산 모달 열렸을 때 fetch
+  // 참가자 명단 조회 — 참가자 모달이 열렸을 때만 fetch
   const { data: registrationsData, isLoading: isLoadingRegistrations } =
     useTournamentRegistrations(
       selectedTournament?.id ?? '',
-      showRegistrationsModal || showSettlementModal,
+      showRegistrationsModal,
     );
   const registrations = registrationsData ?? [];
-
-  // 후불 정산 대상 — 미결제(UNPAID/PENDING)만, 그 외(PAID·CANCELLED·빈값 등) 제외.
-  // 백엔드 confirmTournamentSettlement 청구 대상(paymentStatus IN ['UNPAID','PENDING'])과 정확히 일치.
-  const settlementTargets = registrations.filter((reg) => {
-    const ps = (reg.paymentStatus ?? '').toUpperCase();
-    return ps === 'UNPAID' || ps === 'PENDING';
-  });
-  const settlementFeeNum = Number(settlementFee) || 0;
-  const settlementTotal = settlementFeeNum * settlementTargets.length;
 
   const stats = {
     total: tournaments.length,
@@ -204,11 +199,6 @@ function TournamentsPageContent() {
     return a.localeCompare(b, 'ko-KR');
   });
 
-  const openCreateModal = () => {
-    setForm(emptyForm);
-    setShowCreateModal(true);
-  };
-
   const openEditModal = (tournament: Tournament) => {
     setSelectedTournament(tournament);
     setForm({
@@ -217,7 +207,6 @@ function TournamentsPageContent() {
       clubId: tournament.clubId || '',
       startDate: formatDateForInput(tournament.startDate),
       endDate: formatDateForInput(tournament.endDate),
-      status: tournament.status,
       billingMode: tournament.billingMode ?? 'PREPAID',
       eligibleBirthYearFrom: tournament.eligibleBirthYearFrom?.toString() || '',
       eligibleBirthYearTo: tournament.eligibleBirthYearTo?.toString() || '',
@@ -240,12 +229,6 @@ function TournamentsPageContent() {
     setShowRegistrationsModal(true);
   };
 
-  const openSettlementModal = (tournament: Tournament) => {
-    setSelectedTournament(tournament);
-    setSettlementFee('');
-    setShowSettlementModal(true);
-  };
-
   const buildPayload = (): CreateTournamentRequest => {
     const isPostpaid = form.billingMode === 'POSTPAID';
     const payload: CreateTournamentRequest = {
@@ -253,7 +236,6 @@ function TournamentsPageContent() {
       // 기간 미입력 = 일정 미정 대회 — null 전송(수정 시 기간 해제 포함).
       startDate: form.startDate ? new Date(form.startDate).toISOString() : null,
       endDate: form.endDate ? new Date(form.endDate).toISOString() : null,
-      status: form.status,
       billingMode: form.billingMode,
       // 후불은 종료 후 정산에서 금액을 입력하므로 생성/수정 시 TOTAL_FIXED 고정.
       feeType: isPostpaid ? 'TOTAL_FIXED' : form.feeType,
@@ -274,25 +256,6 @@ function TournamentsPageContent() {
     if (form.registrationDeadline)
       payload.registrationDeadline = new Date(form.registrationDeadline).toISOString();
     return payload;
-  };
-
-  const handleCreate = async () => {
-    if (!form.name) {
-      alert(MESSAGES.tournament.nameRequired);
-      return;
-    }
-    // 기간은 선택 — 둘 다 비우면 "일정 미정" 대회. 한쪽만 입력은 차단(백엔드 계약 동일).
-    if (!!form.startDate !== !!form.endDate) {
-      alert(MESSAGES.tournament.datesPairRequired);
-      return;
-    }
-    try {
-      await createMutation.mutateAsync(buildPayload());
-      setShowCreateModal(false);
-      setForm(emptyForm);
-    } catch (err) {
-      alert(err instanceof Error ? err.message : '대회 등록에 실패했습니다.');
-    }
   };
 
   const handleUpdate = async () => {
@@ -325,51 +288,6 @@ function TournamentsPageContent() {
       setSelectedTournament(null);
     } catch (err) {
       alert(err instanceof Error ? err.message : '대회 삭제에 실패했습니다.');
-    }
-  };
-
-  const handleConfirmSettlement = () => {
-    if (!selectedTournament) return;
-    if (settlementFeeNum < 1) {
-      alert(MESSAGES.tournamentSettlement.feeRequired);
-      return;
-    }
-    if (selectedTournament.status !== 'finished') {
-      alert(MESSAGES.tournamentSettlement.notFinished);
-      return;
-    }
-    if (settlementTargets.length === 0) {
-      alert(MESSAGES.tournamentSettlement.noTarget);
-      return;
-    }
-    // 청구 확정은 공통 ConfirmModal 로 확인 (window.confirm 금지 — 삭제 모달과 동일 패턴).
-    setShowSettlementConfirm(true);
-  };
-
-  const executeSettlement = async () => {
-    if (!selectedTournament) return;
-    try {
-      const result = await settlementMutation.mutateAsync({
-        tournamentId: selectedTournament.id,
-        feePerPerson: settlementFeeNum,
-      });
-      setShowSettlementConfirm(false);
-      alert(
-        MESSAGES.tournamentSettlement.success(
-          result.billedCount,
-          result.totalAmount,
-        ),
-      );
-      setShowSettlementModal(false);
-      setSettlementFee('');
-      setSelectedTournament(null);
-    } catch (err) {
-      setShowSettlementConfirm(false);
-      alert(
-        err instanceof Error
-          ? err.message
-          : MESSAGES.tournamentSettlement.error,
-      );
     }
   };
 
@@ -458,19 +376,6 @@ function TournamentsPageContent() {
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">상태</label>
-          <select
-            value={form.status}
-            onChange={(e) => updateForm('status', e.target.value)}
-            className="w-full h-10 px-3 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-900 dark:text-white"
-          >
-            <option value="scheduled">예정</option>
-            <option value="ongoing">진행중</option>
-            <option value="finished">종료</option>
-            <option value="cancelled">취소</option>
-          </select>
-        </div>
         <div>
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">결제 방식</label>
           <div className="grid grid-cols-2 gap-2">
@@ -607,13 +512,6 @@ function TournamentsPageContent() {
               <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">대회/경기 관리</h1>
               <p className="text-sm sm:text-base text-white/80">팀별로 등록된 대회를 한눈에 확인합니다</p>
             </div>
-            <Button
-              onClick={openCreateModal}
-              className="h-11 inline-flex items-center gap-2 px-4 rounded-lg bg-white hover:bg-slate-100 text-primary text-sm font-semibold shadow-sm motion-reduce:transition-none transition-colors"
-            >
-              <Plus className="w-4 h-4" aria-hidden="true" />
-              대회 등록
-            </Button>
           </div>
 
           <div className="mt-6 grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
@@ -767,17 +665,6 @@ function TournamentsPageContent() {
                   {tournament._count?.registrations || 0}
                 </span>
               </button>
-              {tournament.billingMode === 'POSTPAID' && tournament.status === 'finished' && (
-                <button
-                  type="button"
-                  onClick={() => openSettlementModal(tournament)}
-                  aria-label="후불 정산하기"
-                  className="h-9 inline-flex items-center gap-1 px-3 rounded-md bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold transition-colors motion-reduce:transition-none"
-                >
-                  <Wallet className="w-3.5 h-3.5" aria-hidden="true" />
-                  정산하기
-                </button>
-              )}
               <button
                 type="button"
                 onClick={() => openEditModal(tournament)}
@@ -811,22 +698,6 @@ function TournamentsPageContent() {
         )}
       </div>
 
-      {/* Create Modal */}
-      <Modal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} size="lg">
-        <ModalHeader title="대회 등록" description="새로운 대회를 등록합니다" icon={Trophy} />
-        <ModalBody>
-          {renderFormFields()}
-        </ModalBody>
-        <ModalFooter>
-          <Button type="button" variant="outline" onClick={() => setShowCreateModal(false)} disabled={isSaving}>
-            취소
-          </Button>
-          <Button type="button" onClick={handleCreate} disabled={isSaving} className="bg-primary hover:bg-primary-dark text-white">
-            {createMutation.isPending ? '등록 중...' : '등록하기'}
-          </Button>
-        </ModalFooter>
-      </Modal>
-
       {/* Edit Modal */}
       <Modal isOpen={showEditModal} onClose={() => setShowEditModal(false)} size="lg">
         <ModalHeader title="대회 수정" description="대회 정보를 수정합니다" icon={Edit2} />
@@ -855,21 +726,6 @@ function TournamentsPageContent() {
         isLoading={deleteMutation.isPending}
       />
 
-      {/* Settlement Confirm Modal — 청구 확정(금액·인원 최종 확인) */}
-      <ConfirmModal
-        isOpen={showSettlementConfirm}
-        onClose={() => setShowSettlementConfirm(false)}
-        onConfirm={executeSettlement}
-        title="대회 정산"
-        description={MESSAGES.tournamentSettlement.confirm(
-          settlementTargets.length,
-          settlementTotal,
-        )}
-        confirmText="정산하기"
-        variant="warning"
-        isLoading={settlementMutation.isPending}
-      />
-
       {/* Registrations Modal */}
       <Modal
         isOpen={showRegistrationsModal}
@@ -882,93 +738,86 @@ function TournamentsPageContent() {
           icon={ListChecks}
         />
         <ModalBody>
-          {isLoadingRegistrations ? (
-            <div className="py-12 flex items-center justify-center">
-              <LoadingSpinner message="참가자 정보를 불러오는 중..." />
-            </div>
-          ) : registrations.length === 0 ? (
-            <div className="py-12 text-center">
-              <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-              <p className="text-slate-500 font-medium">
-                아직 등록된 참가자가 없습니다
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between mb-3 text-sm text-slate-600 dark:text-slate-400">
-                <span>총 {registrations.length}명</span>
+          {/* 고정 높이 — 로딩·빈 상태·명단 전환 시 모달 크기가 바뀌지 않게 하고, 긴 명단은 이 안에서만 스크롤 */}
+          <div className="h-[360px] max-h-[calc(100vh-16rem)] flex flex-col">
+            {isLoadingRegistrations ? (
+              <div className="flex-1 flex items-center justify-center">
+                <LoadingSpinner message="참가자 정보를 불러오는 중..." minHeight={0} />
               </div>
-              <div className="rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-50 dark:bg-slate-800/50">
-                    <tr className="text-left">
-                      <th className="px-4 py-2.5 font-semibold text-slate-700 dark:text-slate-300">
-                        이름
-                      </th>
-                      <th className="px-4 py-2.5 font-semibold text-slate-700 dark:text-slate-300">
-                        출생연도
-                      </th>
-                      <th className="px-4 py-2.5 font-semibold text-slate-700 dark:text-slate-300">
-                        소속 클럽
-                      </th>
-                      <th className="px-4 py-2.5 font-semibold text-slate-700 dark:text-slate-300 text-right">
-                        참가비
-                      </th>
-                      <th className="px-4 py-2.5 font-semibold text-slate-700 dark:text-slate-300">
-                        결제 상태
-                      </th>
-                      <th className="px-4 py-2.5 font-semibold text-slate-700 dark:text-slate-300">
-                        등록일
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                    {registrations.map((reg) => (
-                      <tr
-                        key={reg.id}
-                        className="hover:bg-slate-50 dark:hover:bg-slate-800/30"
-                      >
-                        <td className="px-4 py-2.5 text-slate-900 dark:text-white font-medium">
-                          {reg.member?.name ?? '-'}
-                        </td>
-                        <td className="px-4 py-2.5 text-slate-600 dark:text-slate-400">
-                          {reg.member?.birthYear ?? '-'}
-                        </td>
-                        <td className="px-4 py-2.5 text-slate-600 dark:text-slate-400">
-                          {reg.member?.club?.clubName ?? '-'}
-                        </td>
-                        <td className="px-4 py-2.5 text-slate-900 dark:text-white text-right tabular-nums font-semibold">
-                          {reg.totalFee
-                            ? `${Number(reg.totalFee).toLocaleString()}원`
-                            : '-'}
-                        </td>
-                        <td className="px-4 py-2.5">
-                          <Badge
-                            className={
-                              reg.paymentStatus === 'PAID'
-                                ? statusColors.ongoing
-                                : reg.paymentStatus === 'PENDING'
-                                  ? statusColors.scheduled
-                                  : statusColors.finished
-                            }
-                          >
-                            {reg.paymentStatus === 'PAID'
-                              ? '결제 완료'
-                              : reg.paymentStatus === 'PENDING'
-                                ? '결제 대기'
-                                : reg.paymentStatus ?? '-'}
-                          </Badge>
-                        </td>
-                        <td className="px-4 py-2.5 text-slate-600 dark:text-slate-400">
-                          {formatDate(reg.createdAt)}
-                        </td>
+            ) : registrations.length === 0 ? (
+              <div className="flex-1 flex flex-col items-center justify-center text-center">
+                <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                <p className="text-slate-500 font-medium">
+                  아직 등록된 참가자가 없습니다
+                </p>
+              </div>
+            ) : (
+              <div className="flex-1 min-h-0 flex flex-col">
+                <div className="flex items-center justify-between mb-3 text-sm text-slate-600 dark:text-slate-400">
+                  <span>총 {registrations.length}명</span>
+                </div>
+                <div className="flex-1 min-h-0 overflow-y-auto rounded-lg border border-slate-200 dark:border-slate-700">
+                  <table className="w-full text-sm">
+                    <thead className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-800">
+                      <tr className="text-left">
+                        <th className="px-4 py-2.5 font-semibold text-slate-700 dark:text-slate-300">
+                          이름
+                        </th>
+                        <th className="px-4 py-2.5 font-semibold text-slate-700 dark:text-slate-300">
+                          출생연도
+                        </th>
+                        <th className="px-4 py-2.5 font-semibold text-slate-700 dark:text-slate-300 text-right">
+                          참가비
+                        </th>
+                        <th className="px-4 py-2.5 font-semibold text-slate-700 dark:text-slate-300">
+                          결제 상태
+                        </th>
+                        <th className="px-4 py-2.5 font-semibold text-slate-700 dark:text-slate-300">
+                          등록일
+                        </th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                      {registrations.map((reg) => (
+                        <tr
+                          key={reg.id}
+                          className="hover:bg-slate-50 dark:hover:bg-slate-800/30"
+                        >
+                          <td className="px-4 py-2.5 text-slate-900 dark:text-white font-medium">
+                            {registrantName(reg)}
+                          </td>
+                          <td className="px-4 py-2.5 text-slate-600 dark:text-slate-400">
+                            {reg.child?.childProfile?.birthDate?.slice(0, 4) ?? '-'}
+                          </td>
+                          <td className="px-4 py-2.5 text-slate-900 dark:text-white text-right tabular-nums font-semibold">
+                            {Number(reg.calculatedFee) > 0
+                              ? `${Number(reg.calculatedFee).toLocaleString()}원`
+                              : '-'}
+                          </td>
+                          <td className="px-4 py-2.5">
+                            <Badge
+                              className={
+                                reg.paymentStatus === 'PAID'
+                                  ? statusColors.ongoing
+                                  : reg.paymentStatus === 'PENDING'
+                                    ? statusColors.scheduled
+                                    : statusColors.finished
+                              }
+                            >
+                              {REGISTRATION_PAYMENT_LABELS[reg.paymentStatus ?? ''] ?? reg.paymentStatus ?? '-'}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-2.5 text-slate-600 dark:text-slate-400">
+                            {formatDate(reg.registeredAt)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </ModalBody>
         <ModalFooter>
           <Button
@@ -981,98 +830,6 @@ function TournamentsPageContent() {
         </ModalFooter>
       </Modal>
 
-      {/* Settlement Modal — 후불 대회 정산 (POSTPAID && finished) */}
-      <Modal
-        isOpen={showSettlementModal}
-        onClose={() => setShowSettlementModal(false)}
-        size="md"
-      >
-        <ModalHeader
-          title="후불 대회 정산"
-          description={selectedTournament?.name ?? ''}
-          icon={Wallet}
-        />
-        <ModalBody>
-          <div className="space-y-4">
-            <div className="flex items-start gap-2 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-3 py-2.5">
-              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden="true" />
-              <p className="text-xs text-amber-700 dark:text-amber-300">
-                미결제 참가자 전원에게 입력한 1인당 참가비를 일괄 청구합니다. 이미 결제 완료된 참가자는 청구 대상에서 제외됩니다.
-              </p>
-            </div>
-
-            <div>
-              <label
-                htmlFor="settlement-fee"
-                className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1"
-              >
-                1인당 참가비 (원) <span className="text-red-500">*</span>
-              </label>
-              <Input
-                id="settlement-fee"
-                type="number"
-                inputMode="numeric"
-                min={1}
-                value={settlementFee}
-                onChange={(e) => setSettlementFee(e.target.value)}
-                placeholder="30000"
-              />
-            </div>
-
-            <div className="rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50 p-4 space-y-2">
-              {isLoadingRegistrations ? (
-                <div className="py-2 flex items-center justify-center">
-                  <LoadingSpinner message="참가자 정보를 불러오는 중..." />
-                </div>
-              ) : (
-                <>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-slate-500 dark:text-slate-400">청구 대상 참가자</span>
-                    <span className="font-semibold text-slate-900 dark:text-white tabular-nums">
-                      {settlementTargets.length}명
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-slate-500 dark:text-slate-400">1인당 참가비</span>
-                    <span className="font-semibold text-slate-900 dark:text-white tabular-nums">
-                      {settlementFeeNum > 0 ? `${settlementFeeNum.toLocaleString()}원` : '-'}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between border-t border-slate-200 dark:border-slate-700 pt-2 text-base">
-                    <span className="font-medium text-slate-700 dark:text-slate-200">총 청구액</span>
-                    <span className="font-bold text-amber-600 dark:text-amber-400 tabular-nums">
-                      {settlementTotal > 0 ? `${settlementTotal.toLocaleString()}원` : '-'}
-                    </span>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        </ModalBody>
-        <ModalFooter>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => setShowSettlementModal(false)}
-            disabled={settlementMutation.isPending}
-          >
-            취소
-          </Button>
-          <Button
-            type="button"
-            onClick={handleConfirmSettlement}
-            disabled={
-              settlementMutation.isPending ||
-              isLoadingRegistrations ||
-              settlementFeeNum < 1 ||
-              settlementTargets.length === 0
-            }
-            className="bg-amber-500 hover:bg-amber-600 text-white"
-          >
-            {settlementMutation.isPending ? '정산 중...' : '정산하기'}
-          </Button>
-        </ModalFooter>
-      </Modal>
     </div>
   );
 }

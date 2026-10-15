@@ -46,7 +46,6 @@ export interface CreateTournamentRequest {
   /** null = 일정 미정 대회 생성(수정 시 null 전송 = 기간 해제). */
   startDate: string | null;
   endDate: string | null;
-  status: TournamentStatus;
   billingMode?: TournamentBillingMode;
   eligibleBirthYearFrom?: number;
   eligibleBirthYearTo?: number;
@@ -57,33 +56,31 @@ export interface CreateTournamentRequest {
   registrationDeadline?: string;
 }
 
-/** 후불 정산 확정 응답 — confirmTournamentSettlement 결과. */
-export interface ConfirmTournamentSettlementResponse {
-  tournamentId: string;
-  billedCount: number;
-  feePerPerson: number;
-  totalAmount: number;
-}
-
 export type UpdateTournamentRequest = Partial<CreateTournamentRequest>;
 
+/** GET /tournaments/:id/registrations 의 registrations[] 원소. 참가자는 자녀(child) 우선, 없으면 신청자(user). */
 export interface TournamentRegistration {
   id: string;
-  tournamentId: string;
-  memberId: string;
-  status: string;
+  userId: string;
+  childId: string | null;
   gamesCount: number | null;
-  totalFee: number | null;
+  calculatedFee: number | string | null;
+  /** UNPAID | PENDING | PAID | CANCELLED | REFUNDED */
   paymentStatus: string | null;
-  createdAt: string;
-  member?: {
+  registeredAt: string;
+  user?: { id: string; firstName?: string | null; lastName?: string | null } | null;
+  child?: {
     id: string;
-    name: string;
-    birthYear: number | null;
-    phone?: string | null;
-    clubId?: string | null;
-    club?: { clubName: string } | null;
+    firstName?: string | null;
+    lastName?: string | null;
+    childProfile?: { birthDate?: string | null } | null;
   } | null;
+}
+
+interface TournamentRegistrationsResponse {
+  tournamentId: string;
+  total: number;
+  registrations: TournamentRegistration[];
 }
 
 /**
@@ -113,22 +110,6 @@ export const getTournamentById = async (id: string): Promise<Tournament> => {
     console.error('[Tournament Service] 상세 조회 실패:', error);
     throw new Error(
       getApiErrorMessage(error, '대회 정보를 불러오는 데 실패했습니다.'),
-    );
-  }
-};
-
-/**
- * 대회 등록
- */
-export const createTournament = async (
-  data: CreateTournamentRequest,
-): Promise<Tournament> => {
-  try {
-    return await api.post<Tournament>('/tournaments', data);
-  } catch (error: unknown) {
-    console.error('[Tournament Service] 등록 실패:', error);
-    throw new Error(
-      getApiErrorMessage(error, '대회 등록에 실패했습니다.'),
     );
   }
 };
@@ -168,33 +149,16 @@ export const deleteTournament = async (id: string): Promise<void> => {
 };
 
 /**
- * 대회 상태 변경
- */
-export const changeTournamentStatus = async (
-  id: string,
-  status: TournamentStatus,
-): Promise<Tournament> => {
-  try {
-    return await api.patch<Tournament>(`/tournaments/${id}/status`, { status });
-  } catch (error: unknown) {
-    console.error('[Tournament Service] 상태 변경 실패:', error);
-    throw new Error(
-      getApiErrorMessage(error, '대회 상태 변경에 실패했습니다.'),
-    );
-  }
-};
-
-/**
  * 대회 참가자 명단 조회
  */
 export const getTournamentRegistrations = async (
   tournamentId: string,
 ): Promise<TournamentRegistration[]> => {
   try {
-    const data = await api.get<TournamentRegistration[]>(
+    const data = await api.get<TournamentRegistrationsResponse>(
       `/tournaments/${tournamentId}/registrations`,
     );
-    return Array.isArray(data) ? data : [];
+    return Array.isArray(data?.registrations) ? data.registrations : [];
   } catch (error: unknown) {
     console.error('[Tournament Service] 참가자 명단 조회 실패:', error);
     throw new Error(
@@ -203,36 +167,12 @@ export const getTournamentRegistrations = async (
   }
 };
 
-/**
- * 후불 대회 정산 확정 (DIRECTOR/COACH/ADMIN)
- *
- * 종료된 후불(POSTPAID) 대회의 1인당 참가비를 입력해 미결제 참가자 전원에게 일괄 청구한다.
- * 멱등 — 같은 대회를 재호출해도 미결제(UNPAID/PENDING) 건만 갱신, 결제 완료(PAID) 건은 보존.
- */
-export const confirmTournamentSettlement = async (
-  tournamentId: string,
-  feePerPerson: number,
-): Promise<ConfirmTournamentSettlementResponse> => {
-  try {
-    return await api.post<ConfirmTournamentSettlementResponse>(
-      `/tournaments/${tournamentId}/postpaid/confirm`,
-      { feePerPerson },
-    );
-  } catch (error: unknown) {
-    console.error('[Tournament Service] 후불 정산 확정 실패:', error);
-    throw new Error(getApiErrorMessage(error, '대회 정산에 실패했습니다.'));
-  }
-};
-
 export const tournamentService = {
   getTournaments,
   getTournamentById,
-  createTournament,
   updateTournament,
   deleteTournament,
-  changeTournamentStatus,
   getTournamentRegistrations,
-  confirmTournamentSettlement,
 };
 
 export default tournamentService;
