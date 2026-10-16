@@ -38,9 +38,11 @@ import { PaymentSourceBadge } from '@/components/payment/PaymentSourceBadge';
 function SuccessAnimation({
   creditsIssued,
   isPostpaid = false,
+  isTournament = false,
 }: {
   creditsIssued: number;
   isPostpaid?: boolean;
+  isTournament?: boolean;
 }) {
   return (
     <div
@@ -62,11 +64,14 @@ function SuccessAnimation({
         {MESSAGES.payment2.completed}
       </h2>
 
-      {/* Credits badge - ICETIMES blue. 후불(POSTPAID)은 사후 정산이라 결제권 발급 문구 대신 정산 완료 안내. */}
+      {/* Credits badge - ICETIMES blue. 후불(POSTPAID)은 사후 정산이라 결제권 발급 문구 대신 정산 완료 안내.
+          대회 선불 결제는 수업 참여 문구 대신 참가 신청 완료 안내. */}
       <p className="text-card-emphasis text-it-blue-600 dark:text-it-blue-300 font-bold bg-it-blue-50 dark:bg-it-blue-500/15 px-4 py-1.5 rounded-w-pill inline-block">
         {isPostpaid
           ? MESSAGES.postpaidPay.completedNote
-          : MESSAGES.payment2.creditIssued}
+          : isTournament
+            ? MESSAGES.payment2.tournamentRegistered
+            : MESSAGES.payment2.creditIssued}
       </p>
     </div>
   );
@@ -490,6 +495,7 @@ function PaymentCompleteContent() {
               <SuccessAnimation
                 creditsIssued={creditsIssued}
                 isPostpaid={receipt.billingTiming === 'POSTPAID'}
+                isTournament={receipt.sourceType === 'TOURNAMENT'}
               />
             </section>
 

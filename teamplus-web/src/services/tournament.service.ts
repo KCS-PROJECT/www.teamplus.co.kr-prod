@@ -311,7 +311,12 @@ export interface CreateTournamentInput {
   eligibleGroupIds?: string[];
 }
 
-export type UpdateTournamentInput = Partial<CreateTournamentInput>;
+export type UpdateTournamentInput = Partial<
+  Omit<CreateTournamentInput, "venueId">
+> & {
+  /** 미전송 = 유지, null = 링크장 해제 */
+  venueId?: string | null;
+};
 
 export interface CreateMatchInput {
   tournamentId?: string;

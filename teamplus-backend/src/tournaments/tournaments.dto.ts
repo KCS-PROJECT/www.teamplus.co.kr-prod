@@ -330,10 +330,14 @@ export class UpdateTournamentDto {
   @IsString()
   rinkId?: string;
 
-  @ApiPropertyOptional({ description: "개최 링크장 ID (Venue FK)" })
+  // null·빈 문자열 = 링크장 해제. undefined = 기존 값 유지.
+  @ApiPropertyOptional({
+    description: "개최 링크장 ID (Venue FK) — null·빈 문자열 시 링크장 해제",
+    nullable: true,
+  })
   @IsOptional()
   @IsString()
-  venueId?: string;
+  venueId?: string | null;
 
   // null 명시 전송 = 기간 해제(일정 미정 복귀). undefined = 기존 값 유지.
   @ApiPropertyOptional({

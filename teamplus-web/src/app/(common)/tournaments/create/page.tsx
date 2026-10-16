@@ -137,6 +137,8 @@ export default function TournamentCreatePage() {
   // 대회장소 — VenueSearchSheet(바텀시트)에서 선택/입력. venueId = 선택 링크장(SoT),
   //   venueQuery = 표시 텍스트(선택 링크장명 또는 자유 텍스트 → location 전송).
   const [venueId, setVenueId] = useState("");
+  // 수정 진입 시 불러온 링크장 — 비웠을 때만 해제(null)를 보내는 기준.
+  const [initialVenueId, setInitialVenueId] = useState("");
   const [venueQuery, setVenueQuery] = useState("");
   // 장소 시트 대상 — "tournament"(대회장소) | 경기 행 key. null = 닫힘.
   const [venueSheetTarget, setVenueSheetTarget] = useState<string | null>(null);
@@ -239,6 +241,7 @@ export default function TournamentCreatePage() {
         // 링크장 복원 — venue 관계 우선, 없으면 자유 텍스트(location)를 입력칸에 복원.
         //   복원하지 않으면 수정 저장 시 기존 텍스트 장소가 유실된다.
         setVenueId(t.venue?.id ?? t.venueId ?? "");
+        setInitialVenueId(t.venue?.id ?? t.venueId ?? "");
         setVenueQuery(t.venue?.name ?? t.location ?? "");
         // [2026-06-16] 결제 방식 복원 — 미지정 시 선불(PREPAID).
         setBillingMode(t.billingMode ?? "PREPAID");
@@ -566,9 +569,16 @@ export default function TournamentCreatePage() {
         payload.totalGames = 1;
       }
 
+      // 수정에서 불러온 링크장을 비웠으면 null 로 해제한다(미전송은 서버가 유지로 해석).
+      //   불러온 링크장이 없으면(불러오기 실패 포함) 보내지 않아 저장된 값을 건드리지 않는다.
+      const venueClear: UpdateTournamentInput =
+        !venueId && initialVenueId ? { venueId: null } : {};
       const res =
         isEditMode && editId
-          ? await updateTournament(editId, payload as UpdateTournamentInput)
+          ? await updateTournament(editId, {
+              ...(payload as UpdateTournamentInput),
+              ...venueClear,
+            })
           : await createTournament(payload);
       if (res.success && res.data) {
         // [2026-08-20] 경기 일정은 matches 배열로 본체와 함께 저장 완료 —

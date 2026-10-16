@@ -963,6 +963,8 @@ export const MESSAGES = {
     newFeedback: "새 피드백 보내기",
     submitting: "제출 중...",
     sendFeedback: "피드백 보내기",
+    attachmentLimit: (max: number) => `사진은 최대 ${max}장까지 첨부할 수 있어요.`,
+    attachmentTrimmed: (added: number) => `${added}장만 첨부했어요.`,
   },
   accessibility: {
     pageTitle: "접근성 설정",
@@ -1042,6 +1044,8 @@ export const MESSAGES = {
     completed: "결제가 완료되었습니다!",
     // [수정 2026-05-18] 감성 톤 — 결제 완료 화면 분위기. "결제권" 어색함 해소.
     creditIssued: "이제 이번 달 수업에 참여하실 수 있어요",
+    // 대회 선불 결제 완료 — 수업 문구를 쓰지 않는다.
+    tournamentRegistered: "대회 참가 신청이 완료되었어요",
     viewReceipt: "영수증 보기",
     processing: "처리 중...",
     securePayment: "안전하게 암호화되어 처리되었습니다",

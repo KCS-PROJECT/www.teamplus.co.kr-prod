@@ -107,6 +107,8 @@ function WriteTab({
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
+  // 일부만 첨부된 경우의 안내 — 실패가 아니므로 오류와 분리해 중립 문구로 보인다.
+  const [uploadNotice, setUploadNotice] = useState('');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // RHF + Zod 통합. 이름/팀은 서버가 로그인 신원으로 귀속하므로 폼에서 입력받지 않음
@@ -138,13 +140,16 @@ function WriteTab({
     e.target.value = ''; // 같은 파일 재선택 허용
     if (picked.length === 0) return;
     setUploadError('');
+    setUploadNotice('');
 
     const room = MAX_ATTACHMENTS - attachments.length;
     if (room <= 0) {
-      setUploadError(`사진은 최대 ${MAX_ATTACHMENTS}장까지 첨부할 수 있어요.`);
+      setUploadError(MESSAGES.feedback.attachmentLimit(MAX_ATTACHMENTS));
       return;
     }
     const toUpload = picked.slice(0, room);
+    // 남은 칸보다 많이 고르면 남은 칸만 올리고, 빠진 사진이 있다는 걸 알린다.
+    const trimmed = picked.length > room;
 
     setIsUploading(true);
     try {
@@ -162,6 +167,11 @@ function WriteTab({
           },
         ]);
       }
+      if (trimmed) {
+        setUploadNotice(
+          `${MESSAGES.feedback.attachmentLimit(MAX_ATTACHMENTS)} ${MESSAGES.feedback.attachmentTrimmed(toUpload.length)}`,
+        );
+      }
     } catch (err) {
       setUploadError(
         err instanceof Error ? err.message : '사진 업로드에 실패했습니다.',
@@ -172,6 +182,7 @@ function WriteTab({
   };
 
   const removeAttachment = (id: string) => {
+    setUploadNotice('');
     setAttachments((prev) => {
       const target = prev.find((a) => a.id === id);
       if (target) URL.revokeObjectURL(target.previewUrl);
@@ -213,6 +224,7 @@ function WriteTab({
             setIsSubmitted(false);
             attachments.forEach((a) => URL.revokeObjectURL(a.previewUrl));
             setAttachments([]);
+            setUploadNotice('');
             reset({ category: 'improvement', content: '' });
           }}
         >
@@ -354,10 +366,16 @@ function WriteTab({
             </button>
           )}
         </div>
-        {uploadError && (
+        {uploadError ? (
           <p className="mt-2 text-card-meta text-it-red-600 dark:text-it-red-300" role="alert">
             {uploadError}
           </p>
+        ) : (
+          uploadNotice && (
+            <p className="mt-2 text-card-meta text-it-ink-500 dark:text-wtext-4" role="status">
+              {uploadNotice}
+            </p>
+          )
         )}
       </div>
 

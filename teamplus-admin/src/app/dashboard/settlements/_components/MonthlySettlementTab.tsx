@@ -919,7 +919,7 @@ export function MonthlySettlementTab({ onOpenAccounts }: MonthlySettlementTabPro
     nextAction !== null &&
     (nextAction.stage === 'review' ? !reviewOnly : reviewOnly || nextAction.stage !== statusFilter);
 
-  // 단계 탭 — 순서 있는 네 단계는 번호·화살표로 잇고, 갈라져 나오는 상태(반려·지급 실패)는 그 단계 밑에 붙인다.
+  // 단계 탭 — 순서 있는 네 단계는 화살표로 잇고, 갈라져 나오는 상태(반려·지급 실패)는 그 단계 밑에 붙인다. 숫자는 건수 하나만 보여 준다.
   const orderedStages: SettlementStage[] = ['pending', 'approved', 'processing', 'paid'];
   // 숫자 배지 — 그 상태에 확인 필요 정산이 있으면 빨갛게 둔다(확인 필요는 단계가 아니라 표시다).
   const renderCountBadge = (count: number, active: boolean, alert: boolean) => (
@@ -935,7 +935,7 @@ export function MonthlySettlementTab({ onOpenAccounts }: MonthlySettlementTabPro
       {count}
     </span>
   );
-  const renderStageTab = (key: SettlementStage, order?: number) => {
+  const renderStageTab = (key: SettlementStage) => {
     const active = !reviewOnly && statusFilter === key;
     const bucket = summaryBuckets.find((b) => b.key === key);
     const label = bucket?.label ?? MESSAGES.settlement.stageAllLabel;
@@ -951,15 +951,6 @@ export function MonthlySettlementTab({ onOpenAccounts }: MonthlySettlementTabPro
         onClick={() => handleGoToStage(key)}
         className={`inline-flex h-10 items-center gap-2 rounded-lg px-3 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary ${className}`}
       >
-        {order !== undefined && (
-          <span
-            className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-xs tabular-nums ${
-              active ? 'bg-white/20' : 'bg-slate-200 dark:bg-slate-600'
-            }`}
-          >
-            {order}
-          </span>
-        )}
         <span>{label}</span>
         {renderCountBadge(count, active, key !== 'all' && (reviewByStatus[key] ?? 0) > 0)}
       </button>
@@ -1080,7 +1071,7 @@ export function MonthlySettlementTab({ onOpenAccounts }: MonthlySettlementTabPro
                     <ChevronRight className="mt-3 h-4 w-4 shrink-0 text-slate-300 dark:text-slate-600" aria-hidden="true" />
                   )}
                   <div className="flex flex-col items-start gap-1">
-                    {renderStageTab(key, i + 1)}
+                    {renderStageTab(key)}
                     {branch && renderBranchTab(branch)}
                   </div>
                 </Fragment>

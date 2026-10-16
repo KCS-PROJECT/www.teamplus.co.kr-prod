@@ -15,6 +15,7 @@ import {
 } from "./services/payment-enrollment-transition.util";
 import { isAdminRole } from "@/auth/constants/chldiv.constants";
 import { PaymentWebhookService } from "./services/payment-webhook.service";
+import { niceStdConfirmLockKey } from "./nicestd-confirm-lock.util";
 import { PaymentCreateService } from "./services/payment-create.service";
 import {
   PaymentRefundService,
@@ -865,7 +866,7 @@ export class PaymentsService {
       );
     }
 
-    const lockKey = `nicestd:confirm:${orderNumber}`;
+    const lockKey = niceStdConfirmLockKey(orderNumber);
     const acquired = await this.redisService.setIfNotExists(
       lockKey,
       "1",

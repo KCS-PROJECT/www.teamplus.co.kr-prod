@@ -35,6 +35,7 @@ import {
 import { PaymentRefundService } from "@/payments/services/payment-refund.service";
 import { RedisService } from "@/redis/redis.service";
 import { resolveActivePaymentProvider } from "@/payments/payment-provider.util";
+import { niceStdConfirmLockKey } from "@/payments/nicestd-confirm-lock.util";
 import { acquireTournamentBillingLock } from "./utils/tournament-locks.util";
 import {
   resolveTournamentDeleteBlocks,
@@ -202,6 +203,23 @@ export class TournamentsService {
 
     // Payment row 생성 + TournamentRegistration upsert 트랜잭션.
     const payment = await this.prisma.$transaction(async (tx) => {
+      // 기존 TournamentRegistration 존재 시 paymentId 갱신, 없으면 신규 생성.
+      //  paymentStatus 는 PENDING 유지 (confirm 성공 시 PAID 로 전환).
+      const existing = await tx.tournamentRegistration.findUnique({
+        where: {
+          tournamentId_userId_childId: {
+            tournamentId,
+            userId,
+            childId: body.childId,
+          },
+        },
+        select: { id: true, paymentStatus: true, paymentId: true },
+      });
+      // 결제가 끝난 신청을 다시 대기로 되돌리면 완료된 결제가 연결을 잃고 한 번 더 결제된다.
+      if (existing?.paymentStatus === "PAID") {
+        throw new BadRequestException("이미 결제가 완료된 신청입니다.");
+      }
+
       const created = await tx.payment.create({
         data: {
           orderNumber,
@@ -214,21 +232,46 @@ export class TournamentsService {
         },
       });
 
-      // 기존 TournamentRegistration 존재 시 paymentId 갱신, 없으면 신규 생성.
-      //  paymentStatus 는 PENDING 유지 (토스 confirm 성공 시 PAID 로 전환).
-      const existing = await tx.tournamentRegistration.findUnique({
-        where: {
-          tournamentId_userId_childId: {
-            tournamentId,
-            userId,
-            childId: body.childId,
-          },
-        },
-        select: { id: true, paymentStatus: true },
-      });
       if (existing) {
-        await tx.tournamentRegistration.update({
-          where: { id: existing.id },
+        // 연결이 풀릴 이전 대기 결제는 취소한다(수업 결제 재진입과 같은 규칙) — 옛 결제창의
+        //   승인 요청은 cancelled 를 거절하는 confirm 에서 막힌다. 단 승인이 진행 중인 결제
+        //   (캡처 증거 tid 가 있거나 confirm 잠금이 잡혀 있음)는 취소하지 않고 새 결제도
+        //   만들지 않는다 — 그 결제가 완료되면 신청은 그대로 PAID 가 된다.
+        const oldPaymentId = existing.paymentId;
+        if (oldPaymentId) {
+          const old = await tx.payment.findUnique({
+            where: { id: oldPaymentId },
+            select: { paymentStatus: true, tid: true, orderNumber: true },
+          });
+          if (old?.paymentStatus === "pending") {
+            if (
+              old.tid ||
+              (await this.isNiceStdConfirmInProgress(old.orderNumber))
+            ) {
+              throw new ConflictException(
+                "이전 결제가 승인 처리 중입니다. 잠시 후 결제 내역을 확인해주세요.",
+              );
+            }
+            const cancelled = await tx.payment.updateMany({
+              where: { id: oldPaymentId, paymentStatus: "pending", tid: null },
+              data: { paymentStatus: "cancelled" },
+            });
+            if (cancelled.count > 0) {
+              Logger.log(
+                `이전 고아 Payment cancelled 처리 (대회 재결제): paymentId=${oldPaymentId}`,
+                TournamentsService.name,
+              );
+            }
+          }
+        }
+        // 읽었던 상태·결제 연결 그대로일 때만 재연결 — 동시 진입이 같은 신청을 두 결제에
+        //   붙이지 않는다(0건이면 위 Payment 생성·취소도 함께 롤백).
+        const relinked = await tx.tournamentRegistration.updateMany({
+          where: {
+            id: existing.id,
+            paymentStatus: existing.paymentStatus,
+            paymentId: oldPaymentId ?? null,
+          },
           data: {
             gamesCount,
             calculatedFee: new Decimal(body.amount),
@@ -237,6 +280,11 @@ export class TournamentsService {
             cancelledAt: null,
           },
         });
+        if (relinked.count !== 1) {
+          throw new ConflictException(
+            "참가 신청 상태가 바뀌었습니다. 화면을 새로고침한 후 다시 시도해주세요.",
+          );
+        }
       } else {
         await tx.tournamentRegistration.create({
           data: {
@@ -1118,6 +1166,37 @@ export class TournamentsService {
   }
 
   /**
+   * 이전 주문의 나이스 승인이 지금 진행 중인지 — confirm 이 잡는 잠금 키로 판정한다.
+   *  Redis 조회 실패는 "진행 중 아님"으로 둔다(결제 시작에 새 실패 지점을 만들지 않는다).
+   *  Redis 장애 중이거나 confirm 이 결제를 읽고 잠금을 잡기 전 짧은 틈에 여기를 지나치면
+   *  승인 중인 결제가 취소될 수 있는데, 그 승인은 claimFrom 에 cancelled 가 있어 completed 로
+   *  바로잡히고 신청이 새 결제에 붙어 있으므로 고아 결제 환불 요청으로 접수된다.
+   */
+  private async isNiceStdConfirmInProgress(
+    orderNumber: string,
+  ): Promise<boolean> {
+    try {
+      const lock = await this.redis?.get<string>(
+        niceStdConfirmLockKey(orderNumber),
+      );
+      return Boolean(lock);
+    } catch {
+      return false;
+    }
+  }
+
+  /** 대회 링크장 존재 확인 — 생성·수정 공용. 없으면 404(FK 오류로 새지 않게). */
+  private async assertVenueExists(venueId: string): Promise<void> {
+    const venue = await this.prisma.venue.findUnique({
+      where: { id: venueId },
+      select: { id: true },
+    });
+    if (!venue) {
+      throw new NotFoundException("링크장을 찾을 수 없습니다.");
+    }
+  }
+
+  /**
    * 대회 기간 ↔ 경기 일정 정합 검증 (A안 — 기간 수동 입력).
    *  · 경기가 1건 이상이면 기간(양쪽) 필수.
    *  · 모든 경기의 KST 달력일이 [startDate, endDate] 안(양끝 포함)이어야 한다.
@@ -1283,12 +1362,7 @@ export class TournamentsService {
 
     // 링크장(Venue) 존재 확인 (선택적)
     if (dto.venueId) {
-      const venue = await this.prisma.venue.findUnique({
-        where: { id: dto.venueId },
-      });
-      if (!venue) {
-        throw new NotFoundException("링크장을 찾을 수 없습니다.");
-      }
+      await this.assertVenueExists(dto.venueId);
     }
 
     // 출생연도 범위 검증
@@ -1455,6 +1529,20 @@ export class TournamentsService {
       throw new BadRequestException(
         "시작 날짜가 종료 날짜보다 늦을 수 없습니다.",
       );
+    }
+
+    // 링크장 — undefined 는 유지, null·빈 문자열은 해제, id 는 존재 확인 후 교체.
+    let nextTournamentVenueId = tournament.venueId;
+    if (dto.venueId !== undefined) {
+      const requestedVenueId = dto.venueId?.trim() ?? "";
+      if (!requestedVenueId) {
+        nextTournamentVenueId = null;
+      } else {
+        if (requestedVenueId !== tournament.venueId) {
+          await this.assertVenueExists(requestedVenueId);
+        }
+        nextTournamentVenueId = requestedVenueId;
+      }
     }
 
     // [추가 2026-05-15 db-keeper] T02/T04 협업 — ageGroup ↔ birth year 정합성:
@@ -1718,7 +1806,7 @@ export class TournamentsService {
             description: dto.description ?? tournament.description,
             teamId: nextTeamId,
             rinkId: dto.rinkId ?? tournament.rinkId,
-            venueId: dto.venueId ?? tournament.venueId,
+            venueId: nextTournamentVenueId,
             startDate,
             endDate,
             status: dto.status ?? tournament.status,
