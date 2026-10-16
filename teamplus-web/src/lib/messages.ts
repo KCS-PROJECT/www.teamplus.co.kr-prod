@@ -2297,6 +2297,12 @@ export const MESSAGES = {
       `결제 완료 ${n}건이 있어요. 환불 후 취소할 수 있어요.`,
     cancelSuccess: "대회가 취소되었습니다.",
     cancelledNoEdit: "취소된 대회입니다.",
+    // 삭제 대신 취소·보존 안내 — 서버 삭제 불가 사유(deleteBlockedReason)별.
+    deleteBlockedUseCancelPaid:
+      "결제·청구·환불 이력이 있어 삭제 대신 대회 취소로 닫아요.",
+    deleteBlockedUseCancelStarted: "시작된 대회라 삭제 대신 대회 취소로 닫아요.",
+    deleteBlockedKeepRecords:
+      "결제·경기 기록이 있어 삭제하지 않고 기록으로 남겨요.",
     applyCta: "참가 신청(결제)하기",
     bracketTitle: (round: string) => `${round} 대진표`,
     // 탭 라벨

@@ -39,14 +39,11 @@ export async function resolveTournamentUsageStart(
   db: TournamentMatchLookupDb,
   tournament: { id: string; startDate: Date | null; status: string },
 ): Promise<TournamentUsageStart> {
-  if (tournament.startDate != null) {
-    return {
-      usageStartDayUtc: new Date(tournament.startDate),
-      startedByStatus: false,
-    };
-  }
-  if (TOURNAMENT_STARTED_STATUSES.includes(tournament.status)) {
-    return { usageStartDayUtc: null, startedByStatus: true };
+  if (
+    tournament.startDate != null ||
+    TOURNAMENT_STARTED_STATUSES.includes(tournament.status)
+  ) {
+    return tournamentUsageStartFrom(tournament, null);
   }
   const first = await db.hockeyMatch.findFirst({
     where: {
@@ -56,8 +53,30 @@ export async function resolveTournamentUsageStart(
     orderBy: { scheduledAt: "asc" },
     select: { scheduledAt: true },
   });
+  return tournamentUsageStartFrom(tournament, first?.scheduledAt ?? null);
+}
+
+/**
+ * 개시일 판정의 순수 부분 — 첫 경기 시각을 호출자가 미리 구해 넘긴다(여러 대회 일괄 판정용).
+ *  firstActiveMatchAt 은 취소·연기를 제외한 가장 이른 경기 시작 시각.
+ */
+export function tournamentUsageStartFrom(
+  tournament: { startDate: Date | null; status: string },
+  firstActiveMatchAt: Date | null,
+): TournamentUsageStart {
+  if (tournament.startDate != null) {
+    return {
+      usageStartDayUtc: new Date(tournament.startDate),
+      startedByStatus: false,
+    };
+  }
+  if (TOURNAMENT_STARTED_STATUSES.includes(tournament.status)) {
+    return { usageStartDayUtc: null, startedByStatus: true };
+  }
   return {
-    usageStartDayUtc: first ? instantToKstDateOnly(first.scheduledAt) : null,
+    usageStartDayUtc: firstActiveMatchAt
+      ? instantToKstDateOnly(firstActiveMatchAt)
+      : null,
     startedByStatus: false,
   };
 }

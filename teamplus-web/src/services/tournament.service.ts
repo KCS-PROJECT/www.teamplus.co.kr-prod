@@ -145,6 +145,14 @@ export interface TeamBadge {
   secondaryColor?: string | null;
 }
 
+/** 대회 삭제 불가 사유 — 백엔드 tournament-delete-block.util 과 같은 값. */
+export type TournamentDeleteBlockReason =
+  | 'FINISHED'
+  | 'HAS_PAYMENT'
+  | 'HAS_MATCH_RECORDS'
+  | 'STARTED'
+  | 'HAS_APPLICANTS';
+
 /** 대회 상세 (matches 포함) */
 export interface TournamentDetail extends TournamentListItem {
   matches: MatchSummary[];
@@ -165,6 +173,9 @@ export interface TournamentDetail extends TournamentListItem {
   /** [추가] 참가 대상 이름 — 역할별로 서버가 이미 필터링해 내려준다(감독/코치=전원,
    *  학부모/학생=본인 자녀만). name=null 은 이름을 확정할 수 없는 참가자(탈퇴 등). */
   participants?: Array<{ userId: string; name: string | null }>;
+  /** 삭제 불가 사유 — 대회를 관리할 수 있는 요청자에게만 온다(그 외는 키 없음). null = 삭제 가능. */
+  deleteBlockedReason?: TournamentDeleteBlockReason | null;
+  deleteBlockedMessage?: string | null;
 }
 
 /** 경기 summary — 대진표 카드용 */

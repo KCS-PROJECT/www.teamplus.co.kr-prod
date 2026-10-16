@@ -345,4 +345,18 @@ export class ResourceAccessService {
     }
     await this.assertTeamManager(tournament.teamId, requester);
   }
+
+  /** 관리 권한 여부만 묻는다 — 조회 응답에 관리자 전용 필드를 붙일지 정할 때 쓴다. */
+  async canManageTournamentRecord(
+    tournament: { teamId: string | null },
+    requester: JwtUserPayload,
+  ): Promise<boolean> {
+    try {
+      await this.assertManageableTournamentRecord(tournament, requester);
+      return true;
+    } catch (error) {
+      if (error instanceof ForbiddenException) return false;
+      throw error;
+    }
+  }
 }

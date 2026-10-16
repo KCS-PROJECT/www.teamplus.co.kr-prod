@@ -673,14 +673,21 @@ function TournamentsPageContent() {
               >
                 <Edit2 className="w-4 h-4" aria-hidden="true" />
               </button>
-              <button
-                type="button"
-                onClick={() => openDeleteModal(tournament)}
-                aria-label="삭제"
-                className="h-9 w-9 inline-flex items-center justify-center rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+              {/* 삭제할 수 없는 대회는 휴지통을 막고 사유를 툴팁으로 — 비활성 버튼은 hover 를 받지 않아 span 에 건다. */}
+              <span
+                title={tournament.deleteBlockedMessage ?? undefined}
+                className="inline-flex"
               >
-                <Trash2 className="w-4 h-4" aria-hidden="true" />
-              </button>
+                <button
+                  type="button"
+                  onClick={() => openDeleteModal(tournament)}
+                  disabled={tournament.deleteBlockedReason != null}
+                  aria-label="삭제"
+                  className="h-9 w-9 inline-flex items-center justify-center rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-slate-400 disabled:hover:bg-transparent"
+                >
+                  <Trash2 className="w-4 h-4" aria-hidden="true" />
+                </button>
+              </span>
             </div>
           </div></li>
               ))}

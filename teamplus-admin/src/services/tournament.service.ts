@@ -37,6 +37,16 @@ export interface Tournament {
   registrationDeadline: string | null;
   club?: { id: string; clubName: string } | null;
   _count?: { matches: number; registrations: number };
+  /** 삭제 불가 사유(백엔드 tournament-delete-block.util). null = 삭제 가능, 키 없음 = 판정 미제공. */
+  deleteBlockedReason?:
+    | 'FINISHED'
+    | 'HAS_PAYMENT'
+    | 'HAS_MATCH_RECORDS'
+    | 'STARTED'
+    | 'HAS_APPLICANTS'
+    | null;
+  /** 삭제 불가 사유 문구 — 휴지통 툴팁에 그대로 쓴다. */
+  deleteBlockedMessage?: string | null;
 }
 
 export interface CreateTournamentRequest {

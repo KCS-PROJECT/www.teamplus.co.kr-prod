@@ -74,8 +74,6 @@ export default function CommonTournamentDetailPage() {
   // 감독 — 참가 등록 목록. 관리 진입 카드의 참가 인원 표기에만 사용
   //   (명단 행·정산 액션은 /tournaments/[id]/students 로 분리).
   const [regRows, setRegRows] = useState<TournamentRegistrationRow[]>([]);
-  // 명단 조회가 끝나기 전(또는 실패)에는 "신청 0건"으로 보이면 안 된다 — 삭제 버튼이 잘못 뜬다.
-  const [regRowsLoaded, setRegRowsLoaded] = useState(false);
 
   // 풀스크린 로더 fast-path (v11) — fetch 완료 시점에 PageTransitionLoader OFF
   usePageReady(!isLoading);
@@ -198,10 +196,8 @@ export default function CommonTournamentDetailPage() {
     const res = await listTournamentRegistrations(id);
     if (res.success && res.data) {
       setRegRows(res.data.registrations ?? []);
-      setRegRowsLoaded(true);
     } else {
       setRegRows([]);
-      setRegRowsLoaded(false);
     }
   }, [isManager, tournament, id]);
 
@@ -314,20 +310,32 @@ export default function CommonTournamentDetailPage() {
     () => activeRegRows.filter((r) => r.paymentStatus === "PENDING").length,
     [activeRegRows],
   );
-  // 왼쪽 버튼 한 자리 — 시작 전이고 남은 신청도 결제 흔적도 없으면 삭제, 그 외는 취소.
-  //   백엔드 삭제 가드와 같은 기준이라, 취소·환불로 빠진 신청이라도 결제가 연결됐던 대회나
-  //   시작된 대회는 삭제 대신 취소로 닫는다. 명단을 아직 못 받았으면 삭제를 보이지 않고,
-  //   끝난 대회(finished 또는 종료일 경과)는 취소할 것이 없으므로 아무것도 두지 않는다.
-  const canDelete =
-    regRowsLoaded &&
-    uiStatus === "recruiting" &&
-    activeRegRows.length === 0 &&
-    !regRows.some((r) => r.payment != null);
-  const leftAction: "delete" | "cancel" | "none" = canDelete
-    ? "delete"
-    : uiStatus === "completed"
-      ? "none"
-      : "cancel";
+  // 왼쪽 버튼 한 자리 — 서버가 판정한 삭제 불가 사유(deleteBlockedReason)를 그대로 따른다.
+  //   null(삭제 가능)일 때만 삭제 — 돈 흔적·경기 기록 없는 취소된 대회 포함. 값을 못 받았으면
+  //   (undefined) 삭제를 보이지 않는다. 취소된 대회·끝난 대회는 취소할 것이 없으므로 비우고,
+  //   그 외는 대회 취소로 닫는다.
+  const deleteBlockedReason = tournament?.deleteBlockedReason;
+  const isCancelled = tournament?.status === "cancelled";
+  const leftAction: "delete" | "cancel" | "none" =
+    deleteBlockedReason === null
+      ? "delete"
+      : isCancelled ||
+          deleteBlockedReason === "FINISHED" ||
+          uiStatus === "completed"
+        ? "none"
+        : "cancel";
+  // 삭제 대신 취소로 닫는 이유 — 신청자 사유는 취소 확인창이 알림 발송을 안내한다.
+  const deleteBlockedHint =
+    leftAction === "cancel"
+      ? deleteBlockedReason === "HAS_PAYMENT"
+        ? MESSAGES.tournament.deleteBlockedUseCancelPaid
+        : deleteBlockedReason === "STARTED" ||
+            deleteBlockedReason === "HAS_MATCH_RECORDS"
+          ? MESSAGES.tournament.deleteBlockedUseCancelStarted
+          : null
+      : leftAction === "none" && isCancelled && deleteBlockedReason
+        ? MESSAGES.tournament.deleteBlockedKeepRecords
+        : null;
 
   const dDay = useMemo(
     () =>
@@ -514,7 +522,7 @@ export default function CommonTournamentDetailPage() {
       {/* 감독/코치 — 명단·정산 관리 진입 카드. 명단 행·정산 액션은 분리 페이지가 담당. */}
       {isManager && (() => {
         // 참가자 수 — 서버 판정(isParticipant, 선불은 결제 완료만)을 따르고, 옛 응답은
-        //   취소·환불 제외로 폴백. 아래 삭제/취소 분기(activeRegRows)는 결제 대기도
+        //   취소·환불 제외로 폴백. 아래 대회 취소 판정(activeRegRows)은 결제 대기도
         //   포함한 신청 행 기준이라 이 수와 다르다(미결제 신청은 취소로 닫아야 한다).
         const activeCount = regRows.filter((r) => {
           if (r.isParticipant != null) return r.isParticipant;
@@ -612,11 +620,7 @@ export default function CommonTournamentDetailPage() {
       <div className="w-full min-w-0 bg-it-surface px-4 pt-4 pb-6 dark:bg-it-blue-950 mt-2">
         {isManager ? (
           (() => {
-            // 왼쪽 자리 — 취소된 대회는 삭제·취소 모두 없음. 그 외는 leftAction 그대로.
-            const isCancelled = tournament.status === "cancelled";
-            const left: "delete" | "cancel" | "none" = isCancelled
-              ? "none"
-              : leftAction;
+            const left = leftAction;
             // 버튼은 자리를 지키고 비활성만 한다 — 막힌 이유는 위에 글로 적는다.
             //   수정 막힘(취소/종료)과 취소 막힘(결제 완료)은 서로 다른 버튼의 사유라 함께 보일 수 있다.
             const editBlocked = isCancelled || isEnded;
@@ -628,7 +632,7 @@ export default function CommonTournamentDetailPage() {
                   : null,
               left === "cancel" && paidRegCount > 0
                 ? MESSAGES.tournament.cancelBlockedPaid(paidRegCount)
-                : null,
+                : deleteBlockedHint,
             ].filter((r): r is string => r !== null);
             return (
               <>
