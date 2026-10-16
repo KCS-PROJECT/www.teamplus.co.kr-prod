@@ -1,6 +1,21 @@
 import { TeamSettlementAccountStatus } from "@prisma/client";
 
 /**
+ * 등록 호출 진행 표시가 이보다 오래되면 서버가 도중에 멈춘 것으로 보고 다시 잡을 수 있다.
+ * 게이트웨이 타임아웃(10초) × 교차 재요청 1회보다 충분히 길다.
+ */
+export const REGISTRATION_STALE_MS = 60_000;
+
+/** 나이스 서브몰 등록 호출이 진행 중인지 — 시작 표시가 있고 아직 오래되지 않았으면 참. */
+export function isSubMallRegistrationInProgress(
+  startedAt: Date | null,
+): boolean {
+  return (
+    !!startedAt && Date.now() - startedAt.getTime() < REGISTRATION_STALE_MS
+  );
+}
+
+/**
  * 수동 운영에서 운영자가 나이스 관리자 화면에서 할 일.
  * REGISTER = 나이스에 등록한 적 없음(등록 엑셀 대상) · UPDATE = 등록돼 있는데 계좌가 바뀜(나이스에서 직접 수정) · NONE = 없음.
  */

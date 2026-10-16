@@ -322,6 +322,32 @@ describe("NicePayoutHttpGateway", () => {
     });
   });
 
+  describe("cancelPayout (0103001)", () => {
+    const cancel = { subId: "TEAM-42", settlmntDt: "20261015", seq: "SEQ001" };
+
+    it("성공 — 규격 필드 전송", async () => {
+      getPost().mockResolvedValue(okResponse("0103001", {}));
+      const r = await make().cancelPayout(cancel);
+      expect(r.outcome).toBe("SUCCESS");
+      const [, payload] = getPost().mock.calls[0];
+      expect(payload.header.sid).toBe("0103001");
+      expect(payload.body).toEqual({
+        mid: MID,
+        encKey: sha256hex("0103001" + MID + TR_DTM + KEY),
+        settlmntDt: "20261015",
+        subId: "TEAM-42",
+        seq: "SEQ001",
+      });
+    });
+
+    it("1104 → TERMINAL", async () => {
+      getPost().mockResolvedValue(codeResponse("0103001", "1104"));
+      const r = await make().cancelPayout(cancel);
+      expect(r.outcome).toBe("TERMINAL");
+      expect(r.meta.resCode).toBe("1104");
+    });
+  });
+
   describe("requestPayout (0102001)", () => {
     const payout = {
       subId: "TEAM-42",

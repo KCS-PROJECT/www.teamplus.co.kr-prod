@@ -15,6 +15,9 @@ import {
   SettlementStatus,
 } from "../constants/settlement-status.constant";
 
+export const PAYOUT_VIEW_VALUES = ["ready", "blocked"] as const;
+export type PayoutViewFilter = (typeof PAYOUT_VIEW_VALUES)[number];
+
 /**
  * 정산 목록 조회 쿼리 DTO
  */
@@ -52,6 +55,18 @@ export class QuerySettlementDto {
   @Transform(({ value }) => value === true || value === "true")
   @IsBoolean()
   needsReview?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      "관리자, month 와 status(approved·failed)를 함께 줄 때만 — ready 면 지금 지급 요청할 수 있는 정산만, blocked 면 요청할 수 없는 정산만(payoutBlock 판정). " +
+      "주면 응답 meta.payoutCounts 에 그 조건 전체 기준의 건수가 온다",
+    enum: PAYOUT_VIEW_VALUES,
+  })
+  @IsOptional()
+  @IsIn(PAYOUT_VIEW_VALUES, {
+    message: `payoutView 는 ${PAYOUT_VIEW_VALUES.join("|")} 중 하나여야 합니다.`,
+  })
+  payoutView?: PayoutViewFilter;
 
   @ApiPropertyOptional({
     description: "조회 시작일 YYYY-MM-DD (KST 달력일, 생성일 기준)",

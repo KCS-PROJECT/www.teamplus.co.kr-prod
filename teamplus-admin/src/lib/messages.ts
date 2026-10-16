@@ -60,6 +60,7 @@ export const MESSAGES = {
     statusFailed: '실패',
     // 조회 실패
     listLoadError: '정산 목록을 불러오지 못했습니다.',
+    listEmpty: '해당 월 정산 내역이 없습니다.',
     overviewLoadError: '정산 개요를 불러오지 못했습니다.',
     detailNotFound: '정산 내역을 찾을 수 없습니다. 다시 마감되었거나 삭제되었을 수 있습니다.',
     // 월 마감
@@ -296,7 +297,8 @@ export const MESSAGES = {
     sectionCollapse: '접기',
     payoutRequestBalanceShort: '잔액보다 합계가 큽니다. 지급일에 잔액이 부족하면 그 건은 실패 처리되어 다시 요청해야 합니다.',
     payoutRequestEarlyDateNotice: '지난달 말 결제 대금은 영업일 5일 뒤에 들어옵니다. 지급일이 이르면 잔액 부족으로 실패할 수 있습니다.',
-    payoutRequestConfirmCheckbox: '위 팀 계좌로 지급을 요청합니다. 요청 후에는 취소할 수 없습니다.',
+    payoutRequestConfirmCheckbox:
+      '위 팀 계좌로 지급을 요청합니다. 지급일 오전 10:30 전까지는 지급 처리 중 목록에서 취소할 수 있습니다.',
     payoutRequestSubmit: '지급 요청하기',
     payoutRequestSubmitting: '요청하는 중...',
     payoutRequestSubmitError: '지급 요청에 실패했습니다.',
@@ -324,12 +326,36 @@ export const MESSAGES = {
     stageAllLabel: '전체',
     stageTabsAria: '정산 단계',
     rowExcludedNegative: '순지급액 음수 · 승인 불가 · 다음 달 정산에서 처리',
-    rowExcludedReview: '확인 필요 지급 건 있음 · 상세에서 확인 완료 후 요청',
-    clearSelection: '선택 해제',
+    // 지급 대기·지급 실패 안의 구분과 요청 불가 사유(짧은 표시)
+    payoutViewReady: '요청 가능',
+    payoutViewBlocked: '요청 불가',
+    payoutViewAria: '지급 요청 가능 여부',
+    payoutBlockAccountNone: '계좌 미입력',
+    payoutBlockNotRegistered: '계좌 등록 전',
+    payoutBlockInProgress: '계좌 등록 중',
+    payoutBlockAccountChanged: '계좌 변경 확인',
+    payoutBlockSubIdMissing: '서브ID 없음',
+    payoutBlockReviewOpen: '확인 필요',
+    payoutBlockReviewReopened: '나이스 재진행 중',
+    payoutBlockNetNotPositive: '0원 이하',
+    payoutBlockOther: '요청 불가',
+    payoutBlockGoAccount: '계좌 확인',
+    payoutBlockGoDetail: '상세 확인',
+    reviewOnlyToggle: '확인 필요만 보기',
     approveBatchTitle: '선택한 정산 승인',
     approveBatchSubmit: '승인하기',
     approveBatchSubmitting: '승인하는 중...',
     approveBatchError: '일괄 승인에 실패했습니다.',
+    // 지급 취소(지급 처리 중 단계)
+    payoutCancelButton: '지급 취소',
+    payoutCancelTitle: '지급 취소',
+    payoutCancelSubmit: '취소하기',
+    payoutCancelSubmitting: '취소하는 중...',
+    payoutCancelKeep: '닫기',
+    payoutCancelError: '지급을 취소하지 못했습니다.',
+    payoutCancelColTeam: '팀',
+    payoutCancelColAmount: '금액',
+    payoutCancelColPayDate: '지급일',
     approveBatchSkippedTitle: '건너뛴 정산',
     // 확인 필요 단계·지급 요청 확인 완료
     stageReviewLabel: '확인 필요',
@@ -520,6 +546,7 @@ export const MESSAGES = {
   settlementDynamic: {
     paid: (amount: number) =>
       `${amount.toLocaleString()}원 지급이 완료되었습니다.`,
+    detailAria: (teamName: string) => `${teamName} 정산 상세 보기`,
     overviewPeriod: (yearMonth: string) =>
       `${yearMonth} 결제 기준 (해당 월에 귀속된 금액만 집계)`,
     closeConfirmTitle: (month: string) => `${month} 정산을 마감하시겠습니까?`,
@@ -569,6 +596,9 @@ export const MESSAGES = {
     nextActionFailed: (count: number) => `지급 실패 ${count}건 확인`,
     nextActionReview: (count: number) => `확인 필요 ${count}건 확인`,
     reviewedNote: (who: string, at: string, memo: string) => `${who} 확인 완료 · ${at} · ${memo}`,
+    payoutCancelConfirmBody: (payDateLabel: string) =>
+      `나이스에 보낸 지급 요청을 취소합니다. ${payDateLabel} 오전 10:30 전까지만 취소할 수 있고, 취소하면 지급 대기로 돌아갑니다.`,
+    payoutCancelAria: (teamName: string) => `${teamName} 지급 취소`,
     approveBatchConfirmBody: (count: number, amount: string) =>
       `승인 대기 정산 ${count}건(합계 ${amount})을 승인합니다. 승인된 정산은 지급 요청 대상이 됩니다.`,
     approveBatchResult: (approved: number, skipped: number) =>

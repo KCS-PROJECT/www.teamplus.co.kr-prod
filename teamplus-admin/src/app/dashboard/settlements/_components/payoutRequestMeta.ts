@@ -29,11 +29,15 @@ export interface PayoutRequestInfo {
   /** needsReview 를 켠 이유(끈 뒤에도 이력으로 남는다) */
   reviewReason?: string | null;
   reviewReasonLabel?: string | null;
+  /** 사유가 돈이 두 번 나갔을 수 있는 것인지 — 서버가 사유 목록으로 판정한다 */
+  duplicateSuspected?: boolean;
   /** 운영자가 확인 완료한 시각·이름·메모 — 자동으로 꺼진 경우는 null */
   reviewedAt?: string | null;
   reviewedByName?: string | null;
   reviewMemo?: string | null;
   needsAttention: boolean;
+  /** 지급 처리 중 목록의 [지급 취소] 노출 기준 — 서버가 지급일 10:30 마감까지 계산한다(live 여부는 화면이 따로 본다) */
+  cancelable?: boolean;
   checkCount: number;
   requestedAt: string | null;
   confirmedAt: string | null;
@@ -120,8 +124,9 @@ export function joinPayoutReasons(request: PayoutRequestInfo | null | undefined)
 }
 
 /**
- * 월 정산 탭의 단계 — 상태 필터와 같다. 한 단계에는 일괄 작업이 하나뿐이라 체크박스의 뜻이 화면 안에서 바뀌지 않는다.
+ * 월 정산 탭의 단계 — 정산 상태 하나와 같다(같은 정산이 두 단계에 나오지 않는다). 한 단계에는 일괄 작업이 하나뿐이다.
  *   승인 대기(pending) → 승인 · 지급 대기(approved)·지급 실패(failed) → 지급 요청 · 그 외 → 조회만.
+ *   확인 필요는 상태가 아니라 표시라 단계가 아니다 — 탭의 빨간 숫자와 [확인 필요만 보기]로 다룬다.
  */
 export type SettlementStage =
   | 'all'
@@ -130,9 +135,7 @@ export type SettlementStage =
   | 'processing'
   | 'failed'
   | 'paid'
-  | 'rejected'
-  /** 확인 필요 — needsReview 요청이나 열린 지급 이상 건이 있는 정산. 작업은 상세 팝업의 확인 완료뿐이라 일괄 작업은 없다 */
-  | 'review';
+  | 'rejected';
 export type StageAction = 'approve' | 'payout';
 
 export function getStageAction(stage: SettlementStage): StageAction | null {
@@ -144,20 +147,37 @@ export function getStageAction(stage: SettlementStage): StageAction | null {
 export interface SelectableSettlementRow {
   status: string;
   netAmount: number;
-  payoutRequest?: PayoutRequestInfo | null;
-  /** 서버가 정산의 모든 지급 요청을 보고 센 "운영자 확인 필요" 요청 수 — 최신 요청 1건만 오는 payoutRequest 보다 우선한다. */
-  reviewOpenCount?: number;
 }
 
 /**
- * 단계 안에서 이 행만 작업에서 빠지는 이유 — 없으면 null.
- *   상태 자체로 자명한 경우는 단계가 이미 걸러 주므로, 겉으로 드러나지 않는 두 가지만 행에 적는다.
+ * 승인 대기 단계에서 이 행만 승인에서 빠지는 이유 — 없으면 null.
+ * 지급 요청 단계는 요청할 수 없는 행을 "요청 불가" 구분으로 따로 모으므로(서버의 payoutBlock) 여기서 다루지 않는다.
  */
 export function getRowExclusion(row: SelectableSettlementRow, action: StageAction): string | null {
   if (action === 'approve') {
     return row.netAmount < 0 ? MESSAGES.settlement.rowExcludedNegative : null;
   }
-  // 운영자 확인이 필요한 지급 요청(실패 건의 나이스 재진행·이중 지급 의심 등)이 남은 정산 — 서버도 요청을 거르지만 화면에서 미리 보여 준다.
-  const underReview = (row.reviewOpenCount ?? 0) > 0 || row.payoutRequest?.needsReview === true;
-  return underReview ? MESSAGES.settlement.rowExcludedReview : null;
+  return null;
+}
+
+/** 지급 대기·지급 실패 단계 안의 구분 — 지금 나이스에 요청할 수 있는 정산과 없는 정산. */
+export type PayoutView = 'ready' | 'blocked';
+
+/** 요청 불가 행에서 갈 곳 — 계좌는 지급 계좌 탭, 확인 필요는 정산 상세 팝업. */
+export type PayoutBlockAction = 'account' | 'detail' | null;
+
+const PAYOUT_BLOCK_META: Record<string, { label: string; action: PayoutBlockAction }> = {
+  ACCOUNT_NONE: { label: MESSAGES.settlement.payoutBlockAccountNone, action: 'account' },
+  NOT_REGISTERED: { label: MESSAGES.settlement.payoutBlockNotRegistered, action: 'account' },
+  IN_PROGRESS: { label: MESSAGES.settlement.payoutBlockInProgress, action: 'account' },
+  ACCOUNT_CHANGED: { label: MESSAGES.settlement.payoutBlockAccountChanged, action: 'account' },
+  SUB_ID_MISSING: { label: MESSAGES.settlement.payoutBlockSubIdMissing, action: 'account' },
+  PAYOUT_REVIEW_OPEN: { label: MESSAGES.settlement.payoutBlockReviewOpen, action: 'detail' },
+  PAYOUT_REVIEW_REOPENED: { label: MESSAGES.settlement.payoutBlockReviewReopened, action: 'detail' },
+  NET_NOT_POSITIVE: { label: MESSAGES.settlement.payoutBlockNetNotPositive, action: null },
+};
+
+/** 서버가 내려준 요청 불가 사유 코드의 짧은 표시와 갈 곳 — 모르는 코드는 상세로 보낸다. */
+export function getPayoutBlockMeta(reason: string): { label: string; action: PayoutBlockAction } {
+  return PAYOUT_BLOCK_META[reason] ?? { label: MESSAGES.settlement.payoutBlockOther, action: 'detail' };
 }

@@ -1,31 +1,42 @@
-import { ConflictException, Injectable, Logger } from "@nestjs/common";
+import {
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from "@nestjs/common";
+import { randomUUID } from "crypto";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "@/prisma/prisma.service";
 import { RedisService } from "@/redis/redis.service";
-import { dateOnlyToUtc } from "@/common/utils/kst-date.util";
+import { dateOnlyToString, dateOnlyToUtc } from "@/common/utils/kst-date.util";
 import {
   SETTLEMENT_STATUS,
   type SettlementStatus,
 } from "./constants/settlement-status.constant";
-import { PAYOUT_REQUEST_STATUS } from "./constants/payout-request-status.constant";
+import {
+  ACTIVE_PAYOUT_REQUEST_STATUSES,
+  PAYOUT_REQUEST_STATUS,
+} from "./constants/payout-request-status.constant";
 import type { PayoutApiMode } from "./constants/payout-mode.constant";
 import { resolvePayoutApiMode } from "./payout-mode.util";
 import { NicePayoutApiService } from "./nice-payout-api.service";
 import { SettlementPayoutResultService } from "./settlement-payout-result.service";
-import {
-  TeamSettlementAccountService,
-  isSubMallRegistrationInProgress,
-} from "./team-settlement-account.service";
+import { TeamSettlementAccountService } from "./team-settlement-account.service";
 import { assertNicePayDate } from "./utils/nice-pay-date.util";
 import { computeDefaultPayDate } from "./utils/payout-default-date.util";
 import { truncateUtf8Bytes } from "./utils/nice-xlsx.util";
 import { decryptOrRaw, maskBankAccount } from "./utils/account-mask.util";
+import { PAYOUT_FILE_EXCLUSION_REASON } from "./utils/nice-account-state.util";
 import {
-  PAYOUT_FILE_EXCLUSION_REASON,
-  classifyPayoutFileAccount,
-  type PayoutFileExclusion,
-} from "./utils/nice-account-state.util";
+  classifyPayoutBlock,
+  toPayoutAccountInput,
+  type PayoutBlockReason,
+} from "./utils/payout-block.util";
 import { acquireSettlementCloseLock } from "./utils/settlement-locks.util";
+import {
+  classifyPayoutCancelBlock,
+  type PayoutCancelBlock,
+} from "./utils/payout-request-view.util";
 import { describePayoutCallForOperator } from "./gateway/payout-res-code.util";
 import type {
   CreatePayoutRequestsDto,
@@ -39,23 +50,12 @@ export const DEFAULT_PAYOUT_DAY_OF_MONTH = 15;
 /** 나이스 수취 통장 표기(accntDesc) 길이 — 규격 30. */
 const ACCNT_DESC_MAX_BYTES = 30;
 
-/** 지급 요청을 받을 수 있는 정산 상태 — 지급 예정(approved)과 지급 실패 뒤 재요청(failed). */
-const PAYABLE_STATUSES: readonly SettlementStatus[] = [
-  SETTLEMENT_STATUS.APPROVED,
-  SETTLEMENT_STATUS.FAILED,
-];
-
 export type PayoutRequestExclusion =
-  | PayoutFileExclusion
+  | PayoutBlockReason
   | "SETTLEMENT_NOT_FOUND"
-  | "NOT_PAYABLE_STATUS"
-  | "PAYOUT_IN_PROGRESS"
-  | "NET_NOT_POSITIVE"
   | "ACCOUNT_CHANGED"
   | "SETTLEMENT_CHANGED"
   | "DUPLICATE_ITEM"
-  | "PAYOUT_REVIEW_OPEN"
-  | "PAYOUT_REVIEW_REOPENED"
   | "FAILED_REQUEST_UNVERIFIED";
 
 export const PAYOUT_REQUEST_EXCLUSION_REASON: Readonly<
@@ -159,6 +159,47 @@ type SettlementTarget = Prisma.SettlementGetPayload<{
 interface SettlementHead {
   teamName: string | null;
   amount: number;
+}
+
+/** 운영자 지급 취소 — 나이스 호출이 한 번에 하나만 나가게 정산 단위로 잡는다. 취소 호출에 즉시 결과 조회까지 이어질 수 있어 결과 조회 락(120초)과 같게 둔다. */
+const CANCEL_LOCK_TTL_SECONDS = 120;
+const cancelLockKey = (settlementId: string) =>
+  `settlement:payout-cancel:${settlementId}`;
+/** 나이스 "대상 없음" — 이미 취소·삭제됐거나 접수되지 않은 건. 즉시 조회로 실제 상태를 맞춘다. */
+const NICE_NO_DATA_CODE = "1104";
+/** 운영자 취소로 닫은 요청 행의 사유 — 누가 취소했는지는 감사 로그에 남는다. */
+export const PAYOUT_CANCEL_REASON = "팀플러스에서 취소";
+
+/** 취소를 막는 이유별 409 — 목록의 cancelable 과 같은 판정(classifyPayoutCancelBlock). */
+const PAYOUT_CANCEL_BLOCK_ERROR: Record<
+  PayoutCancelBlock,
+  { message: string; errorCode: string }
+> = {
+  NO_REQUEST: {
+    message:
+      "나이스 접수번호를 아직 확인하지 못해 취소할 수 없습니다. 결과 확인 뒤 다시 시도하거나 나이스 화면에서 처리해주세요.",
+    errorCode: "PAYOUT_CANCEL_NO_REQUEST",
+  },
+  REVIEW_OPEN: {
+    message:
+      "운영자 확인이 필요한 지급 요청입니다. 정산 상세에서 확인을 먼저 마쳐주세요.",
+    errorCode: "PAYOUT_REVIEW_OPEN",
+  },
+  CUTOFF_PASSED: {
+    message:
+      "지급일 오전 10시 30분이 지나 취소할 수 없습니다. 지급 결과를 확인해주세요.",
+    errorCode: "PAYOUT_CANCEL_CUTOFF_PASSED",
+  },
+};
+
+export type PayoutCancelOutcome = "CANCELLED" | "UNCONFIRMED" | "REJECTED";
+
+export interface PayoutCancelResult {
+  settlementId: string;
+  requestId: string;
+  outcome: PayoutCancelOutcome;
+  resCode: string | null;
+  message: string;
 }
 
 /** 수취 통장에 찍히는 표기 — "팀플러스 N월 정산". */
@@ -640,45 +681,22 @@ export class SettlementPayoutRequestService {
         account: NonNullable<SettlementTarget["team"]["settlementAccount"]>;
       }
     | { exclusion: PayoutRequestExclusion } {
-    if (!PAYABLE_STATUSES.includes(s.status as SettlementStatus)) {
-      return {
-        exclusion:
-          s.status === SETTLEMENT_STATUS.PROCESSING
-            ? "PAYOUT_IN_PROGRESS"
-            : "NOT_PAYABLE_STATUS",
-      };
-    }
-    // 운영자 확인이 필요한 지급 건이 있으면 또 보내지 않는다. 실패 건의 나이스 재진행은 확인 완료로 풀리지 않아(다음 조회가 다시 켬)
-    //   안내가 달라 사유를 나눈다 — 그 밖의 사유(이중 지급 의심·금액 불일치 등)는 확인 완료로 푼다.
-    if (
-      s.payoutRequests.some(
+    const account = s.team.settlementAccount;
+    const verdict = classifyPayoutBlock({
+      status: s.status,
+      netAmount: s.netAmount,
+      reviewReopened: s.payoutRequests.some(
         (r) =>
           r.needsReview &&
           r.reviewReason === PAYOUT_REVIEW_REASON.REOPENED_IN_PROGRESS,
-      )
-    ) {
-      return { exclusion: "PAYOUT_REVIEW_REOPENED" };
+      ),
+      reviewOpen: s._count.payoutRequests > 0,
+      account: toPayoutAccountInput(account),
+    });
+    if (verdict.reason !== null || !account) {
+      return { exclusion: verdict.reason ?? "ACCOUNT_NONE" };
     }
-    if (s._count.payoutRequests > 0) {
-      return { exclusion: "PAYOUT_REVIEW_OPEN" };
-    }
-    if (s.netAmount <= 0) return { exclusion: "NET_NOT_POSITIVE" };
-    const account = s.team.settlementAccount;
-    const classified = classifyPayoutFileAccount(
-      account
-        ? {
-            status: account.status,
-            subMallId: account.subMallId,
-            registrationInProgress: isSubMallRegistrationInProgress(
-              account.registrationStartedAt,
-            ),
-          }
-        : null,
-    );
-    if (classified.exclusion !== null || !account) {
-      return { exclusion: classified.exclusion ?? "ACCOUNT_NONE" };
-    }
-    return { exclusion: null, subMallId: classified.subMallId, account };
+    return { exclusion: null, subMallId: verdict.subMallId, account };
   }
 
   /** 건너뛴 건의 팀명·금액 — 요청 전에 한 번 읽어 둔 머리 정보. */
@@ -712,6 +730,229 @@ export class SettlementPayoutRequestService {
       reasonCode,
       message: PAYOUT_REQUEST_EXCLUSION_REASON[reasonCode],
     };
+  }
+
+  /**
+   * 운영자 지급 취소(0103001) — 지급 처리 중 정산의 진행 중 요청 1건을 나이스에서 취소한다. live 에서만, 지급일 당일 10:30 전까지.
+   *   - 취소 성공: 나이스 화면 삭제와 같은 경로(closeAndRevert)로 요청 CANCELLED · 정산 approved.
+   *   - 응답 없음·"대상 없음(1104)": 상태를 바꾸지 않고 그 지급일을 한 번 조회해 나이스의 실제 상태(삭제/요청)로 맞춘다.
+   *   - 확정 거절·설정 오류: 상태를 바꾸지 않는다.
+   * 나이스를 부른 뒤의 결과는 모두 200 으로 돌려준다(감사 로그가 실패·미확인 건도 남기게). 부르기 전에 막히면 409.
+   */
+  async cancel(
+    settlementId: string,
+    adminId: string,
+  ): Promise<PayoutCancelResult> {
+    await this.requireMode(["live"]);
+    const lockKey = cancelLockKey(settlementId);
+    const lockToken = `${adminId}:${randomUUID()}`;
+    const locked = await this.redis.setIfNotExists(
+      lockKey,
+      lockToken,
+      CANCEL_LOCK_TTL_SECONDS,
+    );
+    if (!locked) {
+      throw new ConflictException({
+        message:
+          "이 정산의 지급 취소를 이미 처리하고 있습니다. 잠시 후 다시 확인해주세요.",
+        errorCode: "PAYOUT_CANCEL_IN_PROGRESS",
+      });
+    }
+    try {
+      return await this.cancelLocked(settlementId, adminId);
+    } finally {
+      await this.redis.releaseLock(lockKey, lockToken);
+    }
+  }
+
+  private async cancelLocked(
+    settlementId: string,
+    adminId: string,
+  ): Promise<PayoutCancelResult> {
+    const settlement = await this.prisma.settlement.findUnique({
+      where: { id: settlementId },
+      select: {
+        teamId: true,
+        status: true,
+        payoutRequests: {
+          where: { status: { in: [...ACTIVE_PAYOUT_REQUEST_STATUSES] } },
+          select: {
+            id: true,
+            status: true,
+            niceSeq: true,
+            subMallId: true,
+            settlementDate: true,
+            needsReview: true,
+          },
+          take: 1,
+        },
+      },
+    });
+    if (!settlement) {
+      throw new NotFoundException("정산을 찾을 수 없습니다.");
+    }
+    if (settlement.status !== SETTLEMENT_STATUS.PROCESSING) {
+      throw new ConflictException({
+        message: "지급 처리 중인 정산만 취소할 수 있습니다.",
+        errorCode: "PAYOUT_CANCEL_NOT_PROCESSING",
+      });
+    }
+    const request = settlement.payoutRequests[0];
+    if (!request) {
+      throw new ConflictException(PAYOUT_CANCEL_BLOCK_ERROR.NO_REQUEST);
+    }
+    const verdict = classifyPayoutCancelBlock(request);
+    if (verdict.reason !== null) {
+      throw new ConflictException(PAYOUT_CANCEL_BLOCK_ERROR[verdict.reason]);
+    }
+
+    const payDate = dateOnlyToString(request.settlementDate);
+    const call = await this.payoutApi.cancelPayout(
+      {
+        subId: request.subMallId,
+        settlmntDt: payDate.replace(/-/g, ""),
+        seq: verdict.niceSeq,
+      },
+      { teamId: settlement.teamId, settlementId, requestedBy: adminId },
+    );
+    const result = (
+      outcome: PayoutCancelOutcome,
+      message: string,
+    ): PayoutCancelResult => ({
+      settlementId,
+      requestId: request.id,
+      outcome,
+      resCode: call.meta.resCode,
+      message,
+    });
+    const cancelled = () =>
+      result("CANCELLED", "지급을 취소했습니다. 지급 대기로 돌아갔습니다.");
+    // 지급 대기로 돌아간 종결 — 우리가 닫았든(삭제) 결과 조회가 접수되지 않음으로 닫았든 운영자에게는 같은 결과다.
+    const revertedOutcome = (status: string | null) =>
+      status === PAYOUT_REQUEST_STATUS.CANCELLED
+        ? cancelled()
+        : status === PAYOUT_REQUEST_STATUS.NOT_FOUND
+          ? result(
+              "CANCELLED",
+              "나이스에 접수되지 않은 요청으로 확인되어 지급 대기로 돌아갔습니다.",
+            )
+          : null;
+
+    if (call.outcome === "SUCCESS") {
+      let closed: boolean;
+      try {
+        closed = await this.resultService.closeAndRevert(
+          { id: request.id, settlementId },
+          settlement.teamId,
+          PAYOUT_REQUEST_STATUS.CANCELLED,
+          { errReason: PAYOUT_CANCEL_REASON, confirmedAt: new Date() },
+        );
+      } catch (error) {
+        // 나이스는 이미 취소했다 — 그 건만 바로 다시 조회해 "삭제"로 닫히면 취소로 알리고,
+        //   그래도 안 되면 다음 결과 조회가 맞추도록 남기고 운영자에게는 확인 중으로 알린다.
+        this.logger.error(
+          `나이스 지급 취소는 성공했는데 상태 반영 실패: settlementId=${settlementId}, requestId=${request.id}, ${
+            error instanceof Error ? error.message : "unknown"
+          }`,
+        );
+        await this.resultService.recheckAfterCancel(
+          payDate,
+          adminId,
+          request.id,
+        );
+        const { status } = await this.readRequestAfterCancel(request.id);
+        return (
+          revertedOutcome(status) ??
+          result(
+            "UNCONFIRMED",
+            "나이스에서는 취소됐지만 팀플러스 상태 반영에 실패했습니다. 잠시 후 목록을 새로 고쳐 확인해주세요.",
+          )
+        );
+      }
+      if (closed) return cancelled();
+      const { status } = await this.readRequestAfterCancel(request.id);
+      const reverted = revertedOutcome(status);
+      if (reverted) return reverted;
+      this.logger.error(
+        `나이스 지급 취소 성공인데 요청이 이미 다른 상태로 닫힘: settlementId=${settlementId}, requestId=${request.id}, status=${status}`,
+      );
+      return result(
+        "UNCONFIRMED",
+        "나이스는 취소를 받았지만 팀플러스 상태가 이미 바뀌었습니다. 정산 상세에서 확인해주세요.",
+      );
+    }
+
+    if (
+      call.outcome === "AMBIGUOUS" ||
+      call.meta.resCode === NICE_NO_DATA_CODE
+    ) {
+      this.logger.warn(
+        `나이스 지급 취소 결과 불명 — 그 건만 즉시 결과 조회: settlementId=${settlementId}, requestId=${request.id}, ${describePayoutCallForOperator(call.meta)}`,
+      );
+      const recheck = await this.resultService.recheckAfterCancel(
+        payDate,
+        adminId,
+        request.id,
+      );
+      const { status } = await this.readRequestAfterCancel(request.id);
+      // 결과 조회가 나이스 "삭제"로 닫았다(사유는 그 경로가 적은 대로 둔다 — 누가 취소했는지는 감사 로그).
+      const reverted = revertedOutcome(status);
+      if (reverted) return reverted;
+      if (status !== null && status !== PAYOUT_REQUEST_STATUS.REQUESTED) {
+        return result(
+          "REJECTED",
+          "지급 결과가 이미 확정되어 취소하지 못했습니다. 정산 상세에서 확인해주세요.",
+        );
+      }
+      if (!recheck.queried || status === null) {
+        return result(
+          "UNCONFIRMED",
+          "취소 결과를 확인 중입니다. 잠시 후 목록을 새로 고치거나 나이스 화면에서 확인해주세요.",
+        );
+      }
+      // 이번 조회에서 나이스가 그 건을 아직 "요청"으로 보여줬을 때만 취소되지 않았다고 말한다 — 지난 조회가 저장해 둔 상태값은 보지 않는다.
+      const sighting = recheck.sighting;
+      if (sighting?.kind === "MATCHED" && sighting.result === "PENDING") {
+        if (call.outcome === "AMBIGUOUS") {
+          // 취소 응답을 못 받았을 뿐 나이스가 받아서 뒤늦게 반영할 수 있다 — 취소 안 됨으로 확정하지 않는다.
+          return result(
+            "UNCONFIRMED",
+            "취소 요청의 응답을 받지 못했고 나이스에는 아직 요청으로 남아 있습니다. 잠시 후 목록을 새로 고치거나 나이스 화면에서 확인해주세요.",
+          );
+        }
+        return result(
+          "REJECTED",
+          "나이스에 취소되지 않은 요청으로 남아 있습니다. 다시 시도해주세요.",
+        );
+      }
+      if (sighting?.kind === "NOT_FOUND") {
+        // 결과 목록에 그 건이 없었다(삭제된 행을 나이스가 빼는 경우 등) — 판단할 수 없어 나이스 화면 확인으로 넘긴다.
+        return result(
+          "UNCONFIRMED",
+          "나이스가 취소할 지급 건을 찾지 못했습니다. 나이스 화면에서 이 건의 상태를 확인해주세요.",
+        );
+      }
+      // 짝 맞추기 불가·모르는 상태값(결과 조회가 확인 필요를 켰다) 등 — 상세에서 보게 한다.
+      return result(
+        "UNCONFIRMED",
+        "취소 결과를 확인 중입니다. 잠시 후 목록을 새로 고치거나 정산 상세에서 확인해주세요.",
+      );
+    }
+
+    return result(
+      "REJECTED",
+      `지급을 취소하지 못했습니다. ${describePayoutCallForOperator(call.meta)}`,
+    );
+  }
+
+  private async readRequestAfterCancel(
+    requestId: string,
+  ): Promise<{ status: string | null }> {
+    const row = await this.prisma.settlementPayoutRequest.findUnique({
+      where: { id: requestId },
+      select: { status: true },
+    });
+    return { status: row?.status ?? null };
   }
 
   private async requireMode(

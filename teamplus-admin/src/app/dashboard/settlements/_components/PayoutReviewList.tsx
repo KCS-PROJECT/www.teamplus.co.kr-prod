@@ -17,13 +17,6 @@ import { getApiErrorMessage } from '@/lib/api-error';
 import { isoToKstDateTimeLabel } from '@/lib/kst-date';
 import { getPayoutRequestStatusMeta, type PayoutRequestInfo } from './payoutRequestMeta';
 
-/** 돈이 두 번 나갔을 수 있는 사유 — 빨간 표시. 나머지는 노란 표시. */
-const DUPLICATE_SUSPECT_REASONS: ReadonlySet<string> = new Set(['REOPENED_DUPLICATE', 'DUPLICATE_SUCCESS']);
-
-export function isDuplicateSuspectReason(reason: string | null | undefined): boolean {
-  return !!reason && DUPLICATE_SUSPECT_REASONS.has(reason);
-}
-
 function formatAmount(value: number | null | undefined): string {
   if (value === null || value === undefined) return '-';
   return MESSAGES.settlementDynamic.amountWon(value.toLocaleString());
@@ -66,7 +59,8 @@ export function PayoutReviewList({ requests, onResolved, onError }: PayoutReview
   return (
     <ul className="space-y-2">
       {requests.map((r) => {
-        const suspect = isDuplicateSuspectReason(r.reviewReason);
+        // 돈이 두 번 나갔을 수 있는 사유(서버 판정)는 빨간 표시, 나머지는 노란 표시.
+        const suspect = r.duplicateSuspected === true;
         const statusMeta = getPayoutRequestStatusMeta(r.status, r.statusLabel);
         return (
           <li

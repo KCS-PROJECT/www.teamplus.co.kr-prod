@@ -722,4 +722,30 @@ export class SettlementsController {
       dto.expectedAccountUpdatedAt,
     );
   }
+
+  @Post(":id/payout-cancel")
+  @Roles("ADMIN")
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: "나이스 지급 취소",
+    description:
+      "지급 처리 중(processing) 정산의 진행 중 지급 요청을 나이스에서 취소한다(0103001, 단건). live 모드에서만, 지급일 당일 오전 10:30(KST) 전까지. " +
+      "나이스를 부른 뒤의 결과는 200 으로 돌려준다: outcome CANCELLED(요청 CANCELLED·정산 approved) / UNCONFIRMED(결과 확인 중, 상태 그대로) / REJECTED(취소 안 됨, 상태 그대로). " +
+      "응답이 없거나 1104 면 그 지급일을 즉시 한 번 조회해 확정한다. 부르기 전에 막히면 409: PAYOUT_API_OFF·PAYOUT_API_NOT_LIVE·PAYOUT_CANCEL_NOT_PROCESSING·PAYOUT_CANCEL_NO_REQUEST·PAYOUT_REVIEW_OPEN·PAYOUT_CANCEL_CUTOFF_PASSED·PAYOUT_CANCEL_IN_PROGRESS.",
+  })
+  @ApiParam({ name: "id", description: "정산 ID" })
+  @ApiResponse({ status: 200, description: "나이스 호출 결과(outcome)" })
+  @ApiResponse({ status: 404, description: "정산 없음" })
+  @ApiResponse({ status: 409, description: "취소할 수 없는 상태" })
+  @AuditAction({
+    action: "settlement.payout-cancel",
+    resource: "Settlement",
+    includeKeys: ["id"],
+  })
+  async cancelPayout(
+    @Param("id") id: string,
+    @Request() req: AuthenticatedRequest,
+  ) {
+    return this.payoutRequestService.cancel(id, req.user.id);
+  }
 }

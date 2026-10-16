@@ -25,6 +25,8 @@ type SettlementTab = 'monthly' | 'overview' | 'accounts';
 
 export default function SettlementsPage() {
   const [activeTab, setActiveTab] = useState<SettlementTab>('monthly');
+  // 월 정산의 [계좌 확인] 으로 넘어올 때 지급 계좌 탭에 미리 넣을 검색어(팀 이름)
+  const [accountsQuery, setAccountsQuery] = useState('');
 
   return (
     <div className="p-6 space-y-6">
@@ -40,13 +42,23 @@ export default function SettlementsPage() {
           { id: 'accounts', label: MESSAGES.settlement.tabAccounts },
         ]}
         activeTab={activeTab}
-        onChange={(id) => setActiveTab(id as SettlementTab)}
+        onChange={(id) => {
+          setAccountsQuery('');
+          setActiveTab(id as SettlementTab);
+        }}
         variant="segment"
       />
 
-      {activeTab === 'monthly' && <MonthlySettlementTab />}
+      {activeTab === 'monthly' && (
+        <MonthlySettlementTab
+          onOpenAccounts={(teamName) => {
+            setAccountsQuery(teamName);
+            setActiveTab('accounts');
+          }}
+        />
+      )}
       {activeTab === 'overview' && <OverviewTab />}
-      {activeTab === 'accounts' && <TeamSettlementAccountsTab />}
+      {activeTab === 'accounts' && <TeamSettlementAccountsTab initialQuery={accountsQuery} />}
     </div>
   );
 }

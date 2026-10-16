@@ -1,8 +1,8 @@
 import { BadRequestException } from "@nestjs/common";
-import { nowKstParts } from "@/common/utils/kst-date.util";
+import { dateOnlyToString, nowKstParts } from "@/common/utils/kst-date.util";
 
-/** 나이스 지급 요청 마감 — 지급일(영업일) 오전 10:30. */
-const CUTOFF_MINUTES = 10 * 60 + 30;
+/** 나이스 지급 요청·취소 마감 — 지급일(영업일) 당일 오전 10:30(KST), 자정부터 센 분. */
+export const PAY_CUTOFF_MINUTES = 10 * 60 + 30;
 const MAX_DAYS_AHEAD = 31;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -36,7 +36,7 @@ export function assertNicePayDate(payDate: string): string {
   }
   if (
     payDate === today &&
-    Number(now.hour) * 60 + Number(now.minute) >= CUTOFF_MINUTES
+    Number(now.hour) * 60 + Number(now.minute) >= PAY_CUTOFF_MINUTES
   ) {
     throw invalid(
       "오늘 지급 요청은 오전 10시 30분에 마감되었습니다. 다음 영업일을 선택해주세요.",
@@ -51,4 +51,18 @@ export function assertNicePayDate(payDate: string): string {
     throw invalid(`지급일은 오늘부터 ${MAX_DAYS_AHEAD}일 이내여야 합니다.`);
   }
   return payDate.replace(/-/g, "");
+}
+
+/**
+ * 지급일(@db.Date, KST 달력일의 UTC 자정)이 아직 나이스 마감 전인지 — 미래 지급일이면 참, 당일이면 10:30 전만 참.
+ * 지급 취소 가능 여부의 단일 판정이다(서버 검사와 목록의 cancelable 이 같이 쓴다).
+ */
+export function isBeforePayCutoff(
+  settlementDate: Date,
+  now: ReturnType<typeof nowKstParts> = nowKstParts(),
+): boolean {
+  const payDate = dateOnlyToString(settlementDate);
+  const today = `${now.year}-${now.month}-${now.day}`;
+  if (payDate !== today) return payDate > today;
+  return Number(now.hour) * 60 + Number(now.minute) < PAY_CUTOFF_MINUTES;
 }

@@ -1221,7 +1221,7 @@ describe("SettlementsService", () => {
 
   describe("getSettlementsSummary", () => {
     it("월 단위 상태별 건수·순지급액 합계를 반환한다", async () => {
-      mockPrisma.settlement.groupBy.mockResolvedValue([
+      mockPrisma.settlement.groupBy.mockResolvedValueOnce([
         {
           status: "pending",
           _count: { _all: 3 },
@@ -1237,8 +1237,11 @@ describe("SettlementsService", () => {
         { status: "paid", _count: { _all: 1 }, _sum: { netAmount: 10000 } },
         { status: "rejected", _count: { _all: 1 }, _sum: { netAmount: 0 } },
       ]);
-
-      mockPrisma.settlement.count.mockResolvedValue(2);
+      // 확인 필요 정산의 상태별 수
+      mockPrisma.settlement.groupBy.mockResolvedValueOnce([
+        { status: "processing", _count: { _all: 1 } },
+        { status: "paid", _count: { _all: 1 } },
+      ]);
       const lastOk = new Date("2026-10-15T07:30:00.000Z");
       const lastBad = new Date("2026-10-14T07:00:00.000Z");
       mockPrisma.nicePayoutApiLog.findFirst
@@ -1253,12 +1256,14 @@ describe("SettlementsService", () => {
         _count: { _all: true },
         _sum: { netAmount: true },
       });
-      // 확인 필요 집계는 그 달 안에서 needsReview 요청이 있는 정산 수.
-      expect(mockPrisma.settlement.count).toHaveBeenCalledWith({
+      // 확인 필요 집계는 그 달 안에서 needsReview 요청이 있는 정산을 상태별로 센다.
+      expect(mockPrisma.settlement.groupBy).toHaveBeenCalledWith({
+        by: ["status"],
         where: {
           settlementMonth: "2026-07",
           payoutRequests: { some: { needsReview: true } },
         },
+        _count: { _all: true },
       });
       expect(result).toEqual({
         pgFeeRate: PG_FEE_RATE,
@@ -1268,14 +1273,13 @@ describe("SettlementsService", () => {
         failed: { count: 1, netAmount: 5000 },
         paid: { count: 1, netAmount: 10000 },
         rejected: { count: 1 },
-        review: { count: 2 },
+        review: { count: 2, byStatus: { processing: 1, paid: 1 } },
         payoutCheck: { lastSucceededAt: lastOk, lastFailedAt: lastBad },
       });
     });
 
     it("특정 상태가 없으면 0으로 채운다", async () => {
       mockPrisma.settlement.groupBy.mockResolvedValue([]);
-      mockPrisma.settlement.count.mockResolvedValue(0);
 
       const result = await service.getSettlementsSummary("2026-07");
 
@@ -1287,7 +1291,7 @@ describe("SettlementsService", () => {
         failed: { count: 0, netAmount: 0 },
         paid: { count: 0, netAmount: 0 },
         rejected: { count: 0 },
-        review: { count: 0 },
+        review: { count: 0, byStatus: {} },
         payoutCheck: { lastSucceededAt: null, lastFailedAt: null },
       });
     });
@@ -1303,7 +1307,6 @@ describe("SettlementsService", () => {
 
     it("month 를 생략하면 전체 기간을 집계한다(어드민 대시보드 위젯)", async () => {
       mockPrisma.settlement.groupBy.mockResolvedValue([]);
-      mockPrisma.settlement.count.mockResolvedValue(0);
 
       const result = await service.getSettlementsSummary();
 
@@ -1321,7 +1324,7 @@ describe("SettlementsService", () => {
         failed: { count: 0, netAmount: 0 },
         paid: { count: 0, netAmount: 0 },
         rejected: { count: 0 },
-        review: { count: 0 },
+        review: { count: 0, byStatus: {} },
         payoutCheck: { lastSucceededAt: null, lastFailedAt: null },
       });
     });
@@ -1344,12 +1347,16 @@ describe("SettlementsService", () => {
       mockPrisma.settlement.findMany.mockResolvedValue([
         {
           id: "s-1",
+          status: "paid",
+          netAmount: 1000,
           team: { id: "team-1", name: "팀1", settlementAccount: null },
           _count: { details: 0, payoutRequests: 2 },
           payoutRequests: [],
         },
         {
           id: "s-2",
+          status: "failed",
+          netAmount: 1000,
           team: { id: "team-2", name: "팀2", settlementAccount: null },
           _count: { details: 0, payoutRequests: 1 },
           payoutRequests: [],
@@ -1357,22 +1364,256 @@ describe("SettlementsService", () => {
       ]);
       mockPrisma.settlement.count.mockResolvedValue(2);
       mockPrisma.settlementPayoutRequest.findMany.mockResolvedValue([
-        { settlementId: "s-1" },
+        {
+          settlementId: "s-1",
+          reviewReason: "DUPLICATE_SUCCESS",
+          status: "SUCCEEDED",
+          niceSeq: "SEQ1",
+        },
+        {
+          settlementId: "s-2",
+          reviewReason: "REOPENED_IN_PROGRESS",
+          status: "FAILED",
+          niceSeq: "SEQ2",
+        },
       ]);
       const result = await service.getSettlements({}, admin);
       expect(mockPrisma.settlementPayoutRequest.findMany).toHaveBeenCalledWith({
         where: {
           settlementId: { in: ["s-1", "s-2"] },
           needsReview: true,
-          reviewReason: { in: ["REOPENED_DUPLICATE", "DUPLICATE_SUCCESS"] },
+          reviewReason: {
+            in: [
+              "REOPENED_DUPLICATE",
+              "DUPLICATE_SUCCESS",
+              "REOPENED_IN_PROGRESS",
+            ],
+          },
         },
-        select: { settlementId: true },
-        distinct: ["settlementId"],
+        select: {
+          settlementId: true,
+          reviewReason: true,
+          status: true,
+          niceSeq: true,
+        },
       });
       expect(result.data[0].reviewOpenCount).toBe(2);
       expect(result.data[0].duplicateSuspected).toBe(true);
+      // 지급 대기·지급 실패가 아니면 요청 불가 사유를 싣지 않는다
+      expect(result.data[0].payoutBlock).toBeNull();
       expect(result.data[1].reviewOpenCount).toBe(1);
       expect(result.data[1].duplicateSuspected).toBe(false);
+      expect(result.data[1].payoutBlock).toBe("PAYOUT_REVIEW_REOPENED");
+    });
+
+    it("나이스 재진행 사유는 지급 요청 판정과 같은 범위(실패로 닫았고 접수번호 있음)일 때만 — 그 밖은 확인 필요", async () => {
+      mockPrisma.settlement.findMany.mockResolvedValue([
+        {
+          id: "s-1",
+          status: "approved",
+          netAmount: 1000,
+          team: { id: "team-1", name: "팀1", settlementAccount: null },
+          _count: { details: 0, payoutRequests: 1 },
+          payoutRequests: [],
+        },
+      ]);
+      mockPrisma.settlement.count.mockResolvedValue(1);
+      mockPrisma.settlementPayoutRequest.findMany.mockResolvedValue([
+        {
+          settlementId: "s-1",
+          reviewReason: "REOPENED_IN_PROGRESS",
+          status: "SUCCEEDED",
+          niceSeq: "SEQ1",
+        },
+      ]);
+      const result = await service.getSettlements({}, admin);
+      expect(result.data[0].payoutBlock).toBe("PAYOUT_REVIEW_OPEN");
+      expect(result.data[0].duplicateSuspected).toBe(false);
+    });
+
+    it("지급 대기 정산의 요청 불가 사유는 지급 요청과 같은 판정이다 — 계좌", async () => {
+      mockPrisma.settlement.findMany.mockResolvedValue([
+        {
+          id: "s-1",
+          status: "approved",
+          netAmount: 1000,
+          team: {
+            id: "team-1",
+            name: "팀1",
+            settlementAccount: {
+              status: "SUBMITTED",
+              subMallId: null,
+              registrationStartedAt: null,
+            },
+          },
+          _count: { details: 0, payoutRequests: 0 },
+          payoutRequests: [],
+        },
+        {
+          id: "s-2",
+          status: "approved",
+          netAmount: 1000,
+          team: {
+            id: "team-2",
+            name: "팀2",
+            settlementAccount: {
+              status: "REGISTERED",
+              subMallId: "SUB-2",
+              registrationStartedAt: null,
+            },
+          },
+          _count: { details: 0, payoutRequests: 0 },
+          payoutRequests: [],
+        },
+      ]);
+      mockPrisma.settlement.count.mockResolvedValue(2);
+      mockPrisma.settlementPayoutRequest.findMany.mockResolvedValue([]);
+      const result = await service.getSettlements({}, admin);
+      expect(result.data[0].payoutBlock).toBe("NOT_REGISTERED");
+      expect(result.data[1].payoutBlock).toBeNull();
+      // 판정에만 쓴 서브ID 는 응답에 싣지 않는다
+      expect(result.data[1]).not.toHaveProperty("team.settlementAccount");
+      expect(result.data[1].accountStatus).toBe("REGISTERED");
+    });
+
+    describe("payoutView — 지급 대기·지급 실패의 요청 가능 / 요청 불가를 서버가 전체 기준으로 나눈다", () => {
+      const row = (id: string, registered: boolean, netAmount = 1000) => ({
+        id,
+        status: "approved",
+        netAmount,
+        team: {
+          id: `team-${id}`,
+          name: id,
+          settlementAccount: registered
+            ? {
+                status: "REGISTERED",
+                subMallId: `SUB-${id}`,
+                registrationStartedAt: null,
+              }
+            : null,
+        },
+        _count: { details: 0, payoutRequests: 0 },
+        payoutRequests: [],
+      });
+
+      beforeEach(() => {
+        // 요청 불가 3건이 앞에, 요청 가능 2건이 뒤에 — 페이지로 먼저 자르면 첫 페이지에 요청 가능이 없다.
+        mockPrisma.settlement.findMany.mockResolvedValue([
+          row("b1", false),
+          row("b2", false),
+          row("b3", false),
+          row("r1", true, 3000),
+          row("r2", true, 2000),
+        ]);
+        mockPrisma.settlementPayoutRequest.findMany.mockResolvedValue([]);
+      });
+
+      it("ready 는 그 조건 전체에서 요청 가능한 정산만 페이지로 자르고 건수·합계를 meta 에 싣는다", async () => {
+        const result = await service.getSettlements(
+          {
+            status: "approved",
+            month: "2026-06",
+            payoutView: "ready",
+            page: 1,
+            pageSize: 1,
+          },
+          admin,
+        );
+        // 전체를 읽고(skip/take 없음) 같은 판정으로 나눈다
+        const args = mockPrisma.settlement.findMany.mock.calls[0][0];
+        expect(args.skip).toBeUndefined();
+        expect(args.take).toBeUndefined();
+        expect(mockPrisma.settlement.count).not.toHaveBeenCalled();
+        expect(result.data.map((d: { id: string }) => d.id)).toEqual(["r1"]);
+        expect(result.meta).toMatchObject({
+          total: 2,
+          page: 1,
+          pageSize: 1,
+          totalPages: 2,
+          payoutCounts: { ready: 2, blocked: 3, readyNetAmount: 5000 },
+        });
+      });
+
+      it("blocked 는 요청 불가만 — 다음 페이지도 같은 기준", async () => {
+        const result = await service.getSettlements(
+          {
+            status: "approved",
+            month: "2026-06",
+            payoutView: "blocked",
+            page: 2,
+            pageSize: 2,
+          },
+          admin,
+        );
+        expect(result.data.map((d: { id: string }) => d.id)).toEqual(["b3"]);
+        expect(result.data[0].payoutBlock).toBe("ACCOUNT_NONE");
+        expect(result.meta.total).toBe(3);
+      });
+
+      it("확인 필요·실패 건 나이스 재진행·0원 이하도 지급 요청과 같은 판정으로 요청 불가에 들어간다(지급 실패)", async () => {
+        const failed = (id: string, extra: Record<string, unknown>) => ({
+          ...row(id, true),
+          status: "failed",
+          ...extra,
+        });
+        mockPrisma.settlement.findMany.mockResolvedValue([
+          failed("open", { _count: { details: 0, payoutRequests: 1 } }),
+          failed("reopen", { _count: { details: 0, payoutRequests: 1 } }),
+          failed("zero", { netAmount: 0 }),
+          failed("ok", {}),
+        ]);
+        mockPrisma.settlementPayoutRequest.findMany.mockResolvedValue([
+          {
+            settlementId: "reopen",
+            reviewReason: "REOPENED_IN_PROGRESS",
+            status: "FAILED",
+            niceSeq: "SEQ",
+          },
+        ]);
+        const result = await service.getSettlements(
+          { status: "failed", month: "2026-06", payoutView: "blocked" },
+          admin,
+        );
+        expect(result.data.map((d) => [d.id, d.payoutBlock])).toEqual([
+          ["open", "PAYOUT_REVIEW_OPEN"],
+          ["reopen", "PAYOUT_REVIEW_REOPENED"],
+          ["zero", "NET_NOT_POSITIVE"],
+        ]);
+        expect(result.meta.payoutCounts).toEqual({
+          ready: 1,
+          blocked: 3,
+          readyNetAmount: 1000,
+        });
+      });
+
+      it("월이 없으면 전 기간을 읽지 않도록 나누지 않는다", async () => {
+        mockPrisma.settlement.count.mockResolvedValue(5);
+        const result = await service.getSettlements(
+          { status: "approved", payoutView: "ready" },
+          admin,
+        );
+        expect(mockPrisma.settlement.findMany.mock.calls[0][0].take).toBe(20);
+        expect(result.meta).not.toHaveProperty("payoutCounts");
+      });
+
+      it("지급 대기·지급 실패가 아니거나 관리자가 아니면 나누지 않고 기존처럼 페이지로 읽는다", async () => {
+        mockPrisma.settlement.count.mockResolvedValue(5);
+        const paid = await service.getSettlements(
+          { status: "paid", month: "2026-06", payoutView: "ready" },
+          admin,
+        );
+        expect(mockPrisma.settlement.findMany.mock.calls[0][0].take).toBe(20);
+        expect(paid.meta).not.toHaveProperty("payoutCounts");
+
+        mockResourceAccess.resolveTeamScope.mockResolvedValue(["team-r1"]);
+        mockPrisma.settlement.findMany.mockClear();
+        const asDirector = await service.getSettlements(
+          { status: "approved", month: "2026-06", payoutView: "ready" },
+          director,
+        );
+        expect(mockPrisma.settlement.findMany.mock.calls[0][0].take).toBe(20);
+        expect(asDirector.meta).not.toHaveProperty("payoutCounts");
+      });
     });
   });
 

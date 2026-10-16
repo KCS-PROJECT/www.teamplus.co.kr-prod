@@ -5,6 +5,8 @@ import { buildPayoutEncKey, buildPayoutTrDtm } from "./nice-payout-crypto.util";
 import {
   NiceBalanceResult,
   NicePayoutCallMeta,
+  NicePayoutCancelInput,
+  NicePayoutCancelResult,
   NicePayoutGateway,
   NicePayoutOutcome,
   NicePayoutRequestInput,
@@ -109,6 +111,17 @@ export class NicePayoutHttpGateway implements NicePayoutGateway {
       return { outcome: "AMBIGUOUS", meta: m, seq: null };
     }
     return { outcome, meta, seq };
+  }
+
+  async cancelPayout(
+    req: NicePayoutCancelInput,
+  ): Promise<NicePayoutCancelResult> {
+    const { outcome, meta } = await this.call(
+      "0103001",
+      { settlmntDt: req.settlmntDt, subId: req.subId, seq: req.seq },
+      { subId: req.subId },
+    );
+    return { outcome, meta };
   }
 
   async queryPayoutResults(

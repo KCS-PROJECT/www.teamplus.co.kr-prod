@@ -137,3 +137,70 @@ describe("NicePayoutFakeGateway", () => {
     });
   });
 });
+
+describe("NicePayoutFakeGateway.cancelPayout", () => {
+  let gw: NicePayoutFakeGateway;
+  const kstNow = (iso: string) =>
+    jest.spyOn(Date, "now").mockReturnValue(new Date(`${iso}+09:00`).getTime());
+
+  beforeEach(() => {
+    gw = new NicePayoutFakeGateway(10);
+  });
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  const requestOne = async (settlmntAmt = 100000) => {
+    const r = await gw.requestPayout({
+      subId: "TEAM-1",
+      settlmntDt: "20261015",
+      settlmntAmt,
+      dupChkYn: "N",
+    });
+    return r.seq as string;
+  };
+
+  it("취소하면 결과 조회에 삭제로 보이고, 두 번째 취소는 1104", async () => {
+    kstNow("2026-10-15T09:00:00");
+    const seq = await requestOne();
+    const input = { subId: "TEAM-1", settlmntDt: "20261015", seq };
+
+    const ok = await gw.cancelPayout(input);
+    expect(ok.outcome).toBe("SUCCESS");
+    expect(ok.meta.sid).toBe("0103001");
+
+    const q = await gw.queryPayoutResults({ settlmntDt: "20261015" });
+    expect(q.rows[0]).toMatchObject({ seq, statusNm: "삭제", errReason: null });
+
+    const again = await gw.cancelPayout(input);
+    expect(again.outcome).toBe("TERMINAL");
+    expect(again.meta.resCode).toBe("1104");
+  });
+
+  it("지급일 10:30 이후 취소는 1107", async () => {
+    kstNow("2026-10-15T09:00:00");
+    const seq = await requestOne();
+    kstNow("2026-10-15T10:30:00");
+
+    const r = await gw.cancelPayout({
+      subId: "TEAM-1",
+      settlmntDt: "20261015",
+      seq,
+    });
+    expect(r.meta.resCode).toBe("1107");
+  });
+
+  it("금액 끝 996 은 취소가 반영됐는데 응답이 없다", async () => {
+    kstNow("2026-10-15T09:00:00");
+    const seq = await requestOne(100996);
+
+    const r = await gw.cancelPayout({
+      subId: "TEAM-1",
+      settlmntDt: "20261015",
+      seq,
+    });
+    expect(r.outcome).toBe("AMBIGUOUS");
+    const q = await gw.queryPayoutResults({ settlmntDt: "20261015" });
+    expect(q.rows[0].statusNm).toBe("삭제");
+  });
+});

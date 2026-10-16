@@ -1,6 +1,8 @@
 import {
   NiceBalanceResult,
   NicePayoutCallMeta,
+  NicePayoutCancelInput,
+  NicePayoutCancelResult,
   NicePayoutGateway,
   NicePayoutRequestInput,
   NicePayoutRequestResult,
@@ -12,7 +14,8 @@ import {
   NiceSubMallResult,
 } from "./nice-payout.types";
 import { classifyPayoutResCode } from "./payout-res-code.util";
-import { nowKstParts } from "@/common/utils/kst-date.util";
+import { dateOnlyToUtc, nowKstParts } from "@/common/utils/kst-date.util";
+import { isBeforePayCutoff } from "../utils/nice-pay-date.util";
 
 export const FAKE_PAYOUT_REMAIN_AMT = 10_000_000;
 export const FAKE_PAYOUT_FAIL_MARK = "실패테스트";
@@ -23,16 +26,19 @@ export const FAKE_PAYOUT_DELAY_MARK = "지연테스트";
  *   997: 나이스에 접수되지 않고 응답도 없음(결과 조회에 안 나타남 → 지급 예정으로 복귀 경로)
  *   998: 접수는 됐는데 응답 유실(결과 조회로만 확정되는 경로)
  *   999: 접수 성공, 지급일 결과는 실패(잔액 부족 재현)
+ *   996: 지급 취소가 반영됐는데 취소 응답 유실(취소 직후 결과 조회로 확정되는 경로)
  */
 export const FAKE_PAYOUT_LOST_SUFFIX = 997;
 export const FAKE_PAYOUT_UNCONFIRMED_SUFFIX = 998;
 export const FAKE_PAYOUT_FAIL_SUFFIX = 999;
+export const FAKE_PAYOUT_CANCEL_UNCONFIRMED_SUFFIX = 996;
 
 interface FakePayoutEntry {
   seq: string;
   subId: string;
   settlmntDt: string;
   settlmntAmt: number;
+  cancelled?: boolean;
 }
 
 /**
@@ -150,6 +156,50 @@ export class NicePayoutFakeGateway implements NicePayoutGateway {
     };
   }
 
+  async cancelPayout(
+    req: NicePayoutCancelInput,
+  ): Promise<NicePayoutCancelResult> {
+    const startedAt = Date.now();
+    const entry = this.payouts.find(
+      (p) =>
+        p.seq === req.seq &&
+        p.subId === req.subId &&
+        p.settlmntDt === req.settlmntDt &&
+        !p.cancelled,
+    );
+    if (!entry) {
+      return {
+        outcome: "TERMINAL",
+        meta: this.meta("0103001", "1104", Date.now() - startedAt),
+      };
+    }
+    const d = entry.settlmntDt;
+    const payDate = dateOnlyToUtc(
+      `${d.slice(0, 4)}-${d.slice(4, 6)}-${d.slice(6, 8)}`,
+    );
+    if (!isBeforePayCutoff(payDate)) {
+      return {
+        outcome: "TERMINAL",
+        meta: this.meta("0103001", "1107", Date.now() - startedAt),
+      };
+    }
+    entry.cancelled = true;
+    if (entry.settlmntAmt % 1000 === FAKE_PAYOUT_CANCEL_UNCONFIRMED_SUFFIX) {
+      await new Promise((resolve) => setTimeout(resolve, this.delayMs));
+      return {
+        outcome: "AMBIGUOUS",
+        meta: {
+          ...this.meta("0103001", null, Date.now() - startedAt),
+          error: "timeout",
+        },
+      };
+    }
+    return {
+      outcome: "SUCCESS",
+      meta: this.meta("0103001", "0000", Date.now() - startedAt),
+    };
+  }
+
   /** 지급일이 KST 오늘 이전·당일이면 성공/실패로, 아직 오지 않았으면 "요청" 으로 보여준다. */
   async queryPayoutResults(
     req: NicePayoutResultsQuery,
@@ -168,9 +218,16 @@ export class NicePayoutFakeGateway implements NicePayoutGateway {
         return {
           seq: p.seq,
           subId: p.subId,
-          statusNm: !due ? "요청" : fail ? "실패" : "성공",
+          statusNm: p.cancelled
+            ? "삭제"
+            : !due
+              ? "요청"
+              : fail
+                ? "실패"
+                : "성공",
           settlmntAmt: p.settlmntAmt,
-          errReason: due && fail ? "잔액부족(가짜 게이트웨이)" : null,
+          errReason:
+            !p.cancelled && due && fail ? "잔액부족(가짜 게이트웨이)" : null,
         };
       });
     const succCnt = rows.filter((r) => r.statusNm === "성공").length;

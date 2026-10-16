@@ -1,7 +1,6 @@
 import { nowKstParts } from "@/common/utils/kst-date.util";
+import { PAY_CUTOFF_MINUTES } from "./nice-pay-date.util";
 
-/** 나이스 지급 요청 마감 — 지급일 당일 오전 10:30(KST). nice-pay-date.util 과 같은 값. */
-const CUTOFF_MINUTES = 10 * 60 + 30;
 const MAX_DAYS_AHEAD = 31;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -33,7 +32,7 @@ export function computeDefaultPayDate(
   const monthIndex = Number(now.month) - 1;
   const today = new Date(Date.UTC(year, monthIndex, Number(now.day)));
   const beforeCutoff =
-    Number(now.hour) * 60 + Number(now.minute) < CUTOFF_MINUTES;
+    Number(now.hour) * 60 + Number(now.minute) < PAY_CUTOFF_MINUTES;
 
   let candidate = dayInMonth(year, monthIndex, day);
   const isToday = candidate.getTime() === today.getTime();

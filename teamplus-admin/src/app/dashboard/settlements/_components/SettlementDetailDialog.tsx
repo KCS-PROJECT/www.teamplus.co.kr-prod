@@ -556,8 +556,11 @@ export function SettlementDetailDialog({
   const scheduledDateLabel = formatPayoutMonthDay(detail?.payoutScheduledDate);
   const latestPayoutReason = payoutRequests[0]?.errReason || payoutRequests[0]?.requestDetail || null;
   // 지급대행 연동(live) 중에는 지급 요청 → 결과 조회로 상태가 바뀌므로 수동 지급 완료를 막는다.
+  //   운영자 확인이 필요한 요청이 남아 있어도 막는다(서버도 409 PAYOUT_REVIEW_OPEN) — 확인 완료가 먼저다.
   const canManualPayout =
-    (detail?.status === 'approved' || detail?.status === 'failed') && payoutMode !== 'live';
+    (detail?.status === 'approved' || detail?.status === 'failed') &&
+    payoutMode !== 'live' &&
+    reviewRequests.length === 0;
   const rejectReasonFromTx = detail?.transactions?.find(
     (t) => t.transactionType === 'reject',
   )?.description;

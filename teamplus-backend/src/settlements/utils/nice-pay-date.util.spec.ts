@@ -1,5 +1,5 @@
 import { BadRequestException } from "@nestjs/common";
-import { assertNicePayDate } from "./nice-pay-date.util";
+import { assertNicePayDate, isBeforePayCutoff } from "./nice-pay-date.util";
 
 describe("assertNicePayDate", () => {
   /** KST 벽시계 시각으로 "지금"을 고정한다(2026-10-05 는 월요일). */
@@ -53,5 +53,28 @@ describe("assertNicePayDate", () => {
     expectInvalid("20261006");
     expectInvalid("2026-11-06");
     expect(assertNicePayDate("2026-11-05")).toBe("20261105");
+  });
+});
+
+describe("isBeforePayCutoff", () => {
+  const kst = (iso: string) => {
+    const [date, time] = iso.split("T");
+    const [year, month, day] = date.split("-");
+    const [hour, minute] = time.split(":");
+    return { year, month, day, hour, minute };
+  };
+  const PAY_DATE = new Date("2026-10-15T00:00:00.000Z");
+
+  it("지급일 당일은 10:29 까지 참, 10:30 부터 거짓", () => {
+    expect(isBeforePayCutoff(PAY_DATE, kst("2026-10-15T10:29"))).toBe(true);
+    expect(isBeforePayCutoff(PAY_DATE, kst("2026-10-15T10:30"))).toBe(false);
+  });
+
+  it("지급일이 미래면 시각과 무관하게 참", () => {
+    expect(isBeforePayCutoff(PAY_DATE, kst("2026-10-14T23:59"))).toBe(true);
+  });
+
+  it("지급일이 지났으면 거짓", () => {
+    expect(isBeforePayCutoff(PAY_DATE, kst("2026-10-16T00:00"))).toBe(false);
   });
 });

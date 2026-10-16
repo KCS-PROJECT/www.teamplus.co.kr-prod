@@ -28,7 +28,11 @@ import {
   digitsOnly,
   truncateUtf8Bytes,
 } from "./utils/nice-xlsx.util";
-import { resolveNiceAction } from "./utils/nice-account-state.util";
+import {
+  REGISTRATION_STALE_MS,
+  isSubMallRegistrationInProgress,
+  resolveNiceAction,
+} from "./utils/nice-account-state.util";
 import { NicePayoutApiService } from "./nice-payout-api.service";
 import { resolvePayoutApiMode } from "./payout-mode.util";
 import type { PayoutApiMode } from "./constants/payout-mode.constant";
@@ -70,20 +74,6 @@ const NICE_REGISTRATION_HEADER = [
 ] as const;
 const NICE_REGISTRATION_NAME_BYTES = 40;
 const NICE_REGISTRATION_MAX_ROWS = 500;
-
-/**
- * 등록 호출 진행 표시가 이보다 오래되면 서버가 도중에 멈춘 것으로 보고 다시 잡을 수 있다.
- * 게이트웨이 타임아웃(10초) × 교차 재요청 1회보다 충분히 길다.
- */
-const REGISTRATION_STALE_MS = 60_000;
-
-export function isSubMallRegistrationInProgress(
-  startedAt: Date | null,
-): boolean {
-  return (
-    !!startedAt && Date.now() - startedAt.getTime() < REGISTRATION_STALE_MS
-  );
-}
 
 const ACCOUNT_SELECT = {
   teamId: true,
@@ -527,9 +517,9 @@ export class TeamSettlementAccountService {
         : new ConflictException(ACCOUNT_CHANGED_MESSAGE);
     }
     // 진행 중이 아니면 읽은 뒤 다른 변경이 끝난 경우다.
-    const inProgress =
-      !!row.registrationStartedAt &&
-      Date.now() - row.registrationStartedAt.getTime() < REGISTRATION_STALE_MS;
+    const inProgress = isSubMallRegistrationInProgress(
+      row.registrationStartedAt,
+    );
     if (!inProgress) return new ConflictException(ACCOUNT_CHANGED_MESSAGE);
     return new ConflictException({
       message:

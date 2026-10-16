@@ -4,6 +4,8 @@ import {
   NICE_PAYOUT_GATEWAY,
   type NiceBalanceResult,
   type NicePayoutCallMeta,
+  type NicePayoutCancelInput,
+  type NicePayoutCancelResult,
   type NicePayoutGateway,
   type NicePayoutOutcome,
   type NicePayoutRequestInput,
@@ -57,6 +59,16 @@ export class NicePayoutApiService {
     ctx: CallContext,
   ): Promise<NicePayoutRequestResult> {
     const result = await this.gateway.requestPayout(req);
+    await this.record(result.meta, result.outcome, ctx, { subId: req.subId });
+    return result;
+  }
+
+  /** 지급 취소(0103001) — 단건, 지급일 당일 10:30 전까지. 호출 전제(live·운영자 요청·접수번호)는 호출하는 쪽이 보장한다. */
+  async cancelPayout(
+    req: NicePayoutCancelInput,
+    ctx: CallContext,
+  ): Promise<NicePayoutCancelResult> {
+    const result = await this.gateway.cancelPayout(req);
     await this.record(result.meta, result.outcome, ctx, { subId: req.subId });
     return result;
   }

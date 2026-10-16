@@ -135,10 +135,15 @@ const chipClass = (selected: boolean) =>
       : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-600 dark:hover:border-slate-500'
   }`;
 
-export function TeamSettlementAccountsTab() {
+interface TeamSettlementAccountsTabProps {
+  /** 처음 열 때 넣어 둘 검색어 — 월 정산의 [계좌 확인] 이 팀 이름을 넘긴다 */
+  initialQuery?: string;
+}
+
+export function TeamSettlementAccountsTab({ initialQuery = '' }: TeamSettlementAccountsTabProps = {}) {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
-  const [searchInput, setSearchInput] = useState('');
-  const [q, setQ] = useState('');
+  const [searchInput, setSearchInput] = useState(initialQuery);
+  const [q, setQ] = useState(initialQuery);
   const [page, setPage] = useState(1);
   const [rows, setRows] = useState<TeamAccountRow[]>([]);
   const [meta, setMeta] = useState<AccountsMeta | null>(null);

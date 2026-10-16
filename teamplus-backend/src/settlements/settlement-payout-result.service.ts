@@ -85,6 +85,20 @@ export interface PayoutCheckSummary {
   remainAmt: number | null;
   /** 나이스 조회가 실패했을 때의 설명(운영자 버튼은 502 로 던지므로 자동·가드 경로에서만 채워진다) */
   error: string | null;
+  /** targetRequestId 로 한 건만 봤을 때 — 이번 나이스 결과에서 그 요청이 어떻게 보였는지(그 요청이 조회 대상이 아니었으면 없음) */
+  target?: PayoutTargetSighting;
+}
+
+/** 취소 확인 조회에서 그 요청이 이번 나이스 결과에 어떻게 보였는지 */
+export type PayoutTargetSighting =
+  | { kind: "MATCHED"; result: PayoutResultKind }
+  | { kind: "AMBIGUOUS" | "NOT_FOUND" };
+
+export interface PayoutCancelRecheck {
+  /** 나이스를 실제로 조회했는지 */
+  queried: boolean;
+  /** 이번 결과에서 그 요청이 어떻게 보였는지 — 조회하지 못했거나 요청이 이미 닫혀 있었으면 null */
+  sighting: PayoutTargetSighting | null;
 }
 
 /** 나이스 "요청 데이터 없음" — 그 지급일에 지급이 하나도 없다는 뜻이라 대조에서는 빈 목록으로 다룬다. */
@@ -114,6 +128,12 @@ interface CheckOptions {
   unconfirmedOnly?: boolean;
   /** 우리 요청이 없어도 나이스를 조회한다 — 아침 대사가 전 영업일의 외부 지급을 보기 위해 쓴다. */
   forceQuery?: boolean;
+  /**
+   * 지급 취소 직후 확인용 — 이 요청 한 건만 나이스 결과와 맞춘다. 같은 지급일의 다른 요청은 짝 맞추기의 기준으로만 쓰고 건드리지 않는다.
+   * 응답 미확인 정리처럼 확인 횟수 증가·미접수 종결·실패 건 재맞춤·이상 감지는 하지 않는다(10:30 전 부분 결과로 다른 팀 요청에 오탐을 켜지 않게).
+   * 그 요청이 이번 결과에 어떻게 보였는지는 summary.target 에 남긴다.
+   */
+  targetRequestId?: string;
 }
 
 const ACTIVE_REQUEST_SELECT = {
@@ -174,6 +194,34 @@ export class SettlementPayoutResultService {
     }
     // 운영자 버튼은 실패로 닫은 건도 다시 맞춘다 — 진행 중 요청이 없는 지급일의 확인 표시(needsReview)를 풀거나 재요청 성공을 반영할 길이다.
     return this.check(payDate, adminId, true, { includeFailed: true });
+  }
+
+  /**
+   * 지급 취소 직후 — 취소 응답을 못 받았거나, 나이스가 "대상 없음(1104)"이라고 했거나, 취소는 됐는데 상태 반영이 실패했을 때
+   * 그 지급일 결과에서 취소한 요청 한 건만 실제 상태로 맞춘다(targetRequestId — 같은 지급일의 다른 요청은 건드리지 않는다).
+   * 자동 조회는 지급일 당일 이후만 보므로, 미래 지급일 요청은 이 조회가 없으면 지급일 16시까지 맞춰지지 않는다.
+   * 어떤 경우에도 던지지 않는다(같은 지급일 조회 중·나이스 오류면 queried=false).
+   */
+  async recheckAfterCancel(
+    payDate: string,
+    adminId: string,
+    requestId: string,
+  ): Promise<PayoutCancelRecheck> {
+    try {
+      const summary = await this.check(payDate, adminId, false, {
+        targetRequestId: requestId,
+      });
+      return { queried: summary.queried, sighting: summary.target ?? null };
+    } catch (error) {
+      if (!(error instanceof ConflictException)) {
+        this.logger.error(
+          `지급 취소 후 결과 확인 오류: payDate=${payDate}, requestId=${requestId}, ${
+            error instanceof Error ? error.message : "unknown"
+          }`,
+        );
+      }
+      return { queried: false, sighting: null };
+    }
   }
 
   /**
@@ -497,20 +545,25 @@ export class SettlementPayoutResultService {
       const isStaleRequesting = (r: ActiveRequest) =>
         r.status === PAYOUT_REQUEST_STATUS.REQUESTING &&
         r.requestedAt.getTime() < staleBefore;
+      const target = options.targetRequestId;
+      // 가볍게 보기 — 응답 미확인 정리·취소 확인은 그 요청의 상태만 맞추고, 확인 횟수·미접수 종결·실패 건 재맞춤·이상 감지는 하지 않는다.
+      const light = options.unconfirmedOnly === true || target !== undefined;
       const eligible = onDate.filter((r) =>
-        options.unconfirmedOnly === true
-          ? r.status === PAYOUT_REQUEST_STATUS.UNCONFIRMED ||
-            isStaleRequesting(r)
-          : isActive(r) &&
-            (r.status !== PAYOUT_REQUEST_STATUS.REQUESTING ||
-              isStaleRequesting(r)),
+        target !== undefined
+          ? r.id === target && isActive(r)
+          : options.unconfirmedOnly === true
+            ? r.status === PAYOUT_REQUEST_STATUS.UNCONFIRMED ||
+              isStaleRequesting(r)
+            : isActive(r) &&
+              (r.status !== PAYOUT_REQUEST_STATUS.REQUESTING ||
+                isStaleRequesting(r)),
       );
       const eligibleIds = new Set(eligible.map((r) => r.id));
       const others = onDate.filter((r) => !eligibleIds.has(r.id));
       // 실패로 닫은 건을 다시 맞출 이유가 있는가 — 정산이 아직 failed·approved 이거나, 켜 둔 확인 표시(needsReview)가 남아 있을 때.
       const hasReopenCandidate =
         options.includeFailed === true &&
-        options.unconfirmedOnly !== true &&
+        !light &&
         others.some(
           (r) =>
             r.status === PAYOUT_REQUEST_STATUS.FAILED &&
@@ -575,15 +628,21 @@ export class SettlementPayoutResultService {
             decision,
             payDatePassed,
             summary,
-            options.unconfirmedOnly === true,
+            light,
           );
+          if (decision.requestId === target) {
+            summary.target =
+              decision.kind === "MATCHED"
+                ? { kind: "MATCHED", result: decision.result }
+                : { kind: decision.kind };
+          }
         }
       }
-      if (options.unconfirmedOnly !== true) {
+      if (!light) {
         await this.reconcileReopenedFailures(others, rows, summary);
       }
-      // 대조 — 결정을 반영한 뒤 그 날 요청을 다시 읽어 최신 상태로 나이스 행 전체와 맞춘다. 가드(reopenOnly)·응답 미확인 정리는 건너뛴다.
-      if (options.reopenOnly !== true && options.unconfirmedOnly !== true) {
+      // 대조 — 결정을 반영한 뒤 그 날 요청을 다시 읽어 최신 상태로 나이스 행 전체와 맞춘다. 가드(reopenOnly)·가볍게 보기는 건너뛴다.
+      if (options.reopenOnly !== true && !light) {
         await this.detectReviewFlags(settlementDate, rows, summary);
       }
       return summary;
@@ -698,12 +757,13 @@ export class SettlementPayoutResultService {
     decision: PayoutMatchDecision,
     payDatePassed: boolean,
     summary: PayoutCheckSummary,
-    unconfirmedOnly: boolean,
+    /** 가볍게 보기(응답 미확인 정리·취소 확인) — 확인 횟수를 세지 않고 미접수로 닫지 않는다 */
+    light: boolean,
   ): Promise<void> {
     const now = new Date();
     const teamId = request.settlement.teamId;
-    // 응답 미확인 정리는 확인 횟수를 세지 않는다 — 하루 여러 번 돌아도 기록이 부풀지 않게.
-    const countCheck = unconfirmedOnly ? {} : { checkCount: { increment: 1 } };
+    // 가볍게 보기는 확인 횟수를 세지 않는다 — 하루 여러 번 돌아도 기록이 부풀지 않게.
+    const countCheck = light ? {} : { checkCount: { increment: 1 } };
 
     if (decision.kind === "MATCHED") {
       await this.applyMatched(
@@ -712,7 +772,7 @@ export class SettlementPayoutResultService {
         decision.result,
         now,
         summary,
-        !unconfirmedOnly,
+        !light,
       );
       return;
     }
@@ -721,7 +781,7 @@ export class SettlementPayoutResultService {
       // 운영자가 이미 확인 완료한 요청(reviewedAt)은 다시 켜지 않는다 — 확인 기록만 남긴다.
       const flagged = await this.prisma.$transaction(async (tx) => {
         await acquireSettlementCloseLock(tx, teamId);
-        if (!unconfirmedOnly) {
+        if (!light) {
           await tx.settlementPayoutRequest.updateMany({
             where: {
               id: request.id,
@@ -747,8 +807,8 @@ export class SettlementPayoutResultService {
       return;
     }
 
-    // NOT_FOUND — 응답 미확인 정리는 종결하지 않는다(16시 전 부분 결과일 수 있다).
-    if (unconfirmedOnly) {
+    // NOT_FOUND — 가볍게 보기는 종결하지 않는다(16시 전 부분 결과일 수 있다).
+    if (light) {
       summary.pending += 1;
       return;
     }
@@ -967,16 +1027,19 @@ export class SettlementPayoutResultService {
     });
   }
 
-  /** 요청을 종결 상태로 닫고 정산을 지급 예정(approved)으로 되돌린다 — 삭제·미접수. */
-  private async closeAndRevert(
-    request: ActiveRequest,
+  /**
+   * 요청을 종결 상태로 닫고 정산을 지급 예정(approved)으로 되돌린다 — 삭제·미접수·운영자 지급 취소.
+   * 진행 중인 요청일 때만 바꾼다 — 그 사이 다른 경로가 확정했으면 false(아무것도 바꾸지 않음).
+   */
+  async closeAndRevert(
+    request: Pick<ActiveRequest, "id" | "settlementId">,
     teamId: string,
     status:
       | typeof PAYOUT_REQUEST_STATUS.CANCELLED
       | typeof PAYOUT_REQUEST_STATUS.NOT_FOUND,
     data: Prisma.SettlementPayoutRequestUpdateManyMutationInput,
-  ): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
+  ): Promise<boolean> {
+    return this.prisma.$transaction(async (tx) => {
       await acquireSettlementCloseLock(tx, teamId);
       const updated = await tx.settlementPayoutRequest.updateMany({
         where: {
@@ -985,7 +1048,7 @@ export class SettlementPayoutResultService {
         },
         data: { ...data, status, needsReview: false },
       });
-      if (updated.count === 0) return;
+      if (updated.count === 0) return false;
       await tx.settlement.updateMany({
         where: {
           id: request.settlementId,
@@ -993,6 +1056,7 @@ export class SettlementPayoutResultService {
         },
         data: { status: SETTLEMENT_STATUS.APPROVED },
       });
+      return true;
     });
   }
 
